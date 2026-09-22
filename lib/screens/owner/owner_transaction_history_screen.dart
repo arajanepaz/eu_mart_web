@@ -194,7 +194,7 @@ class _OwnerTransactionHistoryScreenState
           _selectedFilter = label;
         });
       },
-      selectedColor: const Color(0xFF1565C0),
+      selectedColor: const Color(0xFFFF9800),
       labelStyle: TextStyle(
         color: selected ? Colors.white : Colors.black87,
         fontWeight: FontWeight.w600,
@@ -651,7 +651,7 @@ class _OwnerTransactionHistoryScreenState
         }
 
         return Container(
-          color: const Color(0xFFF2F6FC),
+          color: const Color(0xFFF4F7FB),
           padding: const EdgeInsets.all(22),
           child: Column(
             children: [
@@ -719,7 +719,7 @@ class _OwnerTransactionHistoryScreenState
                       title: 'Completed Transactions',
                       value: '$completedCount',
                       icon: Icons.receipt_long,
-                      color: const Color(0xFF1565C0),
+                      color: const Color(0xFFFF9800),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -798,7 +798,7 @@ class _OwnerTransactionHistoryScreenState
                       )
                     : ListView.separated(
                         itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final document = filtered[index];
                           final data = document.data();
@@ -839,7 +839,7 @@ class _OwnerTransactionHistoryScreenState
                                   isVoided ? Icons.block : Icons.receipt_long,
                                   color: isVoided
                                       ? Colors.red
-                                      : const Color(0xFF1565C0),
+                                      : const Color(0xFFFF9800),
                                 ),
                               ),
                               title: Row(

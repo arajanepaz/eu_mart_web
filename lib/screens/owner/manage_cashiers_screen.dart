@@ -912,7 +912,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                     ? const _CashierEmptyState()
                     : ListView.separated(
                         itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 11),
+                        separatorBuilder: (_, _) => const SizedBox(height: 11),
                         itemBuilder: (context, index) {
                           final document = filtered[index];
                           final data = document.data();

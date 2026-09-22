@@ -285,7 +285,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) {
     return DropdownButtonFormField<String>(
-      value: _selectedProductId,
+      initialValue: _selectedProductId,
       decoration: InputDecoration(
         labelText: 'Select product without barcode',
         prefixIcon: const Icon(

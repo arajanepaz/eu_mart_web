@@ -605,7 +605,7 @@ class _IssueTypePanel extends StatelessWidget {
           ? const _IssuePanelEmpty(message: 'No issue data.')
           : ListView.separated(
               itemCount: entries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 14),
+              separatorBuilder: (_, _) => const SizedBox(height: 14),
               itemBuilder: (context, index) {
                 final entry = entries[index];
                 final progress = entry.value / maximum;
@@ -679,7 +679,7 @@ class _ReporterPanel extends StatelessWidget {
           ? const _IssuePanelEmpty(message: 'No reporter data.')
           : ListView.separated(
               itemCount: entries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final entry = entries[index];
 
@@ -767,7 +767,7 @@ class _RecentIssuesPanel extends StatelessWidget {
           ? const _IssuePanelEmpty(message: 'No recent issues.')
           : ListView.separated(
               itemCount: issues.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, index) {
                 final data = issues[index].data();
 

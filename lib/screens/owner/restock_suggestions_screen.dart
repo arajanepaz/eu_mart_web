@@ -965,7 +965,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
                               itemCount: suggestions.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 final suggestion = suggestions[index];

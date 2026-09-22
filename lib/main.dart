@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
@@ -9,6 +10,12 @@ Future<void> main() async {
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  await FirebaseAppCheck.instance.activate(
+    providerWeb: WebDebugProvider(
+      debugToken: '3d20be5e-0fdd-4dc8-a96b-2ac582819be0',
+    ),
+  );
+
   runApp(const EuMartWebApp());
 }
 
@@ -18,12 +25,9 @@ class EuMartWebApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'EÜ MART',
       debugShowCheckedModeBanner: false,
-      title: 'EÜ MART Web',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1565C0)),
-        useMaterial3: true,
-      ),
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green),
       home: const LoginScreen(),
     );
   }

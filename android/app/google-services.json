@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1042552673018",
+    "project_id": "eu-mart-pos",
+    "storage_bucket": "eu-mart-pos.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1042552673018:android:4cb894fc1020890c9e2f43",
+        "android_client_info": {
+          "package_name": "com.example.eu_mart_web"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAemKBsxiAC9C95sfcLor70-JXxQFgv78o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1170,7 +1170,7 @@ class _PermitRenewalReminderScreenState
                     ? const _PermitEmptyState()
                     : ListView.separated(
                         itemCount: permits.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final document = permits[index];
                           final data = document.data();

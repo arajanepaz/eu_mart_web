@@ -1434,79 +1434,435 @@ Do not explain.
 
       await showDialog<void>(
         context: context,
+        barrierDismissible: false,
         builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text('Transaction Complete'),
-            content: SizedBox(
-              width: 500,
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Receipt No.: $receiptNumber',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+          final receiptDate = completedAt;
+          final dateText =
+              '${receiptDate.month.toString().padLeft(2, '0')}/'
+              '${receiptDate.day.toString().padLeft(2, '0')}/'
+              '${receiptDate.year}';
+          final timeText =
+              '${receiptDate.hour.toString().padLeft(2, '0')}:'
+              '${receiptDate.minute.toString().padLeft(2, '0')}';
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 24,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 430),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 30,
+                      offset: Offset(0, 12),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Transaction Time: '
-                      '${durationSeconds ~/ 60}m '
-                      '${durationSeconds % 60}s '
-                      '• $serviceSpeed',
-                      style: TextStyle(
-                        color: serviceSpeed == 'Long Delay'
-                            ? Colors.red
-                            : serviceSpeed == 'Minor Delay'
-                            ? Colors.orange
-                            : Colors.green,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    ...items.map(
-                      (item) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF1565C0),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(22),
+                            topRight: Radius.circular(22),
+                          ),
+                        ),
+                        child: Column(
                           children: [
-                            Expanded(
-                              child: Text(
-                                '${item.productName} × ${item.quantity}',
+                            Container(
+                              width: 76,
+                              height: 76,
+                              padding: const EdgeInsets.all(9),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(17),
+                              ),
+                              child: Image.asset(
+                                'assets/images/eu_mart_logo.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return const Icon(
+                                    Icons.storefront_rounded,
+                                    size: 45,
+                                    color: Color(0xFF1565C0),
+                                  );
+                                },
                               ),
                             ),
-                            Text('₱${item.subtotal.toStringAsFixed(2)}'),
+                            const SizedBox(height: 10),
+                            const Text(
+                              'EÜ MART',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'SALES RECEIPT',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 13,
+                                vertical: 7,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.16),
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.check_circle,
+                                    color: Colors.white,
+                                    size: 17,
+                                  ),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'TRANSACTION COMPLETE',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.6,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ),
-                    const Divider(),
-                    if (_totalSavings > 0)
-                      _receiptRow('You Saved', _totalSavings),
-                    _receiptRow('Total', total),
-                    _receiptRow('Cash', cash),
-                    _receiptRow('Change', change),
-                  ],
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 22),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF6F8FB),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Receipt No.',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.black54,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      Flexible(
+                                        child: Text(
+                                          receiptNumber,
+                                          textAlign: TextAlign.right,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF172033),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 7),
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Date / Time',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.black54,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        '$dateText  •  $timeText',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF172033),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 7),
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Transaction Time',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.black54,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        '${durationSeconds ~/ 60}m ${durationSeconds % 60}s  •  $serviceSpeed',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: serviceSpeed == 'Long Delay'
+                                              ? Colors.red
+                                              : serviceSpeed == 'Minor Delay'
+                                              ? Colors.orange
+                                              : Colors.green,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            const Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'ITEM',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 42,
+                                  child: Text(
+                                    'QTY',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 76,
+                                  child: Text(
+                                    'AMOUNT',
+                                    textAlign: TextAlign.right,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            const Divider(height: 1),
+                            const SizedBox(height: 10),
+                            ...items.map(
+                              (item) => Padding(
+                                padding: const EdgeInsets.only(bottom: 11),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        item.productName,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF172033),
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 42,
+                                      child: Text(
+                                        '${item.quantity}',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 76,
+                                      child: Text(
+                                        '₱${item.subtotal.toStringAsFixed(2)}',
+                                        textAlign: TextAlign.right,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            const SizedBox(height: 13),
+                            if (_totalSavings > 0) ...[
+                              _receiptRow('You Saved', _totalSavings),
+                              const SizedBox(height: 7),
+                            ],
+                            _receiptRow('Total', total),
+                            const SizedBox(height: 7),
+                            _receiptRow('Cash', cash),
+                            const SizedBox(height: 7),
+                            _receiptRow('Change', change),
+                            const SizedBox(height: 14),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 15,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8F5E9),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Expanded(
+                                    child: Text(
+                                      'TOTAL',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                        color: Color(0xFF1B5E20),
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '₱${total.toStringAsFixed(2)}',
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF1B5E20),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            const Text(
+                              'Thank you for shopping with EÜ MART!',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF172033),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Please come again.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.black54,
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      await _printReceipt(
+                                        receiptNumber: receiptNumber,
+                                        items: items,
+                                        total: total,
+                                        cash: cash,
+                                        change: change,
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.print_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text(
+                                      'PRINT / PDF',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF1565C0),
+                                      side: const BorderSide(
+                                        color: Color(0xFF1565C0),
+                                      ),
+                                      minimumSize: const Size(0, 48),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(13),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext),
+                                    icon: const Icon(
+                                      Icons.check_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text(
+                                      'DONE',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF1565C0),
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      minimumSize: const Size(0, 48),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(13),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            actions: [
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await _printReceipt(
-                    receiptNumber: receiptNumber,
-                    items: items,
-                    total: total,
-                    cash: cash,
-                    change: change,
-                  );
-                },
-                icon: const Icon(Icons.print_outlined),
-                label: const Text('PRINT / SAVE PDF'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Done'),
-              ),
-            ],
           );
         },
       );
@@ -1806,38 +2162,32 @@ Do not explain.
                       builder: (context, value, child) {
                         return Transform.scale(scale: value, child: child);
                       },
-                      child: const FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.shopping_cart_checkout_rounded,
-                                size: 46,
-                                color: Color(0xFFB6C4D5),
-                              ),
-                              SizedBox(height: 8),
-                              Text(
-                                'Your cart is empty',
-                                style: TextStyle(
-                                  color: Color(0xFF657386),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Select a product to begin.',
-                                style: TextStyle(
-                                  color: Color(0xFF9AA5B3),
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.shopping_cart_checkout_rounded,
+                            size: 48,
+                            color: Color(0xFFB6C4D5),
                           ),
-                        ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Your cart is empty',
+                            style: TextStyle(
+                              color: Color(0xFF657386),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Select a product to begin.',
+                            style: TextStyle(
+                              color: Color(0xFF9AA5B3),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   )

@@ -439,8 +439,8 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
 
     if (!mounted) return;
 
-    final productsSnapshot = results[0] as QuerySnapshot<Map<String, dynamic>>;
-    final suppliersSnapshot = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    final productsSnapshot = results[0];
+    final suppliersSnapshot = results[1];
 
     if (productsSnapshot.docs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1110,7 +1110,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                           ? const _StockMovementEmptyState()
                           : ListView.separated(
                               itemCount: movements.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 final data = movements[index].data();

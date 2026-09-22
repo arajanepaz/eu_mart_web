@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/audit_log_service.dart';
+import 'quick_product_encoding_screen.dart';
 
 class _InventoryEmptyState extends StatelessWidget {
   const _InventoryEmptyState();
@@ -254,6 +255,30 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // ------------------------------------------------------------
+  // SAFE FIRESTORE VALUE CONVERTERS
+  // ------------------------------------------------------------
+
+  double _readDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+
+    if (value is String) {
+      return double.tryParse(value.trim()) ?? 0;
+    }
+
+    return 0;
+  }
+
+  int _readInt(dynamic value) {
+    if (value is num) return value.toInt();
+
+    if (value is String) {
+      return int.tryParse(value.trim()) ?? 0;
+    }
+
+    return 0;
+  }
+
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -263,10 +288,16 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
   String _formatDate(DateTime? date) {
     if (date == null) return 'Not set';
+
     final month = date.month.toString().padLeft(2, '0');
     final day = date.day.toString().padLeft(2, '0');
+
     return '${date.year}-$month-$day';
   }
+
+  // ------------------------------------------------------------
+  // CSV IMPORT
+  // ------------------------------------------------------------
 
   Future<void> _importProductsFromCsv() async {
     try {
@@ -322,6 +353,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
       int imported = 0;
       int skipped = 0;
+
       WriteBatch batch = FirebaseFirestore.instance.batch();
       int batchCount = 0;
 
@@ -363,6 +395,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         }
 
         final expirationText = valueAt(row, 'expirationdate');
+
         final expirationDate = expirationText.isEmpty
             ? null
             : DateTime.tryParse(expirationText);
@@ -394,6 +427,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
         if (batchCount == 400) {
           await batch.commit();
+
           batch = FirebaseFirestore.instance.batch();
           batchCount = 0;
         }
@@ -445,45 +479,59 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     }
   }
 
+  // ------------------------------------------------------------
+  // ADD / EDIT PRODUCT DIALOG
+  // ------------------------------------------------------------
+
   Future<void> _showProductDialog({
     DocumentSnapshot<Map<String, dynamic>>? document,
   }) async {
     final data = document?.data() ?? <String, dynamic>{};
 
     final formKey = GlobalKey<FormState>();
+
     final productNameController = TextEditingController(
       text: (data['productName'] ?? '').toString(),
     );
+
     final barcodeController = TextEditingController(
       text: (data['barcode'] ?? '').toString(),
     );
+
     final categoryController = TextEditingController(
       text: (data['category'] ?? '').toString(),
     );
+
     final brandController = TextEditingController(
       text: (data['brand'] ?? '').toString(),
     );
+
     final buyingPriceController = TextEditingController(
       text: data['buyingPrice'] == null
           ? ''
-          : (data['buyingPrice'] as num).toString(),
+          : _readDouble(data['buyingPrice']).toString(),
     );
+
     final sellingPriceController = TextEditingController(
       text: data['sellingPrice'] == null
           ? ''
-          : (data['sellingPrice'] as num).toString(),
+          : _readDouble(data['sellingPrice']).toString(),
     );
+
     final stockController = TextEditingController(
-      text: data['stock'] == null ? '' : (data['stock'] as num).toString(),
+      text: data['stock'] == null ? '' : _readInt(data['stock']).toString(),
     );
+
     final supplierController = TextEditingController(
       text: (data['supplier'] ?? '').toString(),
     );
+
     final unitController = TextEditingController(
       text: (data['unit'] ?? '').toString(),
     );
 
     DateTime? expirationDate = _readDate(data['expirationDate']);
+
     bool isActive = data['isActive'] != false;
     bool saving = false;
 
@@ -500,6 +548,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
               try {
                 final enteredBarcode = barcodeController.text.trim();
+
+                // ------------------------------------------------
+                // BARCODE DUPLICATE CHECK
+                // ------------------------------------------------
 
                 if (enteredBarcode.isNotEmpty) {
                   final duplicateQuery = await FirebaseFirestore.instance
@@ -529,18 +581,34 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                   }
                 }
 
+                // ------------------------------------------------
+                // PARSE NEW VALUES
+                // ------------------------------------------------
+
+                final newBuyingPrice = double.parse(
+                  buyingPriceController.text.trim(),
+                );
+
+                final newSellingPrice = double.parse(
+                  sellingPriceController.text.trim(),
+                );
+
+                final newStock = int.parse(stockController.text.trim());
+
+                final productName = productNameController.text.trim();
+
+                // ------------------------------------------------
+                // PRODUCT DATA
+                // ------------------------------------------------
+
                 final productData = <String, dynamic>{
-                  'productName': productNameController.text.trim(),
+                  'productName': productName,
                   'barcode': enteredBarcode,
                   'category': categoryController.text.trim(),
                   'brand': brandController.text.trim(),
-                  'buyingPrice': double.parse(
-                    buyingPriceController.text.trim(),
-                  ),
-                  'sellingPrice': double.parse(
-                    sellingPriceController.text.trim(),
-                  ),
-                  'stock': int.parse(stockController.text.trim()),
+                  'buyingPrice': newBuyingPrice,
+                  'sellingPrice': newSellingPrice,
+                  'stock': newStock,
                   'supplier': supplierController.text.trim(),
                   'unit': unitController.text.trim(),
                   'expirationDate': expirationDate == null
@@ -550,10 +618,13 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                   'updatedAt': FieldValue.serverTimestamp(),
                 };
 
-                final productName = productNameController.text.trim();
+                // =================================================
+                // ADD NEW PRODUCT
+                // =================================================
 
                 if (document == null) {
                   productData['createdAt'] = FieldValue.serverTimestamp();
+
                   productData['imagePath'] = '';
                   productData['promoActive'] = false;
                   productData['isActive'] = isActive;
@@ -566,17 +637,61 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     productId: createdDocument.id,
                     productName: productName,
                   );
-                } else {
-                  final oldStock = (data['stock'] as num?)?.toInt() ?? 0;
+                }
+                // =================================================
+                // EDIT EXISTING PRODUCT
+                // =================================================
+                else {
+                  final oldStock = _readInt(data['stock']);
 
-                  final newStock = int.parse(stockController.text.trim());
+                  final oldBuyingPrice = _readDouble(data['buyingPrice']);
 
-                  await document.reference.update(productData);
+                  final buyingPriceChanged = oldBuyingPrice != newBuyingPrice;
+
+                  // ------------------------------------------------
+                  // UPDATE PRODUCT + CREATE REMINDER ATOMICALLY
+                  // ------------------------------------------------
+
+                  final batch = FirebaseFirestore.instance.batch();
+
+                  batch.update(document.reference, productData);
+
+                  DocumentReference<Map<String, dynamic>>? reminderReference;
+
+                  if (buyingPriceChanged) {
+                    reminderReference = FirebaseFirestore.instance
+                        .collection('price_update_reminders')
+                        .doc();
+
+                    batch.set(reminderReference, {
+                      'productId': document.id,
+                      'productName': productName,
+                      'oldBuyingPrice': oldBuyingPrice,
+                      'newBuyingPrice': newBuyingPrice,
+                      'currentSellingPrice': newSellingPrice,
+                      'status': 'Pending Review',
+                      'type': 'Price Update Reminder',
+                      'source': 'Products',
+                      'recipientRole': 'Owner',
+                      'createdAt': FieldValue.serverTimestamp(),
+                      'updatedAt': FieldValue.serverTimestamp(),
+                    });
+                  }
+
+                  await batch.commit();
+
+                  // ------------------------------------------------
+                  // PRODUCT AUDIT LOG
+                  // ------------------------------------------------
 
                   await AuditLogService.productUpdated(
                     productId: document.id,
                     productName: productName,
                   );
+
+                  // ------------------------------------------------
+                  // STOCK AUDIT LOG
+                  // ------------------------------------------------
 
                   if (oldStock != newStock) {
                     await AuditLogService.stockAdjusted(
@@ -589,6 +704,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 }
 
                 if (!dialogContext.mounted) return;
+
                 Navigator.pop(dialogContext, true);
               } catch (error) {
                 if (!dialogContext.mounted) return;
@@ -787,6 +903,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     }
   }
 
+  // ------------------------------------------------------------
+  // DIALOG FIELD
+  // ------------------------------------------------------------
+
   Widget _dialogField({
     required TextEditingController controller,
     required String label,
@@ -808,28 +928,41 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     );
   }
 
+  // ------------------------------------------------------------
+  // VALIDATORS
+  // ------------------------------------------------------------
+
   String? _requiredValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Required';
     }
+
     return null;
   }
 
   String? _numberValidator(String? value) {
     final parsed = double.tryParse(value?.trim() ?? '');
+
     if (parsed == null || parsed < 0) {
       return 'Enter a valid number';
     }
+
     return null;
   }
 
   String? _integerValidator(String? value) {
     final parsed = int.tryParse(value?.trim() ?? '');
+
     if (parsed == null || parsed < 0) {
       return 'Enter a valid whole number';
     }
+
     return null;
   }
+
+  // ------------------------------------------------------------
+  // DELETE
+  // ------------------------------------------------------------
 
   Future<void> _confirmDelete(
     DocumentSnapshot<Map<String, dynamic>> document,
@@ -877,6 +1010,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       );
 
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Product deleted successfully.'),
@@ -885,6 +1019,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       );
     } catch (error) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to delete product: $error'),
@@ -893,6 +1028,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       );
     }
   }
+
+  // ------------------------------------------------------------
+  // SEARCH
+  // ------------------------------------------------------------
 
   bool _matchesSearch(Map<String, dynamic> data) {
     if (_searchQuery.isEmpty) return true;
@@ -908,6 +1047,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
     return combined.contains(_searchQuery);
   }
+
+  // ------------------------------------------------------------
+  // BUILD
+  // ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -937,9 +1080,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
               final first = (a.data()['productName'] ?? '')
                   .toString()
                   .toLowerCase();
+
               final second = (b.data()['productName'] ?? '')
                   .toString()
                   .toLowerCase();
+
               return first.compareTo(second);
             });
 
@@ -952,14 +1097,14 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
             .length;
 
         final lowStockCount = documents.where((document) {
-          final stock = (document.data()['stock'] as num?)?.toInt() ?? 0;
+          final stock = _readInt(document.data()['stock']);
+
           return stock <= 10;
         }).length;
 
         final totalStock = documents.fold<int>(
           0,
-          (sum, document) =>
-              sum + ((document.data()['stock'] as num?)?.toInt() ?? 0),
+          (sum, document) => sum + _readInt(document.data()['stock']),
         );
 
         return Container(
@@ -1027,6 +1172,29 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                         spacing: 10,
                         runSpacing: 10,
                         children: [
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const QuickProductEncodingScreen(),
+                                ),
+                              );
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white,
+                              side: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.65),
+                              ),
+                              minimumSize: const Size(190, 48),
+                            ),
+                            icon: const Icon(Icons.qr_code_scanner),
+                            label: const Text(
+                              'QUICK ENCODING',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          ),
                           OutlinedButton.icon(
                             onPressed: _importProductsFromCsv,
                             style: OutlinedButton.styleFrom(
@@ -1154,6 +1322,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           : IconButton(
                               onPressed: () {
                                 _searchController.clear();
+
                                 setState(() => _searchQuery = '');
                               },
                               icon: const Icon(Icons.close_rounded),
@@ -1183,6 +1352,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       },
     );
   }
+
+  // ------------------------------------------------------------
+  // SUMMARY CARD
+  // ------------------------------------------------------------
 
   Widget _inventorySummaryCard({
     required String label,
@@ -1256,6 +1429,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     );
   }
 
+  // ------------------------------------------------------------
+  // PRODUCT TABLE
+  // ------------------------------------------------------------
+
   Widget _buildProductTable(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
   ) {
@@ -1295,11 +1472,15 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
               ],
               rows: documents.map((document) {
                 final data = document.data();
-                final stock = (data['stock'] as num?)?.toInt() ?? 0;
-                final sellingPrice =
-                    (data['sellingPrice'] as num?)?.toDouble() ?? 0;
+
+                final stock = _readInt(data['stock']);
+
+                final sellingPrice = _readDouble(data['sellingPrice']);
+
                 final expirationDate = _readDate(data['expirationDate']);
+
                 final active = data['isActive'] != false;
+
                 final name = (data['productName'] ?? 'Unknown Product')
                     .toString();
 
@@ -1308,6 +1489,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     if (states.contains(WidgetState.hovered)) {
                       return const Color(0xFFF5F9FF);
                     }
+
                     return null;
                   }),
                   cells: [
@@ -1432,17 +1614,25 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     );
   }
 
+  // ------------------------------------------------------------
+  // PRODUCT CARDS
+  // ------------------------------------------------------------
+
   Widget _buildProductCards(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
   ) {
     return ListView.separated(
       itemCount: documents.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final document = documents[index];
+
         final data = document.data();
-        final stock = (data['stock'] as num?)?.toInt() ?? 0;
-        final sellingPrice = (data['sellingPrice'] as num?)?.toDouble() ?? 0;
+
+        final stock = _readInt(data['stock']);
+
+        final sellingPrice = _readDouble(data['sellingPrice']);
+
         final active = data['isActive'] != false;
 
         return _InventoryProductCard(

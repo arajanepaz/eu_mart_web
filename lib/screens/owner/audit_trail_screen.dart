@@ -428,7 +428,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                   );
 
                   final moduleFilter = DropdownButtonFormField<String>(
-                    value: _selectedModule,
+                    initialValue: _selectedModule,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'Module',
@@ -487,7 +487,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                     ? const _AuditEmptyState()
                     : ListView.separated(
                         itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 11),
+                        separatorBuilder: (_, _) => const SizedBox(height: 11),
                         itemBuilder: (context, index) {
                           final data = filtered[index].data();
 

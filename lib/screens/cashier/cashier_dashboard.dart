@@ -9,7 +9,6 @@ import 'cashier_transaction_history_screen.dart';
 import 'cashier_products_screen.dart';
 import 'cashier_barcode_scanner_screen.dart';
 import 'cashier_shift_report_screen.dart';
-import 'cash_drawer_screen.dart';
 import '../shared/service_issue_logging_screen.dart';
 import '../shared/change_password_screen.dart';
 
@@ -30,7 +29,6 @@ class _CashierDashboardState extends State<CashierDashboard> {
     _MenuItem('Barcode Scanner', Icons.qr_code_scanner),
     _MenuItem('Transaction History', Icons.receipt_long_outlined),
     _MenuItem('End-of-Shift Report', Icons.summarize_outlined),
-    _MenuItem('Cash Drawer', Icons.account_balance_wallet_outlined),
     _MenuItem('Service Issues', Icons.report_problem_outlined),
     _MenuItem('Change Password', Icons.password_outlined),
   ];
@@ -636,7 +634,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: promos.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
               final data = promos[index].data();
 
@@ -1244,9 +1242,8 @@ class _CashierDashboardState extends State<CashierDashboard> {
                               3 => const CashierBarcodeScannerScreen(),
                               4 => const CashierTransactionHistoryScreen(),
                               5 => const CashierShiftReportScreen(),
-                              6 => const CashDrawerScreen(),
-                              7 => const ServiceIssueLoggingScreen(),
-                              8 => const ChangePasswordScreen(),
+                              6 => const ServiceIssueLoggingScreen(),
+                              7 => const ChangePasswordScreen(),
                               _ => _buildPlaceholderPage(),
                             },
                           ),

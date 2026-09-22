@@ -1,1 +1,42 @@
-{"flutter":{"platforms":{"dart":{"lib/firebase_options.dart":{"projectId":"eu-mart-mobile","configurations":{"web":"1:223216256838:web:15539a54d0858240e20747"}}}}}}
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "eu-mart-pos",
+          "appId": "1:1042552673018:android:4cb894fc1020890c9e2f43",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "eu-mart-pos",
+          "configurations": {
+            "android": "1:1042552673018:android:4cb894fc1020890c9e2f43",
+            "ios": "1:1042552673018:ios:742a99f55b21d8c09e2f43",
+            "macos": "1:1042552673018:ios:742a99f55b21d8c09e2f43",
+            "web": "1:1042552673018:web:a21aa89b17822dd49e2f43",
+            "windows": "1:1042552673018:web:a0c19f762deaeac99e2f43"
+          }
+        }
+      }
+    }
+  }
+}

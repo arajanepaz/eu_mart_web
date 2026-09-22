@@ -857,7 +857,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                     ? const _FeedbackEmptyState()
                     : ListView.separated(
                         itemCount: filtered.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 11),
+                        separatorBuilder: (_, _) => const SizedBox(height: 11),
                         itemBuilder: (context, index) {
                           final data = filtered[index].data();
 

@@ -18,7 +18,6 @@ import 'supplier_management_screen.dart';
 import 'cashier_performance_report_screen.dart';
 import 'estimated_profit_report_screen.dart';
 import 'product_movement_report_screen.dart';
-import 'owner_cash_drawer_report_screen.dart';
 import '../shared/service_issue_logging_screen.dart';
 import 'service_monitoring_report_screen.dart';
 import 'permit_renewal_reminder_screen.dart';
@@ -32,6 +31,7 @@ import 'audit_trail_screen.dart';
 import '../settings/settings_screen.dart';
 import 'customer_feedback_screen.dart';
 import 'backup_export_screen.dart';
+import 'firestore_schema_export_screen.dart';
 
 class OwnerDashboard extends StatefulWidget {
   const OwnerDashboard({super.key});
@@ -63,7 +63,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     _MenuItem('Cashier Performance', Icons.leaderboard_outlined),
     _MenuItem('Estimated Profit', Icons.trending_up_outlined),
     _MenuItem('Product Movement', Icons.multiline_chart_outlined),
-    _MenuItem('Cash Drawer Report', Icons.account_balance_wallet_outlined),
     _MenuItem('Service Issues', Icons.report_problem_outlined),
     _MenuItem('Service Monitoring', Icons.speed_outlined),
     _MenuItem('Permit Reminders', Icons.description_outlined),
@@ -911,7 +910,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: activePromos.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 16),
+            separatorBuilder: (_, _) => const SizedBox(width: 16),
             itemBuilder: (context, index) {
               final data = activePromos[index].data();
 
@@ -1667,7 +1666,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                 },
                                 onOpenPermitReminders: () {
                                   setState(() {
-                                    _selectedIndex = 22;
+                                    _selectedIndex = 21;
                                   });
                                 },
                               ),
@@ -1679,18 +1678,17 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               16 => const CashierPerformanceReportScreen(),
                               17 => const EstimatedProfitReportScreen(),
                               18 => const ProductMovementReportScreen(),
-                              19 => const OwnerCashDrawerReportScreen(),
-                              20 => const ServiceIssueLoggingScreen(
+                              19 => const ServiceIssueLoggingScreen(
                                 ownerView: true,
                               ),
-                              21 => const ServiceMonitoringReportScreen(),
-                              22 => const PermitRenewalReminderScreen(),
-                              23 => const SalesComparisonScreen(),
-                              24 => const ServiceIssueSummaryScreen(),
-                              25 => const DailyOperationsSummaryScreen(),
-                              26 => const ChangePasswordScreen(),
-                              27 => const LoginActivityScreen(),
-                              28 => const SettingsScreen(),
+                              20 => const ServiceMonitoringReportScreen(),
+                              21 => const PermitRenewalReminderScreen(),
+                              22 => const SalesComparisonScreen(),
+                              23 => const ServiceIssueSummaryScreen(),
+                              24 => const DailyOperationsSummaryScreen(),
+                              25 => const ChangePasswordScreen(),
+                              26 => const LoginActivityScreen(),
+                              27 => const SettingsScreen(),
                               _ => _buildPlaceholderPage(),
                             },
                           ),

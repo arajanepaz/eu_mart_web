@@ -1053,7 +1053,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                           ? const _ServiceIssueEmptyState()
                           : ListView.separated(
                               itemCount: issues.length,
-                              separatorBuilder: (_, __) =>
+                              separatorBuilder: (_, _) =>
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 final document = issues[index];

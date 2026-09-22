@@ -814,7 +814,7 @@ class _EstimatedProfitReportScreenState
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: productRows.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (_, _) =>
                                 const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final product = productRows[index];

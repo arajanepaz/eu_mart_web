@@ -1,0 +1,285 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function userDocument() {
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      );
+    }
+
+    function activeUser() {
+      return signedIn() &&
+        userDocument().data.isActive == true;
+    }
+
+    function isOwner() {
+      return activeUser() &&
+        userDocument().data.role == 'owner';
+    }
+
+    function isCashier() {
+      return activeUser() &&
+        userDocument().data.role == 'cashier';
+    }
+
+    // USERS
+    match /users/{userId} {
+      allow read: if isOwner() || (
+        activeUser() &&
+        request.auth.uid == userId
+      );
+
+      allow create, update, delete: if isOwner();
+    }
+
+    // PRODUCTS AND INVENTORY
+    match /products/{productId} {
+      allow read: if activeUser();
+
+      allow create, delete: if isOwner();
+
+      allow update: if isOwner() || (
+        isCashier() &&
+        request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'stock',
+            'updatedAt'
+          ]) &&
+        request.resource.data.stock is int &&
+        request.resource.data.stock >= 0
+      );
+    }
+
+    // SALES TRANSACTIONS
+    match /transactions/{transactionId} {
+      allow read: if isOwner() || (
+        isCashier() &&
+        resource.data.processedById ==
+          request.auth.uid
+      );
+
+      allow create: if (
+        isOwner() || isCashier()
+      ) &&
+        request.resource.data.processedById ==
+          request.auth.uid &&
+        request.resource.data.status ==
+          'completed' &&
+        request.resource.data.total is number &&
+        request.resource.data.cash is number &&
+        request.resource.data.change is number;
+
+      allow update: if isOwner();
+
+      allow delete: if false;
+    }
+
+    // CUSTOMER FEEDBACK
+    match /customer_feedback/{feedbackId} {
+      allow create: if true;
+
+      allow read, update, delete: if isOwner();
+    }
+
+    // SYSTEM SETTINGS
+    match /settings/{settingId} {
+      allow read: if activeUser();
+
+      allow create, update, delete: if isOwner();
+    }
+
+    // NOTIFICATIONS
+    match /notifications/{notificationId} {
+      allow read: if activeUser();
+
+      allow create: if isOwner();
+
+      allow update: if isOwner() || (
+        isCashier() &&
+        request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'isRead'
+          ])
+      );
+
+      allow delete: if isOwner();
+    }
+
+    // OWNER NOTIFICATION READ TRACKING
+    match /notification_reads/{readId} {
+      allow read: if isOwner() &&
+        resource.data.userId ==
+          request.auth.uid;
+
+      allow create: if isOwner() &&
+        request.resource.data.userId ==
+          request.auth.uid;
+
+      allow update: if isOwner() &&
+        resource.data.userId ==
+          request.auth.uid &&
+        request.resource.data.userId ==
+          request.auth.uid;
+
+      allow delete: if isOwner() &&
+        resource.data.userId ==
+          request.auth.uid;
+    }
+
+    // AUDIT TRAIL
+    match /audit_logs/{logId} {
+      allow read, create: if isOwner();
+
+      allow update, delete: if false;
+    }
+
+    // STOCK MOVEMENTS AND RESTOCKING
+    match /stock_movements/{movementId} {
+      allow read, create: if isOwner();
+
+      allow update, delete: if false;
+    }
+
+    // SUPPLIERS
+    match /suppliers/{supplierId} {
+      allow read, create, update, delete:
+        if isOwner();
+    }
+
+    // PROMOTIONS
+    match /promotions/{promotionId} {
+      allow read: if isOwner();
+
+      allow create, update, delete: if isOwner();
+    }
+
+    // HELD POS TRANSACTIONS
+    match /held_transactions/{heldId} {
+      allow read: if activeUser() &&
+        resource.data.heldById ==
+          request.auth.uid;
+
+      allow create: if activeUser() &&
+        request.resource.data.heldById ==
+          request.auth.uid &&
+        request.resource.data.status == 'held';
+
+      allow update: if activeUser() &&
+        resource.data.heldById ==
+          request.auth.uid &&
+        request.resource.data.heldById ==
+          request.auth.uid;
+
+      allow delete: if activeUser() &&
+        resource.data.heldById ==
+          request.auth.uid;
+    }
+
+    // CASH DRAWER SESSIONS
+    match /cash_sessions/{sessionId} {
+      allow read: if isOwner() || (
+        isCashier() &&
+        resource.data.cashierId ==
+          request.auth.uid
+      );
+
+      allow create: if isCashier() &&
+        request.resource.data.cashierId ==
+          request.auth.uid &&
+        request.resource.data.status == 'open' &&
+        request.resource.data.openingCash is number &&
+        request.resource.data.openingCash >= 0;
+
+      allow update: if isCashier() &&
+        resource.data.cashierId ==
+          request.auth.uid &&
+        request.resource.data.cashierId ==
+          request.auth.uid &&
+        resource.data.status == 'open' &&
+        request.resource.data.status == 'closed';
+
+      allow delete: if false;
+    }
+
+    // SERVICE ISSUE LOGGING
+    match /service_issues/{issueId} {
+      allow read: if isOwner() || (
+        isCashier() &&
+        resource.data.reportedById ==
+          request.auth.uid
+      );
+
+      allow create: if activeUser() &&
+        request.resource.data.reportedById ==
+          request.auth.uid &&
+        request.resource.data.status == 'open' &&
+        request.resource.data.issueType is string &&
+        request.resource.data.severity is string &&
+        request.resource.data.description is string;
+
+      allow update: if isOwner();
+
+      allow delete: if false;
+    }
+
+    // PERMIT RENEWAL REMINDERS
+    match /permit_reminders/{permitId} {
+      allow read, create, update, delete:
+        if isOwner();
+    }
+
+    // PRICE UPDATE REMINDERS
+    match /price_update_reminders/{reminderId} {
+      allow read: if isOwner();
+
+      allow create: if activeUser();
+
+      allow update, delete: if isOwner();
+    }
+
+    // LOGIN ACTIVITY
+    match /login_activity/{activityId} {
+      allow create: if activeUser() &&
+        request.resource.data.userId ==
+          request.auth.uid &&
+        request.resource.data.email is string &&
+        request.resource.data.role is string &&
+        request.resource.data.loginMethod is string &&
+        request.resource.data.rememberMe is bool;
+
+      allow read: if isOwner() || (
+        activeUser() &&
+        resource.data.userId ==
+          request.auth.uid
+      );
+
+      allow update: if activeUser() &&
+        resource.data.userId ==
+          request.auth.uid &&
+        request.resource.data.userId ==
+          resource.data.userId &&
+        request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            'logoutAt',
+            'sessionDurationSeconds',
+            'sessionStatus',
+            'logoutReason'
+          ]) &&
+        request.resource.data.sessionStatus == 'closed';
+
+      allow delete: if false;
+    }
+  }
+}
