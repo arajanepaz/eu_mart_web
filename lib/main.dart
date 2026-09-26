@@ -12,7 +12,7 @@ Future<void> main() async {
 
   await FirebaseAppCheck.instance.activate(
     providerWeb: WebDebugProvider(
-      debugToken: '3d20be5e-0fdd-4dc8-a96b-2ac582819be0',
+      debugToken: '81521a9d-1812-4553-ba46-bac7cbedee09',
     ),
   );
 

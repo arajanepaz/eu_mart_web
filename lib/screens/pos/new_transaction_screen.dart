@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -18,6 +19,7 @@ class NewTransactionScreen extends StatefulWidget {
 
 class _NewTransactionScreenState extends State<NewTransactionScreen> {
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
   final _cashController = TextEditingController();
   final Map<String, _CartItem> _cart = {};
 
@@ -29,6 +31,11 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   bool _aiSearching = false;
   final Set<String> _aiMatchedProductIds = <String>{};
   String _aiSearchMessage = '';
+  int? _aiResponseTimeMs;
+
+  // Recently scanned products stay visible below the search bar.
+  final List<String> _recentScannedProductIds = <String>[];
+  String? _scannedBarcodeProductId;
 
   double get _total => _cart.values.fold(0, (sum, item) => sum + item.subtotal);
 
@@ -223,6 +230,64 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     });
   }
 
+  Future<void> _handleSearchInput(
+    String value,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
+  ) async {
+    final normalized = value.trim();
+
+    if (normalized.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _query = '';
+        _scannedBarcodeProductId = null;
+        _aiMatchedProductIds.clear();
+        _aiSearchMessage = '';
+      });
+      return;
+    }
+
+    final exactBarcodeMatches = products.where((product) {
+      final barcode = (product.data()['barcode'] ?? '').toString().trim();
+      return barcode.isNotEmpty &&
+          barcode.toLowerCase() == normalized.toLowerCase();
+    }).toList();
+
+    if (exactBarcodeMatches.length == 1) {
+      final product = exactBarcodeMatches.first;
+
+      if (mounted) {
+        setState(() {
+          _query = normalized.toLowerCase();
+          _scannedBarcodeProductId = product.id;
+          _aiMatchedProductIds.clear();
+          _aiSearchMessage = 'Scanned barcode: $normalized';
+        });
+      }
+
+      _addProduct(product);
+      _rememberScannedProduct(product);
+      _refocusSearchBar(delay: const Duration(milliseconds: 120));
+      return;
+    }
+
+    if (exactBarcodeMatches.length > 1) {
+      _message(
+        'Barcode $normalized is assigned to multiple products. Please fix the duplicate barcode.',
+        Colors.red,
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _query = normalized.toLowerCase();
+      _scannedBarcodeProductId = null;
+      _aiMatchedProductIds.clear();
+      _aiSearchMessage = '';
+    });
+  }
+
   void _message(String text, Color color) {
     ScaffoldMessenger.of(
       context,
@@ -265,52 +330,164 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   bool _matches(QueryDocumentSnapshot<Map<String, dynamic>> document) {
     if (_query.isEmpty) return true;
 
-    if (_aiMatchedProductIds.contains(document.id)) {
-      return true;
+    // After a barcode scan, show only the exact product that was scanned.
+    if (_scannedBarcodeProductId != null) {
+      return document.id == _scannedBarcodeProductId;
     }
 
+    // AI suggestions are still required to pass the same local relevance
+    // gate. This prevents an unrelated AI suggestion from appearing beside
+    // a specific cashier search.
+    return _localProductSearchScore(document) >= 20;
+  }
+
+  int _localProductSearchScore(
+    QueryDocumentSnapshot<Map<String, dynamic>> document,
+  ) {
     final data = document.data();
+    final query = _normalizeSearchText(_query);
+    if (query.isEmpty) return 0;
 
-    final searchable = [
-      data['productName'],
-      data['barcode'],
-      data['category'],
-      data['brand'],
-      data['unit'],
-    ].map((value) => (value ?? '').toString().toLowerCase()).join(' ');
+    final productName = _normalizeSearchText(data['productName']);
+    final brand = _normalizeSearchText(data['brand']);
+    final category = _normalizeSearchText(data['category']);
+    final unit = _normalizeSearchText(data['unit']);
+    final barcode = _normalizeSearchText(data['barcode']);
 
-    if (searchable.contains(_query)) return true;
+    final queryCompact = query.replaceAll(' ', '');
+    final nameCompact = productName.replaceAll(' ', '');
 
-    final queryWords = _query
+    // Exact barcode search remains exact and high priority.
+    if (barcode.isNotEmpty && barcode == query) return 120;
+
+    // Common cashier shortcut: coke means Coca-Cola, not every product
+    // whose text happens to contain the letters "coke" or "cola".
+    if (_isCokeQuery(query)) {
+      if (nameCompact.contains('cocacola') ||
+          nameCompact == 'coke' ||
+          nameCompact.contains('coke')) {
+        return 110;
+      }
+      return 0;
+    }
+
+    // Exact product-name or compact-name match gets the strongest score.
+    if (productName == query ||
+        (queryCompact.length >= 5 && nameCompact == queryCompact)) {
+      return 110;
+    }
+
+    final queryWords = query
         .split(RegExp(r'\s+'))
         .where((word) => word.isNotEmpty)
         .toList();
 
-    return queryWords.isNotEmpty &&
-        queryWords.every((word) {
-          return searchable.contains(word) || _hasCloseWord(searchable, word);
+    final nameWords = productName
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+
+    // For a specific product query, every query word must match a product
+    // name word, an approved alias, or a close typo. This avoids the old
+    // substring bug where "cola" matched "chocolate".
+    if (queryWords.isNotEmpty) {
+      final allNameWordsMatch = queryWords.every((word) {
+        final aliases = _searchAliases(word);
+        return aliases.any((term) {
+          final cleanTerm = _normalizeSearchText(term);
+          if (cleanTerm.isEmpty) return false;
+
+          if (nameWords.contains(cleanTerm)) return true;
+          if (_hasCloseWord(productName, cleanTerm)) return true;
+
+          // For multi-word aliases such as "coca cola", compare the compact
+          // form only when it is sufficiently specific.
+          final compactTerm = cleanTerm.replaceAll(' ', '');
+          return compactTerm.length >= 5 && nameCompact.contains(compactTerm);
         });
+      });
+
+      if (allNameWordsMatch) return 90;
+    }
+
+    // Brand/category/unit remain searchable, but only by whole-word or
+    // close-word matching so broad substrings do not create false positives.
+    for (final field in [brand, category, unit]) {
+      final fieldWords = field
+          .split(RegExp(r'\s+'))
+          .where((word) => word.isNotEmpty)
+          .toList();
+
+      if (queryWords.isNotEmpty &&
+          queryWords.every(
+            (queryWord) => fieldWords.any(
+              (fieldWord) =>
+                  fieldWord == queryWord || _hasCloseWord(fieldWord, queryWord),
+            ),
+          )) {
+        return 35;
+      }
+    }
+
+    return 0;
+  }
+
+  bool _isCokeQuery(String query) {
+    final normalized = _normalizeSearchText(query).replaceAll(' ', '');
+    return normalized == 'coke' || normalized == 'cocacola';
+  }
+
+  String _normalizeSearchText(dynamic value) {
+    return (value ?? '')
+        .toString()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  List<String> _searchAliases(String value) {
+    final normalized = _normalizeSearchText(value);
+    if (normalized.isEmpty) return <String>[];
+
+    const aliases = <String, List<String>>{
+      'coke': <String>['coca cola', 'cocacola', 'coke'],
+      'coca': <String>['coca'],
+      'cola': <String>['cola'],
+      'cocacola': <String>['coca cola', 'cocacola', 'coke'],
+    };
+
+    final result = <String>[normalized];
+    final direct = aliases[normalized];
+    if (direct != null) {
+      for (final alias in direct) {
+        final cleanAlias = _normalizeSearchText(alias);
+        if (cleanAlias.isNotEmpty && !result.contains(cleanAlias)) {
+          result.add(cleanAlias);
+        }
+      }
+    }
+
+    return result;
   }
 
   bool _hasCloseWord(String searchable, String queryWord) {
     if (queryWord.length < 3) return false;
 
-    final words = searchable
-        .split(RegExp(r'[^a-z0-9]+'))
-        .where((word) => word.isNotEmpty);
+    final words = _normalizeSearchText(
+      searchable,
+    ).split(' ').where((word) => word.isNotEmpty);
 
     for (final word in words) {
+      if (word == queryWord) return true;
       if (word.startsWith(queryWord) || queryWord.startsWith(word)) {
         return true;
       }
 
       final lengthDifference = (word.length - queryWord.length).abs();
+      if (lengthDifference > 2) continue;
 
-      if (lengthDifference > 3) continue;
-
-      final allowedDistance = queryWord.length <= 4 ? 1 : 2;
-
-      if (_levenshteinDistance(word, queryWord) <= allowedDistance) {
+      if (_levenshteinDistance(word, queryWord) <= 2) {
         return true;
       }
     }
@@ -345,6 +522,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   Future<void> _runAiSearch(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) async {
+    debugPrint('🔥 AI SEARCH FUNCTION CALLED');
+
     final query = _searchController.text.trim();
 
     if (query.isEmpty) {
@@ -356,8 +535,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       _aiSearching = true;
       _aiMatchedProductIds.clear();
       _aiSearchMessage = '';
+      _aiResponseTimeMs = null;
     });
-
     try {
       final productLines = products
           .map((document) {
@@ -370,13 +549,13 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
               'CATEGORY=${(data['category'] ?? '').toString()}',
               'UNIT=${(data['unit'] ?? '').toString()}',
               'BARCODE=${(data['barcode'] ?? '').toString()}',
+              'ALIASES=${(data['aliases'] ?? data['searchAliases'] ?? '').toString()}',
             ].join(' | ');
           })
           .join('\n');
+      final ai = await FirebaseAI.googleAI(useLimitedUseAppCheckTokens: true);
 
-      final model = FirebaseAI.googleAI().generativeModel(
-        model: 'gemini-2.5-flash',
-      );
+      final model = ai.generativeModel(model: 'gemini-3.6-flash');
 
       final prompt =
           '''
@@ -394,7 +573,19 @@ Return NONE when there is no reasonable match.
 Do not explain.
 ''';
 
+      final stopwatch = Stopwatch()..start();
+
       final response = await model.generateContent([Content.text(prompt)]);
+
+      stopwatch.stop();
+
+      final aiResponseTimeMs = stopwatch.elapsedMilliseconds;
+
+      setState(() {
+        _aiResponseTimeMs = aiResponseTimeMs;
+      });
+
+      debugPrint('🤖 AI RESPONSE TIME: ${aiResponseTimeMs}ms');
 
       final text = (response.text ?? '').trim();
 
@@ -411,6 +602,10 @@ Do not explain.
           .split(RegExp(r'[,\s]+'))
           .map((value) => value.trim())
           .where(validIds.contains)
+          .where((id) {
+            final product = products.firstWhere((item) => item.id == id);
+            return _localProductSearchScore(product) >= 20;
+          })
           .toSet();
 
       setState(() {
@@ -419,10 +614,12 @@ Do not explain.
             ? 'AI found no relevant product.'
             : 'AI suggested ${ids.length} product(s).';
       });
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('🔥 AI SEARCH ERROR: $e');
+      debugPrint('🔥 AI SEARCH STACK: $st');
+
       setState(() {
-        _aiSearchMessage =
-            'AI service is unavailable. Typo-tolerant search is still active.';
+        _aiSearchMessage = 'AI ERROR: $e';
       });
     } finally {
       if (mounted) {
@@ -530,6 +727,20 @@ Do not explain.
     return receiptNumber;
   }
 
+  void _rememberScannedProduct(
+    QueryDocumentSnapshot<Map<String, dynamic>> product,
+  ) {
+    if (!mounted) return;
+
+    setState(() {
+      _recentScannedProductIds.remove(product.id);
+      _recentScannedProductIds.insert(0, product.id);
+      if (_recentScannedProductIds.length > 5) {
+        _recentScannedProductIds.removeLast();
+      }
+    });
+  }
+
   Future<void> _findAndAddByBarcode(
     String barcode,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
@@ -541,18 +752,34 @@ Do not explain.
       return;
     }
 
-    QueryDocumentSnapshot<Map<String, dynamic>>? matchedProduct;
-
-    for (final product in products) {
+    final matches = products.where((product) {
       final productBarcode = (product.data()['barcode'] ?? '')
           .toString()
           .trim();
+      return productBarcode == cleanedBarcode;
+    }).toList();
 
-      if (productBarcode == cleanedBarcode) {
-        matchedProduct = product;
-        break;
-      }
+    if (matches.length > 1) {
+      await _logAutomaticServiceIssue(
+        issueType: 'Duplicate Barcode',
+        severity: 'Moderate',
+        description:
+            'The POS found multiple active products using the same barcode $cleanedBarcode.',
+        details: {
+          'barcode': cleanedBarcode,
+          'matchingProductIds': matches.map((product) => product.id).toList(),
+          'searchMethod': 'exact barcode lookup',
+        },
+      );
+
+      _message(
+        'Barcode $cleanedBarcode is assigned to multiple products. Fix the duplicate barcode before selling.',
+        Colors.red,
+      );
+      return;
     }
+
+    final matchedProduct = matches.isEmpty ? null : matches.first;
 
     if (matchedProduct == null) {
       await _logAutomaticServiceIssue(
@@ -582,7 +809,17 @@ Do not explain.
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _query = cleanedBarcode.toLowerCase();
+        _scannedBarcodeProductId = matchedProduct.id;
+        _aiMatchedProductIds.clear();
+        _aiSearchMessage = 'Scanned barcode: $cleanedBarcode';
+      });
+    }
+
     _addProduct(matchedProduct);
+    _rememberScannedProduct(matchedProduct);
   }
 
   Future<void> _openPosBarcodeScanner(
@@ -786,10 +1023,6 @@ Do not explain.
       },
     );
 
-    // Allow the dialog route and focused TextField to finish
-    // their closing animation before disposing their controllers.
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-
     try {
       await scannerController.dispose();
     } catch (_) {
@@ -800,6 +1033,7 @@ Do not explain.
 
     if (scannedBarcode != null && scannedBarcode.trim().isNotEmpty && mounted) {
       await _findAndAddByBarcode(scannedBarcode.trim(), products);
+      _refocusSearchBar(delay: const Duration(milliseconds: 120));
     }
   }
 
@@ -1928,17 +2162,50 @@ Do not explain.
             Expanded(
               child: TextField(
                 controller: _searchController,
-                onChanged: (value) {
-                  setState(() {
-                    _query = value.trim().toLowerCase();
-                    _aiMatchedProductIds.clear();
-                    _aiSearchMessage = '';
-                  });
+                focusNode: _searchFocusNode,
+                onChanged: (value) => _handleSearchInput(value, allProducts),
+                onSubmitted: (value) async {
+                  final normalized = value.trim();
+                  if (normalized.isEmpty) return;
+
+                  final exactBarcodeMatches = allProducts.where((product) {
+                    final barcode = (product.data()['barcode'] ?? '')
+                        .toString()
+                        .trim();
+                    return barcode.isNotEmpty &&
+                        barcode.toLowerCase() == normalized.toLowerCase();
+                  }).toList();
+
+                  if (exactBarcodeMatches.length == 1) {
+                    final product = exactBarcodeMatches.first;
+                    if (mounted) {
+                      setState(() {
+                        _query = normalized.toLowerCase();
+                        _scannedBarcodeProductId = product.id;
+                        _aiMatchedProductIds.clear();
+                        _aiSearchMessage = 'Scanned barcode: $normalized';
+                      });
+                    }
+                    _addProduct(product);
+                    _rememberScannedProduct(product);
+                    _refocusSearchBar(delay: const Duration(milliseconds: 120));
+                    return;
+                  }
+
+                  if (exactBarcodeMatches.length > 1) {
+                    _message(
+                      'Barcode $normalized is assigned to multiple products. Please fix the duplicate barcode.',
+                      Colors.red,
+                    );
+                    return;
+                  }
+
+                  await _runAiSearch(allProducts);
+                  _focusSearchBar();
                 },
-                onSubmitted: (_) => _runAiSearch(allProducts),
                 decoration: InputDecoration(
                   hintText:
-                      'Search name, barcode, typo, or natural description',
+                      'Search product name or description, or scan a barcode',
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _query.isEmpty
                       ? null
@@ -1947,8 +2214,10 @@ Do not explain.
                             _searchController.clear();
                             setState(() {
                               _query = '';
+                              _scannedBarcodeProductId = null;
                               _aiMatchedProductIds.clear();
                               _aiSearchMessage = '';
+                              _aiResponseTimeMs = null;
                             });
                           },
                           icon: const Icon(Icons.clear),
@@ -2017,37 +2286,116 @@ Do not explain.
               ),
             ),
           ),
+          if (_aiResponseTimeMs != null) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'AI Response Time: '
+                '${(_aiResponseTimeMs! / 1000).toStringAsFixed(2)} seconds',
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ),
+          ],
         ],
         const SizedBox(height: 18),
         Expanded(
-          child: products.isEmpty
-              ? const Center(child: Text('No matching products found.'))
-              : GridView.builder(
-                  itemCount: products.length,
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 280,
-                    mainAxisExtent: 180,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 14,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (_query.isEmpty && _recentScannedProductIds.isNotEmpty) ...[
+                const Text(
+                  'Recently scanned',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF263238),
                   ),
-                  itemBuilder: (context, index) {
-                    final document = products[index];
-                    final data = document.data();
-                    final name = (data['productName'] ?? 'Unknown Product')
-                        .toString();
-                    final price =
-                        (data['sellingPrice'] as num?)?.toDouble() ?? 0;
-                    final stock = (data['stock'] as num?)?.toInt() ?? 0;
-
-                    return _PosProductCard(
-                      name: name,
-                      price: price,
-                      stock: stock,
-                      highlighted: _aiMatchedProductIds.contains(document.id),
-                      onTap: stock > 0 ? () => _addProduct(document) : null,
-                    );
-                  },
                 ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 180,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _recentScannedProductIds.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 14),
+                    itemBuilder: (context, index) {
+                      final id = _recentScannedProductIds[index];
+                      QueryDocumentSnapshot<Map<String, dynamic>>? document;
+
+                      for (final candidate in allProducts) {
+                        if (candidate.id == id) {
+                          document = candidate;
+                          break;
+                        }
+                      }
+
+                      if (document == null) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final data = document.data();
+                      final name = (data['productName'] ?? 'Unknown Product')
+                          .toString();
+                      final price =
+                          (data['sellingPrice'] as num?)?.toDouble() ?? 0;
+                      final stock = (data['stock'] as num?)?.toInt() ?? 0;
+
+                      return SizedBox(
+                        width: 260,
+                        child: _PosProductCard(
+                          name: name,
+                          price: price,
+                          stock: stock,
+                          highlighted: true,
+                          onTap: stock > 0
+                              ? () => _addProduct(document!)
+                              : null,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Expanded(
+                child: products.isEmpty
+                    ? const Center(child: Text('No matching products found.'))
+                    : GridView.builder(
+                        itemCount: products.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 280,
+                              mainAxisExtent: 180,
+                              crossAxisSpacing: 14,
+                              mainAxisSpacing: 14,
+                            ),
+                        itemBuilder: (context, index) {
+                          final document = products[index];
+                          final data = document.data();
+                          final name =
+                              (data['productName'] ?? 'Unknown Product')
+                                  .toString();
+                          final price =
+                              (data['sellingPrice'] as num?)?.toDouble() ?? 0;
+                          final stock = (data['stock'] as num?)?.toInt() ?? 0;
+
+                          return _PosProductCard(
+                            name: name,
+                            price: price,
+                            stock: stock,
+                            highlighted: _aiMatchedProductIds.contains(
+                              document.id,
+                            ),
+                            onTap: stock > 0
+                                ? () => _addProduct(document)
+                                : null,
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -2528,9 +2876,58 @@ Do not explain.
     );
   }
 
+  void _focusSearchBar() {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _searchFocusNode.requestFocus();
+      if (_scannedBarcodeProductId != null &&
+          _searchController.text.isNotEmpty) {
+        // Select the previous scanned barcode so the next hardware scan
+        // replaces it instead of appending to the old barcode.
+        _searchController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _searchController.text.length,
+        );
+      } else {
+        _searchController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _searchController.text.length),
+        );
+      }
+    });
+  }
+
+  void _refocusSearchBar({Duration delay = const Duration(milliseconds: 80)}) {
+    if (!mounted) return;
+
+    Future<void>.delayed(delay, () {
+      if (!mounted) return;
+      _focusSearchBar();
+    });
+  }
+
+  KeyEventResult _handleSearchKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.tab) {
+      // Many hardware barcode scanners send TAB after ENTER.
+      // Keep the POS search field focused so the next scan is ready immediately.
+      _refocusSearchBar(delay: const Duration(milliseconds: 20));
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _searchFocusNode.onKeyEvent = _handleSearchKeyEvent;
+    _focusSearchBar();
+  }
+
   @override
   void dispose() {
     _durationTimer?.cancel();
+    _searchFocusNode.dispose();
     _searchController.dispose();
     _cashController.dispose();
     super.dispose();
