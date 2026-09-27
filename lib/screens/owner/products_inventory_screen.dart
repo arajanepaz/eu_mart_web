@@ -58,6 +58,7 @@ class _InventoryProductCard extends StatefulWidget {
   final double price;
   final int stock;
   final bool active;
+  final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -69,6 +70,7 @@ class _InventoryProductCard extends StatefulWidget {
     required this.price,
     required this.stock,
     required this.active,
+    required this.onTap,
     required this.onEdit,
     required this.onDelete,
   });
@@ -85,158 +87,165 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
     final lowStock = widget.stock <= 10;
 
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Colors.white, Color(0xFFFBFDFF)],
-          ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: _hovered ? const Color(0xFFB9D6F8) : const Color(0xFFE1E9F3),
-          ),
-          boxShadow: [
-            BoxShadow(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Colors.white, Color(0xFFFBFDFF)],
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
               color: _hovered
-                  ? const Color(0x2016385A)
-                  : const Color(0x1016385A),
-              blurRadius: _hovered ? 18 : 10,
-              offset: Offset(0, _hovered ? 8 : 4),
+                  ? const Color(0xFFB9D6F8)
+                  : const Color(0xFFE1E9F3),
             ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEAF3FF),
-                borderRadius: BorderRadius.circular(15),
+            boxShadow: [
+              BoxShadow(
+                color: _hovered
+                    ? const Color(0x2016385A)
+                    : const Color(0x1016385A),
+                blurRadius: _hovered ? 18 : 10,
+                offset: Offset(0, _hovered ? 8 : 4),
               ),
-              child: const Icon(
-                Icons.inventory_2_outlined,
-                color: Color(0xFF1565C0),
-                size: 27,
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF3FF),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  color: Color(0xFF1565C0),
+                  size: 27,
+                ),
               ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.productName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF172033),
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            widget.productName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF172033),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                            ),
                           ),
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: widget.active
-                              ? const Color(0xFFEAF8F0)
-                              : const Color(0xFFF1F3F5),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          widget.active ? 'ACTIVE' : 'INACTIVE',
-                          style: TextStyle(
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
                             color: widget.active
-                                ? const Color(0xFF168653)
-                                : Colors.grey,
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w900,
+                                ? const Color(0xFFEAF8F0)
+                                : const Color(0xFFF1F3F5),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            widget.active ? 'ACTIVE' : 'INACTIVE',
+                            style: TextStyle(
+                              color: widget.active
+                                  ? const Color(0xFF168653)
+                                  : Colors.grey,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${widget.category} • ${widget.unit}',
+                      style: const TextStyle(
+                        color: Color(0xFF7A8494),
+                        fontSize: 12,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 5),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.barcode.trim().isEmpty
+                          ? 'No barcode'
+                          : 'Barcode: ${widget.barcode}',
+                      style: const TextStyle(
+                        color: Color(0xFF8C97A6),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
                   Text(
-                    '${widget.category} • ${widget.unit}',
+                    '₱${widget.price.toStringAsFixed(2)}',
                     style: const TextStyle(
-                      color: Color(0xFF7A8494),
-                      fontSize: 12,
+                      color: Color(0xFF0F8A4B),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.barcode.trim().isEmpty
-                        ? 'No barcode'
-                        : 'Barcode: ${widget.barcode}',
-                    style: const TextStyle(
-                      color: Color(0xFF8C97A6),
-                      fontSize: 11,
+                  const SizedBox(height: 5),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: lowStock
+                          ? const Color(0xFFFFF1E6)
+                          : const Color(0xFFEAF8F0),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Stock: ${widget.stock}',
+                      style: TextStyle(
+                        color: lowStock
+                            ? const Color(0xFFD97706)
+                            : const Color(0xFF168653),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(width: 14),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '₱${widget.price.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    color: Color(0xFF0F8A4B),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: lowStock
-                        ? const Color(0xFFFFF1E6)
-                        : const Color(0xFFEAF8F0),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'Stock: ${widget.stock}',
-                    style: TextStyle(
-                      color: lowStock
-                          ? const Color(0xFFD97706)
-                          : const Color(0xFF168653),
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip: 'Edit',
-              onPressed: widget.onEdit,
-              icon: const Icon(Icons.edit_outlined, color: Color(0xFF1565C0)),
-            ),
-            IconButton(
-              tooltip: 'Delete',
-              onPressed: widget.onDelete,
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-            ),
-          ],
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Edit',
+                onPressed: widget.onEdit,
+                icon: const Icon(Icons.edit_outlined, color: Color(0xFF1565C0)),
+              ),
+              IconButton(
+                tooltip: 'Delete',
+                onPressed: widget.onDelete,
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -865,6 +874,22 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 ),
               ),
               actions: [
+                if (document != null)
+                  TextButton.icon(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final deleted = await _confirmDelete(document);
+
+                            if (deleted && dialogContext.mounted) {
+                              Navigator.pop(dialogContext, false);
+                            }
+                          },
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Delete Product'),
+                  ),
+                const Spacer(),
                 TextButton(
                   onPressed: saving
                       ? null
@@ -964,7 +989,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   // DELETE
   // ------------------------------------------------------------
 
-  Future<void> _confirmDelete(
+  Future<bool> _confirmDelete(
     DocumentSnapshot<Map<String, dynamic>> document,
   ) async {
     final productName = (document.data()?['productName'] ?? 'this product')
@@ -997,7 +1022,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       },
     );
 
-    if (confirmed != true) return;
+    if (confirmed != true) return false;
 
     try {
       final productId = document.id;
@@ -1009,7 +1034,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         productName: productName,
       );
 
-      if (!mounted) return;
+      if (!mounted) return true;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1017,8 +1042,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
           backgroundColor: Colors.green,
         ),
       );
+
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1026,6 +1053,8 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
           backgroundColor: Colors.red,
         ),
       );
+
+      return false;
     }
   }
 
@@ -1460,6 +1489,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
               dataRowMaxHeight: 72,
               headingRowColor: WidgetStateProperty.all(const Color(0xFFEAF3FF)),
               dividerThickness: 0.6,
+              showCheckboxColumn: false,
               columns: const [
                 DataColumn(label: Text('Product')),
                 DataColumn(label: Text('Barcode')),
@@ -1485,6 +1515,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     .toString();
 
                 return DataRow(
+                  onSelectChanged: (_) =>
+                      _showProductDialog(document: document),
+                  mouseCursor: WidgetStateProperty.all(
+                    SystemMouseCursors.click,
+                  ),
                   color: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.hovered)) {
                       return const Color(0xFFF5F9FF);
@@ -1643,6 +1678,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
           price: sellingPrice,
           stock: stock,
           active: active,
+          onTap: () => _showProductDialog(document: document),
           onEdit: () => _showProductDialog(document: document),
           onDelete: () => _confirmDelete(document),
         );

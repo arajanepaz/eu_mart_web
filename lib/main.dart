@@ -11,8 +11,8 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   await FirebaseAppCheck.instance.activate(
-    providerWeb: WebDebugProvider(
-      debugToken: '81521a9d-1812-4553-ba46-bac7cbedee09',
+    providerWeb: ReCaptchaEnterpriseProvider(
+      '6LescbUtAAAAAJzW0rWO__Q5sokyUqkmcCEM91B3',
     ),
   );
 
