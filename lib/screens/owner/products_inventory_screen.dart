@@ -889,7 +889,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('Delete Product'),
                   ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 TextButton(
                   onPressed: saving
                       ? null
@@ -1515,11 +1515,6 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     .toString();
 
                 return DataRow(
-                  onSelectChanged: (_) =>
-                      _showProductDialog(document: document),
-                  mouseCursor: WidgetStateProperty.all(
-                    SystemMouseCursors.click,
-                  ),
                   color: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.hovered)) {
                       return const Color(0xFFF5F9FF);
@@ -1573,6 +1568,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           ),
                         ],
                       ),
+                      onTap: () => _showProductDialog(document: document),
                     ),
                     DataCell(
                       Text(
