@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../cashier/cashier_dashboard.dart';
@@ -64,9 +66,37 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkSavedSession();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadRememberedAccount();
+      await _checkSavedSession();
     });
+  }
+
+  Future<void> _loadRememberedAccount() async {
+    final preferences = await SharedPreferences.getInstance();
+    final rememberAccount = preferences.getBool('rememberAccount') ?? false;
+    final rememberedEmail = preferences.getString('rememberedEmail') ?? '';
+
+    if (!mounted) return;
+
+    setState(() {
+      _rememberMe = rememberAccount;
+      if (rememberAccount && rememberedEmail.isNotEmpty) {
+        _emailController.text = rememberedEmail;
+      }
+    });
+  }
+
+  Future<void> _saveRememberedAccount(String email) async {
+    final preferences = await SharedPreferences.getInstance();
+
+    if (_rememberMe) {
+      await preferences.setBool('rememberAccount', true);
+      await preferences.setString('rememberedEmail', email);
+    } else {
+      await preferences.setBool('rememberAccount', false);
+      await preferences.remove('rememberedEmail');
+    }
   }
 
   Future<void> _checkSavedSession() async {
@@ -228,9 +258,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _passwordError = null;
       });
 
-      await FirebaseAuth.instance.setPersistence(
-        _rememberMe ? Persistence.LOCAL : Persistence.SESSION,
-      );
+      await FirebaseAuth.instance.setPersistence(Persistence.SESSION);
 
       final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
@@ -242,6 +270,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (user == null) {
         throw Exception('Unable to load user account.');
       }
+
+      await _saveRememberedAccount(email);
+
+      TextInput.finishAutofillContext(shouldSave: _rememberMe);
 
       await _openDashboardForUser(
         user,
@@ -457,13 +489,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       const SizedBox(height: 26),
-                      const Text(
+                      Text(
                         'EÜ MART',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: GoogleFonts.baloo2(
                           color: Colors.white,
                           fontSize: 43,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w800,
                           letterSpacing: 1.4,
                         ),
                       ),
@@ -587,12 +619,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 22),
-                    const Text(
+                    Text(
                       'Welcome Back',
-                      style: TextStyle(
+                      style: GoogleFonts.baloo2(
                         fontSize: 30,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF172033),
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF172033),
                       ),
                     ),
                     const SizedBox(height: 7),
@@ -608,6 +640,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextField(
                       controller: _emailController,
                       enabled: !_loading,
+                      autofillHints: const [
+                        AutofillHints.username,
+                        AutofillHints.email,
+                      ],
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
                       onChanged: (_) {
@@ -628,6 +664,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextField(
                       controller: _passwordController,
                       enabled: !_loading,
+                      autofillHints: const [AutofillHints.password],
                       obscureText: _obscurePassword,
                       textInputAction: TextInputAction.done,
                       onChanged: (_) {

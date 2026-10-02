@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/login_screen.dart';
@@ -42,6 +43,22 @@ class OwnerDashboard extends StatefulWidget {
 
 class _OwnerDashboardState extends State<OwnerDashboard> {
   int _selectedIndex = 0;
+
+  // Shared realtime streams: the dashboard uses product/settings data in
+  // more than one widget. Broadcasting these streams prevents separate
+  // Firestore listeners from being opened for the same collection/document.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _productsStream =
+      FirebaseFirestore.instance
+          .collection('products')
+          .snapshots()
+          .asBroadcastStream();
+
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _settingsStream =
+      FirebaseFirestore.instance
+          .collection('settings')
+          .doc('system')
+          .snapshots()
+          .asBroadcastStream();
 
   final List<_MenuItem> _menuItems = const [
     _MenuItem('Dashboard', Icons.dashboard_outlined),
@@ -198,10 +215,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     if (userId.isEmpty) return child;
 
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('settings')
-          .doc('system')
-          .snapshots(),
+      stream: _settingsStream,
       builder: (context, settingsSnapshot) {
         final settings = settingsSnapshot.data?.data() ?? <String, dynamic>{};
 
@@ -217,7 +231,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             settings['enableExpirationAlerts'] != false;
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('products').snapshots(),
+          stream: _productsStream,
           builder: (context, productsSnapshot) {
             final products =
                 productsSnapshot.data?.docs ??
@@ -361,20 +375,20 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     ),
                     if (!compact) ...[
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'EÜ MART',
-                              style: TextStyle(
+                              style: GoogleFonts.baloo2(
                                 color: Colors.white,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            Text(
+                            const Text(
                               'Owner Portal',
                               style: TextStyle(
                                 color: Colors.white70,
@@ -1070,10 +1084,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
   Widget _buildDashboardOverview() {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('settings')
-          .doc('system')
-          .snapshots(),
+      stream: _settingsStream,
       builder: (context, settingsSnapshot) {
         final settings = settingsSnapshot.data?.data() ?? <String, dynamic>{};
 
@@ -1084,7 +1095,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('products').snapshots(),
+          stream: _productsStream,
           builder: (context, productSnapshot) {
             final productDocs =
                 List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
@@ -1215,12 +1226,12 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'Welcome back, Owner!',
-                        style: TextStyle(
+                        style: GoogleFonts.baloo2(
                           fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F2937),
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1F2937),
                         ),
                       ),
                       const SizedBox(height: 8),

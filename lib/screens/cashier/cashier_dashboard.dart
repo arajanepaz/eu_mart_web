@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/login_screen.dart';
@@ -144,20 +145,20 @@ class _CashierDashboardState extends State<CashierDashboard> {
                     ),
                     if (!compact) ...[
                       const SizedBox(width: 10),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'EÜ MART',
-                              style: TextStyle(
+                              style: GoogleFonts.baloo2(
                                 color: Colors.white,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            Text(
+                            const Text(
                               'Cashier Portal',
                               style: TextStyle(
                                 color: Colors.white70,
@@ -883,10 +884,10 @@ class _CashierDashboardState extends State<CashierDashboard> {
                     children: [
                       Text(
                         'Welcome, ${currentUser?.displayName ?? 'Cashier'}!',
-                        style: const TextStyle(
+                        style: GoogleFonts.baloo2(
                           fontSize: 30,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F2937),
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1F2937),
                         ),
                       ),
                       const SizedBox(height: 8),

@@ -264,6 +264,9 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  static const int _productsPerPage = 25;
+  int _currentPage = 0;
+
   // ------------------------------------------------------------
   // SAFE FIRESTORE VALUE CONVERTERS
   // ------------------------------------------------------------
@@ -309,6 +312,8 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   // ------------------------------------------------------------
 
   Future<void> _importProductsFromCsv() async {
+    bool importDialogOpen = false;
+
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
@@ -352,19 +357,67 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
       String valueAt(List<dynamic> row, String header) {
         final index = headers.indexOf(header);
-
         if (index < 0 || index >= row.length) return '';
-
         return row[index].toString().trim();
       }
 
+      if (!mounted) return;
+
+      importDialogOpen = true;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) {
+          return const AlertDialog(
+            content: SizedBox(
+              width: 360,
+              child: Row(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(width: 20),
+                  Expanded(
+                    child: Text(
+                      'Importing products...\nPlease wait and do not close this window.',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+
       final productsRef = FirebaseFirestore.instance.collection('products');
+
+      // Load existing products once. This avoids doing one Firestore query
+      // for every CSV row, which made large imports appear to freeze.
+      final existingSnapshot = await productsRef.get();
+
+      final existingBarcodes = <String>{
+        for (final document in existingSnapshot.docs)
+          if ((document.data()['barcode'] ?? '').toString().trim().isNotEmpty)
+            (document.data()['barcode'] ?? '').toString().trim(),
+      };
+
+      // Also track barcodes encountered inside this CSV so duplicate rows
+      // in the same file are skipped safely.
+      final csvBarcodes = <String>{};
 
       int imported = 0;
       int skipped = 0;
 
       WriteBatch batch = FirebaseFirestore.instance.batch();
       int batchCount = 0;
+
+      Future<void> commitBatchIfNeeded({bool force = false}) async {
+        if (batchCount == 0) return;
+        if (!force && batchCount < 350) return;
+
+        await batch.commit();
+        batch = FirebaseFirestore.instance.batch();
+        batchCount = 0;
+      }
 
       for (var index = 1; index < rows.length; index++) {
         final row = rows[index];
@@ -392,19 +445,16 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         final barcode = valueAt(row, 'barcode');
 
         if (barcode.isNotEmpty) {
-          final duplicate = await productsRef
-              .where('barcode', isEqualTo: barcode)
-              .limit(1)
-              .get();
-
-          if (duplicate.docs.isNotEmpty) {
+          if (existingBarcodes.contains(barcode) ||
+              csvBarcodes.contains(barcode)) {
             skipped++;
             continue;
           }
+
+          csvBarcodes.add(barcode);
         }
 
         final expirationText = valueAt(row, 'expirationdate');
-
         final expirationDate = expirationText.isEmpty
             ? null
             : DateTime.tryParse(expirationText);
@@ -434,17 +484,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         imported++;
         batchCount++;
 
-        if (batchCount == 400) {
-          await batch.commit();
-
-          batch = FirebaseFirestore.instance.batch();
-          batchCount = 0;
-        }
+        // Stay below Firestore's batch-write ceiling and commit in chunks.
+        await commitBatchIfNeeded();
       }
 
-      if (batchCount > 0) {
-        await batch.commit();
-      }
+      await commitBatchIfNeeded(force: true);
 
       if (imported > 0) {
         await AuditLogService.log(
@@ -464,6 +508,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
       if (!mounted) return;
 
+      if (importDialogOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        importDialogOpen = false;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -475,6 +524,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       );
     } catch (error) {
       if (!mounted) return;
+
+      if (importDialogOpen) {
+        Navigator.of(context, rootNavigator: true).pop();
+        importDialogOpen = false;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1121,6 +1175,23 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
             .where((document) => _matchesSearch(document.data()))
             .toList();
 
+        final totalPages = filtered.isEmpty
+            ? 1
+            : ((filtered.length + _productsPerPage - 1) ~/ _productsPerPage);
+
+        final safeCurrentPage = _currentPage >= totalPages
+            ? totalPages - 1
+            : _currentPage;
+
+        final pageStart = safeCurrentPage * _productsPerPage;
+        final pageEnd = (pageStart + _productsPerPage < filtered.length)
+            ? pageStart + _productsPerPage
+            : filtered.length;
+
+        final visibleProducts = filtered.isEmpty
+            ? <QueryDocumentSnapshot<Map<String, dynamic>>>[]
+            : filtered.sublist(pageStart, pageEnd);
+
         final activeCount = documents
             .where((document) => document.data()['isActive'] != false)
             .length;
@@ -1337,6 +1408,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     onChanged: (value) {
                       setState(() {
                         _searchQuery = value.trim().toLowerCase();
+                        _currentPage = 0;
                       });
                     },
                     decoration: InputDecoration(
@@ -1352,7 +1424,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                               onPressed: () {
                                 _searchController.clear();
 
-                                setState(() => _searchQuery = '');
+                                setState(() {
+                                  _searchQuery = '';
+                                  _currentPage = 0;
+                                });
                               },
                               icon: const Icon(Icons.close_rounded),
                             ),
@@ -1364,14 +1439,77 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 Expanded(
                   child: filtered.isEmpty
                       ? const _InventoryEmptyState()
-                      : LayoutBuilder(
-                          builder: (context, constraints) {
-                            if (constraints.maxWidth >= 980) {
-                              return _buildProductTable(filtered);
-                            }
+                      : Column(
+                          children: [
+                            Expanded(
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  if (constraints.maxWidth >= 980) {
+                                    return _buildProductTable(visibleProducts);
+                                  }
 
-                            return _buildProductCards(filtered);
-                          },
+                                  return _buildProductCards(visibleProducts);
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFE1E9F3),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Previous page',
+                                    onPressed: safeCurrentPage > 0
+                                        ? () {
+                                            setState(() {
+                                              _currentPage =
+                                                  safeCurrentPage - 1;
+                                            });
+                                          }
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.chevron_left_rounded,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Page ${safeCurrentPage + 1} of $totalPages'
+                                    '  •  ${filtered.length} product(s)',
+                                    style: const TextStyle(
+                                      color: Color(0xFF4B5563),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton(
+                                    tooltip: 'Next page',
+                                    onPressed: safeCurrentPage < totalPages - 1
+                                        ? () {
+                                            setState(() {
+                                              _currentPage =
+                                                  safeCurrentPage + 1;
+                                            });
+                                          }
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.chevron_right_rounded,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                 ),
               ],

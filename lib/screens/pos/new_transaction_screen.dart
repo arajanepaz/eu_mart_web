@@ -459,6 +459,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 
     final result = <String>[normalized];
     final direct = aliases[normalized];
+
     if (direct != null) {
       for (final alias in direct) {
         final cleanAlias = _normalizeSearchText(alias);
@@ -468,26 +469,87 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       }
     }
 
+    // Resolve incomplete AND slightly misspelled forms for every configured
+    // alias. Example: "cok" and "cokee" can resolve to the "coke" alias.
+    // This is alias-based, so "cokee" will not accidentally become "coffee".
+    if (normalized.length >= 3) {
+      for (final entry in aliases.entries) {
+        final aliasKey = _normalizeSearchText(entry.key);
+        if (aliasKey.isEmpty) continue;
+
+        final maxLength = aliasKey.length > normalized.length
+            ? aliasKey.length
+            : normalized.length;
+        final distance = _levenshteinDistance(aliasKey, normalized);
+        final similarity = 1 - (distance / maxLength);
+
+        final prefixMatch =
+            aliasKey.startsWith(normalized) || normalized.startsWith(aliasKey);
+        final typoMatch =
+            distance <= (maxLength <= 6 ? 1 : 2) && similarity >= 0.75;
+
+        if (!prefixMatch && !typoMatch) continue;
+
+        for (final alias in entry.value) {
+          final cleanAlias = _normalizeSearchText(alias);
+          if (cleanAlias.isNotEmpty && !result.contains(cleanAlias)) {
+            result.add(cleanAlias);
+          }
+        }
+      }
+    }
+
     return result;
   }
 
   bool _hasCloseWord(String searchable, String queryWord) {
-    if (queryWord.length < 3) return false;
+    final normalizedQuery = _normalizeSearchText(queryWord);
+    if (normalizedQuery.length < 3) return false;
 
     final words = _normalizeSearchText(
       searchable,
     ).split(' ').where((word) => word.isNotEmpty);
 
     for (final word in words) {
-      if (word == queryWord) return true;
-      if (word.startsWith(queryWord) || queryWord.startsWith(word)) {
+      if (word == normalizedQuery) return true;
+
+      // Allow incomplete product words, e.g. "nescaf" -> "nescafe".
+      // Require at least 3 typed characters so very short searches do not
+      // become overly broad.
+      if (normalizedQuery.length >= 3 &&
+          (word.startsWith(normalizedQuery) ||
+              normalizedQuery.startsWith(word))) {
         return true;
       }
 
-      final lengthDifference = (word.length - queryWord.length).abs();
-      if (lengthDifference > 2) continue;
+      final maxLength = word.length > normalizedQuery.length
+          ? word.length
+          : normalizedQuery.length;
+      final lengthDifference = (word.length - normalizedQuery.length).abs();
 
-      if (_levenshteinDistance(word, queryWord) <= 2) {
+      // Typo tolerance is intentionally conservative so a query such as
+      // "cokee" does not incorrectly match "coffee".
+      final allowedDistance = maxLength <= 4
+          ? 1
+          : maxLength <= 7
+          ? 2
+          : 3;
+
+      if (lengthDifference > allowedDistance) continue;
+
+      final distance = _levenshteinDistance(word, normalizedQuery);
+      final similarity = 1 - (distance / maxLength);
+
+      // Short/medium words need stronger similarity because two edits can
+      // completely change the intended product. Longer words can safely
+      // tolerate a little more variation.
+      final minimumSimilarity = maxLength <= 6
+          ? 0.72
+          : maxLength <= 9
+          ? 0.68
+          : 0.65;
+
+      if (distance <= allowedDistance && similarity >= minimumSimilarity) {
         return true;
       }
     }
@@ -562,6 +624,16 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 You are a product-search assistant for EÜ MART.
 Find products that best match the cashier query.
 
+The cashier may type an incomplete product name or make small spelling
+mistakes. Treat obvious missing letters, extra letters, transposed letters,
+and close phonetic/visual spellings as possible matches, but only when the
+intended product is reasonably clear from the available products.
+Never invent a product that is not in the provided list.
+Prefer the cashier's likely intended product over merely similar-looking
+product words. For example, an extra/missing letter should not turn one
+distinct product word into another unrelated word. Use product name, brand,
+category, unit, and aliases together to decide the intended match.
+
 Cashier query:
 $query
 
@@ -604,7 +676,23 @@ Do not explain.
           .where(validIds.contains)
           .where((id) {
             final product = products.firstWhere((item) => item.id == id);
-            return _localProductSearchScore(product) >= 20;
+            final localScore = _localProductSearchScore(product);
+
+            if (localScore >= 20) return true;
+
+            // AI may correctly identify a product from a misspelled or
+            // incomplete query that the stricter local scorer did not accept.
+            // Keep that suggestion only when the product name itself still
+            // has a close local word match with every typed query word.
+            final productName = _normalizeSearchText(
+              product.data()['productName'],
+            );
+            final queryWords = _normalizeSearchText(
+              query,
+            ).split(RegExp(r'\s+')).where((word) => word.length >= 3).toList();
+
+            return queryWords.isNotEmpty &&
+                queryWords.every((word) => _hasCloseWord(productName, word));
           })
           .toSet();
 
