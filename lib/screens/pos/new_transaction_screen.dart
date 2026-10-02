@@ -9,6 +9,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class NewTransactionScreen extends StatefulWidget {
   const NewTransactionScreen({super.key});
@@ -18,6 +19,9 @@ class NewTransactionScreen extends StatefulWidget {
 }
 
 class _NewTransactionScreenState extends State<NewTransactionScreen> {
+  static const String _feedbackUrl =
+      'https://eu-mart-mobile.web.app/#/feedback';
+
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
   final _cashController = TextEditingController();
@@ -1245,6 +1249,30 @@ Do not explain.
                 textAlign: pw.TextAlign.center,
                 style: const pw.TextStyle(fontSize: 9),
               ),
+              pw.SizedBox(height: 12),
+              pw.Center(
+                child: pw.BarcodeWidget(
+                  barcode: pw.Barcode.qrCode(),
+                  data: _feedbackUrl,
+                  width: 82,
+                  height: 82,
+                ),
+              ),
+              pw.SizedBox(height: 5),
+              pw.Text(
+                'SCAN TO RATE YOUR EXPERIENCE',
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(
+                  fontSize: 8,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Your feedback helps EÜ MART improve its service.',
+                textAlign: pw.TextAlign.center,
+                style: const pw.TextStyle(fontSize: 7),
+              ),
             ],
           );
         },
@@ -2111,6 +2139,64 @@ Do not explain.
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.black54,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF7FAFE),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFDDE6F1),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  const Text(
+                                    'How was your experience?',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF172033),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 9),
+                                  Container(
+                                    padding: const EdgeInsets.all(7),
+                                    color: Colors.white,
+                                    child: QrImageView(
+                                      data: _feedbackUrl,
+                                      version: QrVersions.auto,
+                                      size: 112,
+                                      backgroundColor: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 7),
+                                  const Text(
+                                    'Scan to rate your experience',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF1565C0),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  const Text(
+                                    'Use your phone camera to open the EÜ MART feedback page.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             const SizedBox(height: 18),

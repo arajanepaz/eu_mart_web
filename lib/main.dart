@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/feedback/public_feedback_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,8 +28,19 @@ class EuMartWebApp extends StatelessWidget {
     return MaterialApp(
       title: 'EÜ MART',
       debugShowCheckedModeBanner: false,
+
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green),
-      home: const LoginScreen(),
+
+      // Default page of the EÜ MART system
+      initialRoute: '/',
+
+      // Application routes
+      routes: {
+        '/': (context) => const LoginScreen(),
+
+        // Public page for customers who scan the feedback QR code
+        '/feedback': (context) => const PublicFeedbackScreen(),
+      },
     );
   }
 }
