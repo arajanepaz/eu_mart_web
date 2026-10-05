@@ -41,6 +41,19 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   final List<String> _recentScannedProductIds = <String>[];
   String? _scannedBarcodeProductId;
 
+  // Product data is loaded once instead of keeping a live listener on the
+  // complete catalog. Search results are cached so the 1-second transaction
+  // timer does not repeatedly rescan thousands of products.
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _activeProducts = [];
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _visibleProducts = [];
+  final Map<String, QueryDocumentSnapshot<Map<String, dynamic>>> _productsById =
+      {};
+  final Map<String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+  _productsByBarcode = {};
+  bool _productsLoading = true;
+  String? _productsError;
+  static const int _maxVisibleProducts = 80;
+
   double get _total => _cart.values.fold(0, (sum, item) => sum + item.subtotal);
 
   double get _totalSavings =>
@@ -247,25 +260,25 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         _scannedBarcodeProductId = null;
         _aiMatchedProductIds.clear();
         _aiSearchMessage = '';
+        _aiResponseTimeMs = null;
+        _visibleProducts = _activeProducts.take(_maxVisibleProducts).toList();
       });
       return;
     }
 
-    final exactBarcodeMatches = products.where((product) {
-      final barcode = (product.data()['barcode'] ?? '').toString().trim();
-      return barcode.isNotEmpty &&
-          barcode.toLowerCase() == normalized.toLowerCase();
-    }).toList();
+    final barcodeKey = normalized.toLowerCase();
+    final exactBarcodeMatches = _productsByBarcode[barcodeKey] ?? const [];
 
     if (exactBarcodeMatches.length == 1) {
       final product = exactBarcodeMatches.first;
 
       if (mounted) {
         setState(() {
-          _query = normalized.toLowerCase();
+          _query = barcodeKey;
           _scannedBarcodeProductId = product.id;
           _aiMatchedProductIds.clear();
           _aiSearchMessage = 'Scanned barcode: $normalized';
+          _visibleProducts = [product];
         });
       }
 
@@ -283,12 +296,25 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       return;
     }
 
+    _query = barcodeKey;
+    _scannedBarcodeProductId = null;
+    _aiMatchedProductIds.clear();
+    _aiSearchMessage = '';
+    _aiResponseTimeMs = null;
+
+    final scored = <(int, QueryDocumentSnapshot<Map<String, dynamic>>)>[];
+    for (final product in _activeProducts) {
+      final score = _localProductSearchScore(product);
+      if (score >= 20) scored.add((score, product));
+    }
+    scored.sort((a, b) => b.$1.compareTo(a.$1));
+
     if (!mounted) return;
     setState(() {
-      _query = normalized.toLowerCase();
-      _scannedBarcodeProductId = null;
-      _aiMatchedProductIds.clear();
-      _aiSearchMessage = '';
+      _visibleProducts = scored
+          .take(_maxVisibleProducts)
+          .map((entry) => entry.$2)
+          .toList();
     });
   }
 
@@ -585,6 +611,49 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return previous.last;
   }
 
+  int _aiCandidateScore(
+    QueryDocumentSnapshot<Map<String, dynamic>> document,
+    String rawQuery,
+  ) {
+    final localScore = _localProductSearchScore(document);
+    if (localScore > 0) return 1000 + localScore;
+
+    final query = _normalizeSearchText(rawQuery);
+    if (query.isEmpty) return 0;
+
+    final data = document.data();
+    final searchable = _normalizeSearchText(
+      '${data['productName'] ?? ''} ${data['brand'] ?? ''} ${data['category'] ?? ''}',
+    );
+    if (searchable.isEmpty) return 0;
+
+    final queryWords = query.split(' ').where((w) => w.length >= 2).toList();
+    final targetWords = searchable
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .toList();
+    if (queryWords.isEmpty || targetWords.isEmpty) return 0;
+
+    var total = 0;
+    for (final q in queryWords) {
+      var best = 0.0;
+      for (final word in targetWords) {
+        if (word.startsWith(q) || q.startsWith(word)) {
+          best = 1.0;
+          break;
+        }
+        final maxLength = word.length > q.length ? word.length : q.length;
+        if (maxLength == 0) continue;
+        final distance = _levenshteinDistance(word, q);
+        final similarity = 1 - (distance / maxLength);
+        if (similarity > best) best = similarity;
+      }
+      if (best < 0.45) return 0;
+      total += (best * 100).round();
+    }
+    return total;
+  }
+
   Future<void> _runAiSearch(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) async {
@@ -604,7 +673,34 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       _aiResponseTimeMs = null;
     });
     try {
-      final productLines = products
+      // Do not send the entire 2,000+ product catalog to AI. Rank locally
+      // first, then let AI resolve only the strongest candidates. This keeps
+      // the request smaller and the POS responsive.
+      final rankedCandidates =
+          products
+              .map(
+                (document) => (
+                  score: _aiCandidateScore(document, query),
+                  document: document,
+                ),
+              )
+              .where((entry) => entry.score > 0)
+              .toList()
+            ..sort((a, b) => b.score.compareTo(a.score));
+
+      final aiCandidates = rankedCandidates
+          .take(120)
+          .map((entry) => entry.document)
+          .toList();
+
+      if (aiCandidates.isEmpty) {
+        setState(() {
+          _aiSearchMessage = 'AI found no relevant product.';
+        });
+        return;
+      }
+
+      final productLines = aiCandidates
           .map((document) {
             final data = document.data();
 
@@ -672,14 +768,14 @@ Do not explain.
         return;
       }
 
-      final validIds = products.map((item) => item.id).toSet();
+      final validIds = aiCandidates.map((item) => item.id).toSet();
 
       final ids = text
           .split(RegExp(r'[,\s]+'))
           .map((value) => value.trim())
           .where(validIds.contains)
           .where((id) {
-            final product = products.firstWhere((item) => item.id == id);
+            final product = aiCandidates.firstWhere((item) => item.id == id);
             final localScore = _localProductSearchScore(product);
 
             if (localScore >= 20) return true;
@@ -705,6 +801,14 @@ Do not explain.
         _aiSearchMessage = ids.isEmpty
             ? 'AI found no relevant product.'
             : 'AI suggested ${ids.length} product(s).';
+
+        if (ids.isNotEmpty) {
+          _visibleProducts = ids
+              .map((id) => _productsById[id])
+              .whereType<QueryDocumentSnapshot<Map<String, dynamic>>>()
+              .take(_maxVisibleProducts)
+              .toList();
+        }
       });
     } catch (e, st) {
       debugPrint('🔥 AI SEARCH ERROR: $e');
@@ -844,12 +948,8 @@ Do not explain.
       return;
     }
 
-    final matches = products.where((product) {
-      final productBarcode = (product.data()['barcode'] ?? '')
-          .toString()
-          .trim();
-      return productBarcode == cleanedBarcode;
-    }).toList();
+    final matches =
+        _productsByBarcode[cleanedBarcode.toLowerCase()] ?? const [];
 
     if (matches.length > 1) {
       await _logAutomaticServiceIssue(
@@ -903,10 +1003,15 @@ Do not explain.
 
     if (mounted) {
       setState(() {
+        _searchController.value = TextEditingValue(
+          text: cleanedBarcode,
+          selection: TextSelection.collapsed(offset: cleanedBarcode.length),
+        );
         _query = cleanedBarcode.toLowerCase();
         _scannedBarcodeProductId = matchedProduct.id;
         _aiMatchedProductIds.clear();
         _aiSearchMessage = 'Scanned barcode: $cleanedBarcode';
+        _visibleProducts = [matchedProduct];
       });
     }
 
@@ -952,16 +1057,18 @@ Do not explain.
                 detected = true;
               });
 
-              try {
-                await scannerController.stop();
-              } catch (_) {
-                // Manual barcode entry must still work even when
-                // the browser camera is unavailable or already in use.
-              }
+              // Process the detected barcode immediately while the scanner
+              // dialog is still open. This avoids waiting for the web camera
+              // dialog/lifecycle before updating the POS.
+              await _findAndAddByBarcode(cleanedValue, products);
 
               if (!dialogContext.mounted) return;
 
-              Navigator.of(dialogContext).pop(cleanedValue);
+              // Close automatically only after the product has been processed.
+              Navigator.of(dialogContext).pop();
+
+              // Camera cleanup is background-only.
+              unawaited(scannerController.stop().catchError((_) {}));
             }
 
             Future<void> closeDialog() async {
@@ -1115,18 +1222,14 @@ Do not explain.
       },
     );
 
-    try {
-      await scannerController.dispose();
-    } catch (_) {
-      // Ignore disposal errors from an unavailable browser camera.
-    }
-
+    // Successful scans are processed inside processBarcode before the
+    // scanner dialog closes, so there is no second barcode lookup here.
     manualController.dispose();
 
-    if (scannedBarcode != null && scannedBarcode.trim().isNotEmpty && mounted) {
-      await _findAndAddByBarcode(scannedBarcode.trim(), products);
-      _refocusSearchBar(delay: const Duration(milliseconds: 120));
-    }
+    // Camera cleanup must not block the product/search-bar update.
+    unawaited(scannerController.dispose().catchError((_) {}));
+
+    _refocusSearchBar(delay: const Duration(milliseconds: 20));
   }
 
   Future<void> _printReceipt({
@@ -1774,6 +1877,8 @@ Do not explain.
         completedAt: completedAt,
       );
 
+      await _loadProducts();
+
       if (!mounted) return;
 
       setState(() {
@@ -2342,13 +2447,8 @@ Do not explain.
                   final normalized = value.trim();
                   if (normalized.isEmpty) return;
 
-                  final exactBarcodeMatches = allProducts.where((product) {
-                    final barcode = (product.data()['barcode'] ?? '')
-                        .toString()
-                        .trim();
-                    return barcode.isNotEmpty &&
-                        barcode.toLowerCase() == normalized.toLowerCase();
-                  }).toList();
+                  final exactBarcodeMatches =
+                      _productsByBarcode[normalized.toLowerCase()] ?? const [];
 
                   if (exactBarcodeMatches.length == 1) {
                     final product = exactBarcodeMatches.first;
@@ -2495,14 +2595,7 @@ Do not explain.
                     separatorBuilder: (_, __) => const SizedBox(width: 14),
                     itemBuilder: (context, index) {
                       final id = _recentScannedProductIds[index];
-                      QueryDocumentSnapshot<Map<String, dynamic>>? document;
-
-                      for (final candidate in allProducts) {
-                        if (candidate.id == id) {
-                          document = candidate;
-                          break;
-                        }
-                      }
+                      final document = _productsById[id];
 
                       if (document == null) {
                         return const SizedBox.shrink();
@@ -2979,75 +3072,113 @@ Do not explain.
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('products').snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (_productsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        if (snapshot.hasError) {
-          return Center(
-            child: Text(
-              'Unable to load products.\n${snapshot.error}',
+    if (_productsError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Unable to load products.\n$_productsError',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.red),
             ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _loadProducts,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      color: const Color(0xFFF2F6FC),
+      padding: const EdgeInsets.all(22),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 980) {
+            return Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: _productPanel(_visibleProducts, _activeProducts),
+                ),
+                const SizedBox(width: 22),
+                SizedBox(width: 420, child: _cartPanel(_activeProducts)),
+              ],
+            );
+          }
+
+          return Column(
+            children: [
+              Expanded(child: _productPanel(_visibleProducts, _activeProducts)),
+              const SizedBox(height: 18),
+              SizedBox(height: 500, child: _cartPanel(_activeProducts)),
+            ],
           );
-        }
-
-        final products = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-          snapshot.data?.docs ??
-              <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-        );
-
-        products.sort((a, b) {
-          final first = (a.data()['productName'] ?? '')
-              .toString()
-              .toLowerCase();
-          final second = (b.data()['productName'] ?? '')
-              .toString()
-              .toLowerCase();
-          return first.compareTo(second);
-        });
-
-        final activeProducts = products.where((document) {
-          return document.data()['isActive'] != false;
-        }).toList();
-
-        final filtered = activeProducts.where(_matches).toList();
-
-        return Container(
-          color: const Color(0xFFF2F6FC),
-          padding: const EdgeInsets.all(22),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              if (constraints.maxWidth >= 980) {
-                return Row(
-                  children: [
-                    Expanded(
-                      flex: 3,
-                      child: _productPanel(filtered, activeProducts),
-                    ),
-                    const SizedBox(width: 22),
-                    SizedBox(width: 420, child: _cartPanel(activeProducts)),
-                  ],
-                );
-              }
-
-              return Column(
-                children: [
-                  Expanded(child: _productPanel(filtered, activeProducts)),
-                  const SizedBox(height: 18),
-                  SizedBox(height: 500, child: _cartPanel(activeProducts)),
-                ],
-              );
-            },
-          ),
-        );
-      },
+        },
+      ),
     );
+  }
+
+  Future<void> _loadProducts() async {
+    if (mounted) {
+      setState(() {
+        _productsLoading = true;
+        _productsError = null;
+      });
+    }
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .orderBy('productName')
+          .get();
+
+      final active = snapshot.docs
+          .where((document) => document.data()['isActive'] != false)
+          .toList();
+
+      final byId = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+      final byBarcode =
+          <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+
+      for (final product in active) {
+        byId[product.id] = product;
+        final barcode = (product.data()['barcode'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (barcode.isNotEmpty) {
+          (byBarcode[barcode] ??= []).add(product);
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _activeProducts = active;
+        _productsById
+          ..clear()
+          ..addAll(byId);
+        _productsByBarcode
+          ..clear()
+          ..addAll(byBarcode);
+        _visibleProducts = active.take(_maxVisibleProducts).toList();
+        _productsLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _productsLoading = false;
+        _productsError = error.toString();
+      });
+    }
   }
 
   void _focusSearchBar() {
@@ -3095,6 +3226,7 @@ Do not explain.
   void initState() {
     super.initState();
     _searchFocusNode.onKeyEvent = _handleSearchKeyEvent;
+    _loadProducts();
     _focusSearchBar();
   }
 

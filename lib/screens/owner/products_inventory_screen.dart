@@ -969,6 +969,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     );
 
     if (result == true && mounted) {
+      await _loadProducts();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1088,6 +1089,8 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         productName: productName,
       );
 
+      await _loadProducts();
+
       if (!mounted) return true;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1113,8 +1116,81 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   }
 
   // ------------------------------------------------------------
-  // SEARCH
+  // OPTIMIZED PRODUCT LOADING / SEARCH / PAGINATION
   // ------------------------------------------------------------
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _allProducts = [];
+  bool _productsLoading = true;
+  String? _productsError;
+
+  int _activeCount = 0;
+  int _lowStockCount = 0;
+  int _totalStock = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    if (mounted) {
+      setState(() {
+        _productsLoading = true;
+        _productsError = null;
+      });
+    }
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .orderBy('productName')
+          .get();
+
+      final documents = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+        snapshot.docs,
+      );
+
+      final activeCount = documents
+          .where((document) => document.data()['isActive'] != false)
+          .length;
+
+      final lowStockCount = documents.where((document) {
+        return _readInt(document.data()['stock']) <= 10;
+      }).length;
+
+      final totalStock = documents.fold<int>(
+        0,
+        (sum, document) => sum + _readInt(document.data()['stock']),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _allProducts = documents;
+        _activeCount = activeCount;
+        _lowStockCount = lowStockCount;
+        _totalStock = totalStock;
+        _productsLoading = false;
+
+        final totalPages = _filteredProducts.isEmpty
+            ? 1
+            : ((_filteredProducts.length + _productsPerPage - 1) ~/
+                  _productsPerPage);
+
+        if (_currentPage >= totalPages) {
+          _currentPage = totalPages - 1;
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _productsLoading = false;
+        _productsError = error.toString();
+      });
+    }
+  }
 
   bool _matchesSearch(Map<String, dynamic> data) {
     if (_searchQuery.isEmpty) return true;
@@ -1131,392 +1207,362 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     return combined.contains(_searchQuery);
   }
 
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> get _filteredProducts {
+    if (_searchQuery.isEmpty) return _allProducts;
+
+    return _allProducts
+        .where((document) => _matchesSearch(document.data()))
+        .toList();
+  }
+
   // ------------------------------------------------------------
   // BUILD
   // ------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('products').snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (_productsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        if (snapshot.hasError) {
-          return Center(
-            child: Text(
-              'Unable to load products.\n${snapshot.error}',
+    if (_productsError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Unable to load products.\n$_productsError',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.red),
             ),
-          );
-        }
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _loadProducts,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
 
-        final documents =
-            List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-              snapshot.data?.docs ??
-                  <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-            )..sort((a, b) {
-              final first = (a.data()['productName'] ?? '')
-                  .toString()
-                  .toLowerCase();
+    final filtered = _filteredProducts;
 
-              final second = (b.data()['productName'] ?? '')
-                  .toString()
-                  .toLowerCase();
+    final totalPages = filtered.isEmpty
+        ? 1
+        : ((filtered.length + _productsPerPage - 1) ~/ _productsPerPage);
 
-              return first.compareTo(second);
-            });
+    final safeCurrentPage = _currentPage >= totalPages
+        ? totalPages - 1
+        : _currentPage;
 
-        final filtered = documents
-            .where((document) => _matchesSearch(document.data()))
-            .toList();
+    final pageStart = safeCurrentPage * _productsPerPage;
+    final pageEnd = (pageStart + _productsPerPage < filtered.length)
+        ? pageStart + _productsPerPage
+        : filtered.length;
 
-        final totalPages = filtered.isEmpty
-            ? 1
-            : ((filtered.length + _productsPerPage - 1) ~/ _productsPerPage);
+    final visibleProducts = filtered.isEmpty
+        ? <QueryDocumentSnapshot<Map<String, dynamic>>>[]
+        : filtered.sublist(pageStart, pageEnd);
 
-        final safeCurrentPage = _currentPage >= totalPages
-            ? totalPages - 1
-            : _currentPage;
+    return Container(
+      color: const Color(0xFFF2F6FC),
+      child: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                ),
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x291565C0),
+                    blurRadius: 22,
+                    offset: Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 760;
 
-        final pageStart = safeCurrentPage * _productsPerPage;
-        final pageEnd = (pageStart + _productsPerPage < filtered.length)
-            ? pageStart + _productsPerPage
-            : filtered.length;
-
-        final visibleProducts = filtered.isEmpty
-            ? <QueryDocumentSnapshot<Map<String, dynamic>>>[]
-            : filtered.sublist(pageStart, pageEnd);
-
-        final activeCount = documents
-            .where((document) => document.data()['isActive'] != false)
-            .length;
-
-        final lowStockCount = documents.where((document) {
-          final stock = _readInt(document.data()['stock']);
-
-          return stock <= 10;
-        }).length;
-
-        final totalStock = documents.fold<int>(
-          0,
-          (sum, document) => sum + _readInt(document.data()['stock']),
-        );
-
-        return Container(
-          color: const Color(0xFFF2F6FC),
-          child: Padding(
-            padding: const EdgeInsets.all(22),
-            child: Column(
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x291565C0),
-                        blurRadius: 22,
-                        offset: Offset(0, 10),
+                  final title = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Products & Inventory',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        'Manage products, stock, pricing, '
+                        'barcodes, and expiration details.',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.82),
+                          fontSize: 13,
+                        ),
                       ),
                     ],
-                  ),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final compact = constraints.maxWidth < 760;
+                  );
 
-                      final title = Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
+                  final actions = Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const QuickProductEncodingScreen(),
+                            ),
+                          ).then((_) => _loadProducts());
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.65),
+                          ),
+                          minimumSize: const Size(190, 48),
+                        ),
+                        icon: const Icon(Icons.qr_code_scanner),
+                        label: const Text(
+                          'QUICK ENCODING',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          await _importProductsFromCsv();
+                          await _loadProducts();
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.65),
+                          ),
+                          minimumSize: const Size(150, 48),
+                        ),
+                        icon: const Icon(Icons.upload_file_outlined),
+                        label: const Text('IMPORT CSV'),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          await _showProductDialog();
+                          await _loadProducts();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF1565C0),
+                          minimumSize: const Size(180, 48),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text(
+                          'ADD PRODUCT',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  );
+
+                  if (compact) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [title, const SizedBox(height: 18), actions],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(child: title),
+                      actions,
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 18),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth >= 900 ? 4 : 2;
+
+                return GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: columns,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: columns == 4 ? 2.45 : 2.8,
+                  children: [
+                    _inventorySummaryCard(
+                      label: 'Total Products',
+                      value: '${_allProducts.length}',
+                      icon: Icons.category_outlined,
+                      color: const Color(0xFF1565C0),
+                    ),
+                    _inventorySummaryCard(
+                      label: 'Active Products',
+                      value: '$_activeCount',
+                      icon: Icons.check_circle_outline,
+                      color: const Color(0xFF159447),
+                    ),
+                    _inventorySummaryCard(
+                      label: 'Low Stock',
+                      value: '$_lowStockCount',
+                      icon: Icons.warning_amber_rounded,
+                      color: const Color(0xFFF59E0B),
+                    ),
+                    _inventorySummaryCard(
+                      label: 'Total Units',
+                      value: '$_totalStock',
+                      icon: Icons.stacked_bar_chart_rounded,
+                      color: const Color(0xFF7B1FA2),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE1E9F3)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0F16395C),
+                    blurRadius: 12,
+                    offset: Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value.trim().toLowerCase();
+                    _currentPage = 0;
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText:
+                      'Search product, barcode, category, brand, or supplier',
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: Color(0xFF1565C0),
+                  ),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() {
+                              _searchQuery = '';
+                              _currentPage = 0;
+                            });
+                          },
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: filtered.isEmpty
+                  ? const _InventoryEmptyState()
+                  : Column(
+                      children: [
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              if (constraints.maxWidth >= 980) {
+                                return _buildProductTable(visibleProducts);
+                              }
+
+                              return _buildProductCards(visibleProducts);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE1E9F3)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                Icons.inventory_2_outlined,
-                                color: Colors.white,
-                                size: 26,
+                              IconButton(
+                                tooltip: 'Previous page',
+                                onPressed: safeCurrentPage > 0
+                                    ? () {
+                                        setState(() {
+                                          _currentPage = safeCurrentPage - 1;
+                                        });
+                                      }
+                                    : null,
+                                icon: const Icon(Icons.chevron_left_rounded),
                               ),
-                              SizedBox(width: 10),
+                              const SizedBox(width: 8),
                               Text(
-                                'Products & Inventory',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w900,
+                                'Page ${safeCurrentPage + 1} of $totalPages'
+                                '  •  ${filtered.length} product(s)',
+                                style: const TextStyle(
+                                  color: Color(0xFF4B5563),
+                                  fontWeight: FontWeight.w700,
                                 ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                tooltip: 'Next page',
+                                onPressed: safeCurrentPage < totalPages - 1
+                                    ? () {
+                                        setState(() {
+                                          _currentPage = safeCurrentPage + 1;
+                                        });
+                                      }
+                                    : null,
+                                icon: const Icon(Icons.chevron_right_rounded),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 7),
-                          Text(
-                            'Manage products, stock, pricing, '
-                            'barcodes, and expiration details.',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.82),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      );
-
-                      final actions = Wrap(
-                        spacing: 10,
-                        runSpacing: 10,
-                        children: [
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      const QuickProductEncodingScreen(),
-                                ),
-                              );
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.65),
-                              ),
-                              minimumSize: const Size(190, 48),
-                            ),
-                            icon: const Icon(Icons.qr_code_scanner),
-                            label: const Text(
-                              'QUICK ENCODING',
-                              style: TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                          OutlinedButton.icon(
-                            onPressed: _importProductsFromCsv,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.65),
-                              ),
-                              minimumSize: const Size(150, 48),
-                            ),
-                            icon: const Icon(Icons.upload_file_outlined),
-                            label: const Text('IMPORT CSV'),
-                          ),
-                          ElevatedButton.icon(
-                            onPressed: () => _showProductDialog(),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: const Color(0xFF1565C0),
-                              minimumSize: const Size(180, 48),
-                              elevation: 0,
-                            ),
-                            icon: const Icon(Icons.add_rounded),
-                            label: const Text(
-                              'ADD PRODUCT',
-                              style: TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                        ],
-                      );
-
-                      if (compact) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            title,
-                            const SizedBox(height: 18),
-                            actions,
-                          ],
-                        );
-                      }
-
-                      return Row(
-                        children: [
-                          Expanded(child: title),
-                          actions,
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 18),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final columns = constraints.maxWidth >= 900 ? 4 : 2;
-
-                    return GridView.count(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisCount: columns,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: columns == 4 ? 2.45 : 2.8,
-                      children: [
-                        _inventorySummaryCard(
-                          label: 'Total Products',
-                          value: '${documents.length}',
-                          icon: Icons.category_outlined,
-                          color: const Color(0xFF1565C0),
-                        ),
-                        _inventorySummaryCard(
-                          label: 'Active Products',
-                          value: '$activeCount',
-                          icon: Icons.check_circle_outline,
-                          color: const Color(0xFF159447),
-                        ),
-                        _inventorySummaryCard(
-                          label: 'Low Stock',
-                          value: '$lowStockCount',
-                          icon: Icons.warning_amber_rounded,
-                          color: const Color(0xFFF59E0B),
-                        ),
-                        _inventorySummaryCard(
-                          label: 'Total Units',
-                          value: '$totalStock',
-                          icon: Icons.stacked_bar_chart_rounded,
-                          color: const Color(0xFF7B1FA2),
                         ),
                       ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE1E9F3)),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x0F16395C),
-                        blurRadius: 12,
-                        offset: Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value.trim().toLowerCase();
-                        _currentPage = 0;
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText:
-                          'Search product, barcode, category, brand, or supplier',
-                      prefixIcon: const Icon(
-                        Icons.search_rounded,
-                        color: Color(0xFF1565C0),
-                      ),
-                      suffixIcon: _searchQuery.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _searchController.clear();
-
-                                setState(() {
-                                  _searchQuery = '';
-                                  _currentPage = 0;
-                                });
-                              },
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                      border: InputBorder.none,
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? const _InventoryEmptyState()
-                      : Column(
-                          children: [
-                            Expanded(
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  if (constraints.maxWidth >= 980) {
-                                    return _buildProductTable(visibleProducts);
-                                  }
-
-                                  return _buildProductCards(visibleProducts);
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: const Color(0xFFE1E9F3),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Previous page',
-                                    onPressed: safeCurrentPage > 0
-                                        ? () {
-                                            setState(() {
-                                              _currentPage =
-                                                  safeCurrentPage - 1;
-                                            });
-                                          }
-                                        : null,
-                                    icon: const Icon(
-                                      Icons.chevron_left_rounded,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Page ${safeCurrentPage + 1} of $totalPages'
-                                    '  •  ${filtered.length} product(s)',
-                                    style: const TextStyle(
-                                      color: Color(0xFF4B5563),
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  IconButton(
-                                    tooltip: 'Next page',
-                                    onPressed: safeCurrentPage < totalPages - 1
-                                        ? () {
-                                            setState(() {
-                                              _currentPage =
-                                                  safeCurrentPage + 1;
-                                            });
-                                          }
-                                        : null,
-                                    icon: const Icon(
-                                      Icons.chevron_right_rounded,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-              ],
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
