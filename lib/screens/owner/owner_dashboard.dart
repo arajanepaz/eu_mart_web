@@ -283,20 +283,111 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return '${userId}_${productId}_$normalizedType';
   }
 
-  // Quota optimization:
+  // Lightweight notification badge:
+  // This performs one-time reads instead of opening a permanent listener to
+  // the entire products collection. It reuses the same product/settings/read
+  // logic used by the Notifications module and therefore avoids a continuous
+  // Firestore listener on the sidebar.
+  Future<int> _loadUnreadNotificationCount() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return 0;
 
-  // Do not keep a permanent listener to the entire products collection just
+    try {
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('settings').doc('system').get(),
+        FirebaseFirestore.instance.collection('products').get(),
+        FirebaseFirestore.instance
+            .collection('notification_reads')
+            .where('userId', isEqualTo: user.uid)
+            .get(),
+      ]);
 
-  // to calculate a sidebar badge. Detailed alerts remain available on the
+      final settingsSnapshot =
+          results[0] as DocumentSnapshot<Map<String, dynamic>>;
+      final productSnapshot = results[1] as QuerySnapshot<Map<String, dynamic>>;
+      final readSnapshot = results[2] as QuerySnapshot<Map<String, dynamic>>;
 
-  // Notifications screen itself.
+      final settings = settingsSnapshot.data() ?? <String, dynamic>{};
+      final lowStockThreshold =
+          (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
+      final expirationAlertDays =
+          (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
+      final enableLowStockAlerts =
+          settings['enableLowStockAlerts'] as bool? ?? true;
+      final enableExpirationAlerts =
+          settings['enableExpirationAlerts'] as bool? ?? true;
+
+      final readIds = readSnapshot.docs.map((doc) => doc.id).toSet();
+      var unreadCount = 0;
+
+      for (final document in productSnapshot.docs) {
+        final type = _notificationType(
+          document.data(),
+          lowStockThreshold: lowStockThreshold,
+          expirationAlertDays: expirationAlertDays,
+          enableLowStockAlerts: enableLowStockAlerts,
+          enableExpirationAlerts: enableExpirationAlerts,
+        );
+
+        if (type == 'Normal') continue;
+
+        final readId = _notificationReadId(
+          userId: user.uid,
+          productId: document.id,
+          type: type,
+        );
+
+        if (!readIds.contains(readId)) unreadCount++;
+      }
+
+      return unreadCount;
+    } catch (error) {
+      debugPrint('Unable to load notification badge: $error');
+      return 0;
+    }
+  }
 
   Widget _buildNotificationBadge({
     required bool compact,
-
     required Widget child,
   }) {
-    return child;
+    return FutureBuilder<int>(
+      future: _loadUnreadNotificationCount(),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.data ?? 0;
+        if (unreadCount <= 0) return child;
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            child,
+            Positioned(
+              top: 5,
+              right: compact ? 5 : 9,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                child: Text(
+                  unreadCount > 99 ? '99+' : '$unreadCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    height: 1,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildSidebar({required bool compact}) {

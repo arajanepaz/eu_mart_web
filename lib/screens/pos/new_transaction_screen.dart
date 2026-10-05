@@ -1881,6 +1881,19 @@ Do not explain.
 
       if (!mounted) return;
 
+      // Use the Receipt Footer Message saved in Settings for the
+      // on-screen transaction receipt as well.
+      final settingsSnapshot = await FirebaseFirestore.instance
+          .collection('settings')
+          .doc('system')
+          .get();
+      final settings = settingsSnapshot.data() ?? <String, dynamic>{};
+      final receiptFooter =
+          (settings['receiptFooter'] ?? 'Thank you for shopping at EÜ MART!')
+              .toString();
+
+      if (!mounted) return;
+
       setState(() {
         _cart.clear();
         _cashController.clear();
@@ -2228,22 +2241,13 @@ Do not explain.
                               ),
                             ),
                             const SizedBox(height: 20),
-                            const Text(
-                              'Thank you for shopping with EÜ MART!',
+                            Text(
+                              receiptFooter,
                               textAlign: TextAlign.center,
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
                                 color: Color(0xFF172033),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Please come again.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.black54,
                               ),
                             ),
                             const SizedBox(height: 16),
