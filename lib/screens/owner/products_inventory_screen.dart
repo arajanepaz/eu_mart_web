@@ -6,7 +6,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/audit_log_service.dart';
-import 'quick_product_encoding_screen.dart';
 
 class _InventoryEmptyState extends StatelessWidget {
   const _InventoryEmptyState();
@@ -1330,29 +1329,6 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     spacing: 10,
                     runSpacing: 10,
                     children: [
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  const QuickProductEncodingScreen(),
-                            ),
-                          ).then((_) => _loadProducts());
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.65),
-                          ),
-                          minimumSize: const Size(190, 48),
-                        ),
-                        icon: const Icon(Icons.qr_code_scanner),
-                        label: const Text(
-                          'QUICK ENCODING',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      ),
                       OutlinedButton.icon(
                         onPressed: () async {
                           await _importProductsFromCsv();
