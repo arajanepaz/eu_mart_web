@@ -1,19 +1,28 @@
+// -----------------------------------------------------------------------------
+// Module overview: Lets cashiers view and search the active EÜ MART product catalog without owner-only management controls.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Screen widget for lets cashiers view and search the active EÜ MART product catalog without owner-only management controls.
 class CashierProductsScreen extends StatefulWidget {
+  // Handles the cashier products screen logic used by this module.
   const CashierProductsScreen({super.key});
 
   @override
   State<CashierProductsScreen> createState() => _CashierProductsScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierProductsScreenState extends State<CashierProductsScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
+  // Checks whether the current value satisfies the matches search rule used by this module.
   bool _matchesSearch(Map<String, dynamic> data) {
     if (_searchQuery.isEmpty) return true;
 
@@ -29,6 +38,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
     return searchable.contains(_searchQuery);
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(Map<String, dynamic> data) {
     final stock = (data['stock'] as num?)?.toInt() ?? 0;
 
@@ -44,9 +54,11 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
     }
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -63,12 +75,14 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
     );
   }
 
+  // Handles the stock color logic used by this module.
   Color _stockColor(int stock) {
     if (stock <= 0) return Colors.red;
     if (stock <= 10) return Colors.orange;
     return Colors.green;
   }
 
+  // Handles the stock label logic used by this module.
   String _stockLabel(int stock) {
     if (stock <= 0) return 'Out of Stock';
     if (stock <= 10) return 'Low Stock';
@@ -82,10 +96,12 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load products.\n${snapshot.error}',
@@ -112,6 +128,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
 
         final filtered = products.where((document) {
           final data = document.data();
+          // Checks whether the current value satisfies the matches search rule used by this module.
           return _matchesSearch(data) && _matchesFilter(data);
         }).toList();
 
@@ -131,6 +148,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
           }
         }
 
+        // Handles the padding logic used by this module.
         return Padding(
           padding: const EdgeInsets.all(28),
           child: Column(
@@ -177,6 +195,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -210,6 +229,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                       ),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 16),
                   Wrap(
                     spacing: 8,
@@ -222,6 +242,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                   ),
                 ],
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 18),
               Expanded(
                 child: filtered.isEmpty
@@ -234,6 +255,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                     : GridView.builder(
                         itemCount: filtered.length,
                         gridDelegate:
+                            // Handles the sliver grid delegate with max cross axis extent logic used by this module.
                             const SliverGridDelegateWithMaxCrossAxisExtent(
                               maxCrossAxisExtent: 330,
                               mainAxisExtent: 220,
@@ -256,6 +278,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
 
                           final stockColor = _stockColor(stock);
 
+                          // Handles the container logic used by this module.
                           return Container(
                             padding: const EdgeInsets.all(18),
                             decoration: BoxDecoration(
@@ -286,6 +309,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                                         color: Color(0xFF1565C0),
                                       ),
                                     ),
+                                    // Handles the spacer logic used by this module.
                                     const Spacer(),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
@@ -309,6 +333,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                                     ),
                                   ],
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 14),
                                 Text(
                                   name,
@@ -319,6 +344,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 5),
                                 Text(
                                   [
@@ -333,6 +359,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                                     fontSize: 12,
                                   ),
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 5),
                                 Text(
                                   barcode.isEmpty
@@ -345,6 +372,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                                     fontSize: 12,
                                   ),
                                 ),
+                                // Handles the spacer logic used by this module.
                                 const Spacer(),
                                 Row(
                                   children: [
@@ -380,12 +408,14 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -410,6 +440,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
             ),
             child: Icon(icon, color: color),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -419,6 +450,7 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                   title,
                   style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 5),
                 Text(
                   value,

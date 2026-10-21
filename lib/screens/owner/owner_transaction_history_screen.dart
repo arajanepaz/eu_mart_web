@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Owner view of completed POS transactions with transaction detail and receipt review.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -7,9 +12,11 @@ import 'package:printing/printing.dart';
 
 import '../../services/audit_log_service.dart';
 
+// Private UI/data helper used only inside this module.
 class _TransactionSummaryHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the transaction summary hover card logic used by this module.
   const _TransactionSummaryHoverCard({required this.child});
 
   @override
@@ -17,12 +24,14 @@ class _TransactionSummaryHoverCard extends StatefulWidget {
       _TransactionSummaryHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _TransactionSummaryHoverCardState
     extends State<_TransactionSummaryHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -47,10 +56,12 @@ class _TransactionSummaryHoverCardState
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _TransactionHistoryCard extends StatefulWidget {
   final bool isVoided;
   final Widget child;
 
+  // Handles the transaction history card logic used by this module.
   const _TransactionHistoryCard({required this.isVoided, required this.child});
 
   @override
@@ -58,11 +69,13 @@ class _TransactionHistoryCard extends StatefulWidget {
       _TransactionHistoryCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _TransactionHistoryCardState extends State<_TransactionHistoryCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -102,7 +115,9 @@ class _TransactionHistoryCardState extends State<_TransactionHistoryCard> {
   }
 }
 
+// Screen widget for owner view of completed POS transactions with transaction detail and receipt review.
 class OwnerTransactionHistoryScreen extends StatefulWidget {
+  // Handles the owner transaction history screen logic used by this module.
   const OwnerTransactionHistoryScreen({super.key});
 
   @override
@@ -110,6 +125,7 @@ class OwnerTransactionHistoryScreen extends StatefulWidget {
       _OwnerTransactionHistoryScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _OwnerTransactionHistoryScreenState
     extends State<OwnerTransactionHistoryScreen> {
   final TextEditingController _searchController = TextEditingController();
@@ -117,6 +133,7 @@ class _OwnerTransactionHistoryScreenState
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -124,6 +141,7 @@ class _OwnerTransactionHistoryScreenState
     return null;
   }
 
+  // Checks whether the current value satisfies the matches date filter rule used by this module.
   bool _matchesDateFilter(DateTime? date) {
     if (_selectedFilter == 'All') return true;
     if (date == null) return false;
@@ -152,6 +170,7 @@ class _OwnerTransactionHistoryScreenState
     return true;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Date unavailable';
 
@@ -183,9 +202,11 @@ class _OwnerTransactionHistoryScreenState
         '$hour:$minute $period';
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -202,6 +223,7 @@ class _OwnerTransactionHistoryScreenState
     );
   }
 
+  // Handles the void transaction logic used by this module.
   Future<void> _voidTransaction(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -216,6 +238,7 @@ class _OwnerTransactionHistoryScreenState
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Void Transaction'),
           content: SizedBox(
@@ -227,6 +250,7 @@ class _OwnerTransactionHistoryScreenState
                   'Void transaction "$receiptNumber"? '
                   'The deducted product stock will be restored.',
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 16),
                 TextField(
                   controller: reasonController,
@@ -277,6 +301,7 @@ class _OwnerTransactionHistoryScreenState
         final transactionSnapshot = await transaction.get(transactionReference);
 
         if (!transactionSnapshot.exists) {
+          // Handles the exception logic used by this module.
           throw Exception('Transaction no longer exists.');
         }
 
@@ -286,6 +311,7 @@ class _OwnerTransactionHistoryScreenState
             .toLowerCase();
 
         if (status == 'voided') {
+          // Handles the exception logic used by this module.
           throw Exception('This transaction is already voided.');
         }
 
@@ -335,6 +361,7 @@ class _OwnerTransactionHistoryScreenState
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Transaction voided and product stock restored.'),
           backgroundColor: Colors.green,
@@ -352,6 +379,7 @@ class _OwnerTransactionHistoryScreenState
     }
   }
 
+  // Handles the reprint receipt logic used by this module.
   Future<void> _reprintReceipt(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -525,6 +553,7 @@ class _OwnerTransactionHistoryScreenState
     );
   }
 
+  // Handles the pdf info row logic used by this module.
   pw.Widget _pdfInfoRow(String label, String value) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 3),
@@ -546,6 +575,7 @@ class _OwnerTransactionHistoryScreenState
     );
   }
 
+  // Handles the pdf money row logic used by this module.
   pw.Widget _pdfMoneyRow(String label, double value, {bool bold = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 3),
@@ -578,10 +608,12 @@ class _OwnerTransactionHistoryScreenState
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load transactions.\n${snapshot.error}',
@@ -650,6 +682,7 @@ class _OwnerTransactionHistoryScreenState
           }
         }
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF4F7FB),
           padding: const EdgeInsets.all(22),
@@ -711,6 +744,7 @@ class _OwnerTransactionHistoryScreenState
                   ],
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, summaryConstraints) {
@@ -729,24 +763,29 @@ class _OwnerTransactionHistoryScreenState
                   );
 
                   if (compactSummary) {
+                    // Handles the column logic used by this module.
                     return Column(
                       children: [
                         SizedBox(width: double.infinity, child: completedCard),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 12),
                         SizedBox(width: double.infinity, child: salesCard),
                       ],
                     );
                   }
 
+                  // Handles the row logic used by this module.
                   return Row(
                     children: [
                       Expanded(child: completedCard),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 16),
                       Expanded(child: salesCard),
                     ],
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -789,6 +828,7 @@ class _OwnerTransactionHistoryScreenState
                       ),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 16),
                   Wrap(
                     spacing: 8,
@@ -801,6 +841,7 @@ class _OwnerTransactionHistoryScreenState
                   ),
                 ],
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 18),
               Expanded(
                 child: filtered.isEmpty
@@ -842,6 +883,7 @@ class _OwnerTransactionHistoryScreenState
 
                           final items = data['items'] as List<dynamic>? ?? [];
 
+                          // Handles the transaction history card logic used by this module.
                           return _TransactionHistoryCard(
                             isVoided: isVoided,
                             child: ExpansionTile(
@@ -889,6 +931,7 @@ class _OwnerTransactionHistoryScreenState
                                 18,
                               ),
                               children: [
+                                // Handles the divider logic used by this module.
                                 const Divider(),
                                 Wrap(
                                   spacing: 16,
@@ -899,6 +942,7 @@ class _OwnerTransactionHistoryScreenState
                                     Text('Change: ₱${change.toStringAsFixed(2)}'),
                                   ],
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 12),
                                 ...items.map((rawItem) {
                                   if (rawItem is! Map) {
@@ -920,6 +964,7 @@ class _OwnerTransactionHistoryScreenState
                                       (item['subtotal'] as num?)?.toDouble() ??
                                       0;
 
+                                  // Handles the list tile logic used by this module.
                                   return ListTile(
                                     dense: true,
                                     contentPadding: EdgeInsets.zero,
@@ -933,6 +978,7 @@ class _OwnerTransactionHistoryScreenState
                                     ),
                                   );
                                 }),
+                                // Handles the divider logic used by this module.
                                 const Divider(),
                                 Wrap(
                                   alignment: WrapAlignment.end,
@@ -963,6 +1009,7 @@ class _OwnerTransactionHistoryScreenState
                                 else if ((data['voidReason'] ?? '')
                                     .toString()
                                     .isNotEmpty) ...[
+                                  // Handles the divider logic used by this module.
                                   const Divider(),
                                   Align(
                                     alignment: Alignment.centerLeft,
@@ -988,6 +1035,7 @@ class _OwnerTransactionHistoryScreenState
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
@@ -1033,6 +1081,7 @@ class _OwnerTransactionHistoryScreenState
                 ),
                 child: Icon(icon, color: Colors.white, size: 25),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -1046,6 +1095,7 @@ class _OwnerTransactionHistoryScreenState
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 5),
                     Text(
                       value,

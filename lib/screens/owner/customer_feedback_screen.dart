@@ -1,20 +1,29 @@
+// -----------------------------------------------------------------------------
+// Module overview: Lets the owner review customer feedback submitted through the public feedback form.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _FeedbackHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the feedback hover card logic used by this module.
   const _FeedbackHoverCard({required this.child});
 
   @override
   State<_FeedbackHoverCard> createState() => _FeedbackHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _FeedbackHoverCardState extends State<_FeedbackHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -39,12 +48,14 @@ class _FeedbackHoverCardState extends State<_FeedbackHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _FeedbackCountPill extends StatelessWidget {
   final String label;
   final int value;
   final Color color;
   final IconData icon;
 
+  // Handles the feedback count pill logic used by this module.
   const _FeedbackCountPill({
     required this.label,
     required this.value,
@@ -54,6 +65,7 @@ class _FeedbackCountPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -64,6 +76,7 @@ class _FeedbackCountPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 18),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Text(
             '$label: $value',
@@ -79,6 +92,7 @@ class _FeedbackCountPill extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _FeedbackCard extends StatefulWidget {
   final String name;
   final String comment;
@@ -89,6 +103,7 @@ class _FeedbackCard extends StatefulWidget {
   final IconData icon;
   final Widget stars;
 
+  // Handles the feedback card logic used by this module.
   const _FeedbackCard({
     required this.name,
     required this.comment,
@@ -104,11 +119,13 @@ class _FeedbackCard extends StatefulWidget {
   State<_FeedbackCard> createState() => _FeedbackCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _FeedbackCardState extends State<_FeedbackCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -148,6 +165,7 @@ class _FeedbackCardState extends State<_FeedbackCard> {
               ),
               child: Icon(widget.icon, color: widget.color, size: 27),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -186,9 +204,11 @@ class _FeedbackCardState extends State<_FeedbackCard> {
                     ],
                   ),
                   if (widget.rating > 0) ...[
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 6),
                     widget.stars,
                   ],
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 9),
                   Text(
                     widget.comment.isEmpty
@@ -199,14 +219,17 @@ class _FeedbackCardState extends State<_FeedbackCard> {
                       height: 1.45,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 9),
                   Row(
                     children: [
+                      // Handles the icon logic used by this module.
                       const Icon(
                         Icons.schedule_outlined,
                         size: 15,
                         color: Color(0xFF8A95A4),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 5),
                       Text(
                         widget.formattedDate,
@@ -227,11 +250,14 @@ class _FeedbackCardState extends State<_FeedbackCard> {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _FeedbackEmptyState extends StatelessWidget {
+  // Handles the feedback empty state logic used by this module.
   const _FeedbackEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -269,19 +295,23 @@ class _FeedbackEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for lets the owner review customer feedback submitted through the public feedback form.
 class CustomerFeedbackScreen extends StatefulWidget {
+  // Handles the customer feedback screen logic used by this module.
   const CustomerFeedbackScreen({super.key});
 
   @override
   State<CustomerFeedbackScreen> createState() => _CustomerFeedbackScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -289,6 +319,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     return null;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Date unavailable';
 
@@ -320,6 +351,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
         '$hour:$minute $period';
   }
 
+  // Reads and normalizes rating from stored data.
   int _readRating(Map<String, dynamic> data) {
     final value =
         data['rating'] ??
@@ -334,6 +366,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     return int.tryParse(value?.toString() ?? '')?.clamp(1, 5) ?? 0;
   }
 
+  // Reads and normalizes comment from stored data.
   String _readComment(Map<String, dynamic> data) {
     return (data['comment'] ??
             data['feedback'] ??
@@ -344,6 +377,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
         .trim();
   }
 
+  // Reads and normalizes customer name from stored data.
   String _readCustomerName(Map<String, dynamic> data) {
     final name =
         (data['customerName'] ??
@@ -356,6 +390,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     return name.isEmpty ? 'Anonymous Customer' : name;
   }
 
+  // Handles the sentiment logic used by this module.
   String _sentiment(Map<String, dynamic> data, int rating) {
     final savedSentiment =
         (data['sentiment'] ??
@@ -386,6 +421,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     return 'Neutral';
   }
 
+  // Checks whether the current value satisfies the matches search rule used by this module.
   bool _matchesSearch(Map<String, dynamic> data) {
     if (_searchQuery.isEmpty) return true;
 
@@ -402,13 +438,16 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     return searchable.contains(_searchQuery);
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(Map<String, dynamic> data) {
     if (_selectedFilter == 'All') return true;
 
     final rating = _readRating(data);
+    // Handles the sentiment logic used by this module.
     return _sentiment(data, rating) == _selectedFilter;
   }
 
+  // Handles the sentiment color logic used by this module.
   Color _sentimentColor(String sentiment) {
     switch (sentiment) {
       case 'Satisfied':
@@ -420,6 +459,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     }
   }
 
+  // Handles the sentiment icon logic used by this module.
   IconData _sentimentIcon(String sentiment) {
     switch (sentiment) {
       case 'Satisfied':
@@ -431,9 +471,11 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     }
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -450,6 +492,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
@@ -493,6 +536,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                 ),
                 child: Icon(icon, color: Colors.white, size: 24),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -506,6 +550,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 4),
                     Text(
                       value,
@@ -527,10 +572,13 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
     );
   }
 
+  // Handles the stars logic used by this module.
   Widget _stars(int rating) {
+    // Handles the row logic used by this module.
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: List.generate(5, (index) {
+        // Handles the icon logic used by this module.
         return Icon(
           index < rating ? Icons.star : Icons.star_border,
           color: Colors.amber.shade700,
@@ -549,10 +597,12 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load customer feedback.\n${snapshot.error}',
@@ -619,9 +669,11 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
         final filtered = documents.where((document) {
           final data = document.data();
 
+          // Checks whether the current value satisfies the matches search rule used by this module.
           return _matchesSearch(data) && _matchesFilter(data);
         }).toList();
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
@@ -679,6 +731,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                   ],
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -732,6 +785,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               Container(
                 width: double.infinity,
@@ -771,6 +825,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                   ],
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -826,10 +881,13 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                     child: Row(
                       children: [
                         _filterChip('All'),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         _filterChip('Satisfied'),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         _filterChip('Neutral'),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         _filterChip('Not Satisfied'),
                       ],
@@ -837,20 +895,24 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                   );
 
                   if (compact) {
+                    // Handles the column logic used by this module.
                     return Column(
                       children: [search, const SizedBox(height: 12), filters],
                     );
                   }
 
+                  // Handles the row logic used by this module.
                   return Row(
                     children: [
                       Expanded(child: search),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 14),
                       filters,
                     ],
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               Expanded(
                 child: filtered.isEmpty
@@ -868,6 +930,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                           final date = _readDate(data['createdAt']);
                           final color = _sentimentColor(sentiment);
 
+                          // Handles the feedback card logic used by this module.
                           return _FeedbackCard(
                             name: name,
                             comment: comment,

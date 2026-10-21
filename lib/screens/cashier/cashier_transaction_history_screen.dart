@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Displays transactions processed by the cashier and supports reviewing transaction details.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,9 +10,11 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+// Private UI/data helper used only inside this module.
 class _CashierHistoryHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the cashier history hover card logic used by this module.
   const _CashierHistoryHoverCard({required this.child});
 
   @override
@@ -15,11 +22,13 @@ class _CashierHistoryHoverCard extends StatefulWidget {
       _CashierHistoryHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierHistoryHoverCardState extends State<_CashierHistoryHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -44,12 +53,14 @@ class _CashierHistoryHoverCardState extends State<_CashierHistoryHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _CashierHistorySummaryCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color color;
 
+  // Handles the cashier history summary card logic used by this module.
   const _CashierHistorySummaryCard({
     required this.title,
     required this.value,
@@ -59,6 +70,7 @@ class _CashierHistorySummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the cashier history hover card logic used by this module.
     return _CashierHistoryHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -89,6 +101,7 @@ class _CashierHistorySummaryCard extends StatelessWidget {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -102,6 +115,7 @@ class _CashierHistorySummaryCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -126,6 +140,7 @@ class _CashierHistorySummaryCard extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _CashierTransactionCard extends StatefulWidget {
   final String receiptNumber;
   final String date;
@@ -137,6 +152,7 @@ class _CashierTransactionCard extends StatefulWidget {
   final List<dynamic> items;
   final VoidCallback onReprint;
 
+  // Handles the cashier transaction card logic used by this module.
   const _CashierTransactionCard({
     required this.receiptNumber,
     required this.date,
@@ -154,6 +170,7 @@ class _CashierTransactionCard extends StatefulWidget {
       _CashierTransactionCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierTransactionCardState extends State<_CashierTransactionCard> {
   bool _hovered = false;
   bool _expanded = false;
@@ -164,6 +181,7 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
         ? const Color(0xFFD32F2F)
         : const Color(0xFF1565C0);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -226,6 +244,7 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                             size: 26,
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 13),
                         Expanded(
                           child: Column(
@@ -241,14 +260,17 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 4),
                               Row(
                                 children: [
+                                  // Handles the icon logic used by this module.
                                   const Icon(
                                     Icons.schedule_outlined,
                                     size: 15,
                                     color: Color(0xFF8A95A4),
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(width: 5),
                                   Expanded(
                                     child: Text(
@@ -291,14 +313,17 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                     );
 
                     if (compact) {
+                      // Handles the column logic used by this module.
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           receipt,
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 12),
                           Row(
                             children: [
                               status,
+                              // Handles the spacer logic used by this module.
                               const Spacer(),
                               Icon(
                                 _expanded
@@ -312,11 +337,14 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                       );
                     }
 
+                    // Handles the row logic used by this module.
                     return Row(
                       children: [
                         Expanded(child: receipt),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 14),
                         status,
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         Icon(
                           _expanded
@@ -331,6 +359,7 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
               ),
             ),
             if (_expanded) ...[
+              // Handles the divider logic used by this module.
               const Divider(height: 1),
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
@@ -363,8 +392,10 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                         ),
                       ],
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 14),
                     if (widget.items.isEmpty)
+                      // Handles the padding logic used by this module.
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 10),
                         child: Text(
@@ -390,6 +421,7 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                         final subtotal =
                             (item['subtotal'] as num?)?.toDouble() ?? 0;
 
+                        // Handles the container logic used by this module.
                         return Container(
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(11),
@@ -410,6 +442,7 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                                         fontWeight: FontWeight.w800,
                                       ),
                                     ),
+                                    // Handles the sized box logic used by this module.
                                     const SizedBox(height: 2),
                                     Text(
                                       'Quantity: $quantity',
@@ -432,6 +465,7 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                           ),
                         );
                       }),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 6),
                     Align(
                       alignment: Alignment.centerRight,
@@ -452,11 +486,13 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _CashierHistoryMetric extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
+  // Handles the cashier history metric logic used by this module.
   const _CashierHistoryMetric({
     required this.label,
     required this.value,
@@ -465,6 +501,7 @@ class _CashierHistoryMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       constraints: const BoxConstraints(minWidth: 120),
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
@@ -483,6 +520,7 @@ class _CashierHistoryMetric extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 3),
           Text(
             value,
@@ -498,11 +536,14 @@ class _CashierHistoryMetric extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierHistoryEmptyState extends StatelessWidget {
+  // Handles the cashier history empty state logic used by this module.
   const _CashierHistoryEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -530,7 +571,9 @@ class _CashierHistoryEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for displays transactions processed by the cashier and supports reviewing transaction details.
 class CashierTransactionHistoryScreen extends StatefulWidget {
+  // Handles the cashier transaction history screen logic used by this module.
   const CashierTransactionHistoryScreen({super.key});
 
   @override
@@ -538,6 +581,7 @@ class CashierTransactionHistoryScreen extends StatefulWidget {
       _CashierTransactionHistoryScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierTransactionHistoryScreenState
     extends State<CashierTransactionHistoryScreen> {
   final TextEditingController _searchController = TextEditingController();
@@ -545,6 +589,7 @@ class _CashierTransactionHistoryScreenState
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -552,6 +597,7 @@ class _CashierTransactionHistoryScreenState
     return null;
   }
 
+  // Checks whether the current value satisfies the matches date filter rule used by this module.
   bool _matchesDateFilter(DateTime? date) {
     if (_selectedFilter == 'All') return true;
     if (date == null) return false;
@@ -580,6 +626,7 @@ class _CashierTransactionHistoryScreenState
     return true;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Date unavailable';
 
@@ -611,9 +658,11 @@ class _CashierTransactionHistoryScreenState
         '$hour:$minute $period';
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -630,6 +679,7 @@ class _CashierTransactionHistoryScreenState
     );
   }
 
+  // Handles the reprint receipt logic used by this module.
   Future<void> _reprintReceipt(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -803,6 +853,7 @@ class _CashierTransactionHistoryScreenState
     );
   }
 
+  // Handles the pdf info row logic used by this module.
   pw.Widget _pdfInfoRow(String label, String value) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 3),
@@ -824,6 +875,7 @@ class _CashierTransactionHistoryScreenState
     );
   }
 
+  // Handles the pdf money row logic used by this module.
   pw.Widget _pdfMoneyRow(String label, double value, {bool bold = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.only(bottom: 3),
@@ -854,6 +906,7 @@ class _CashierTransactionHistoryScreenState
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
+      // Handles the center logic used by this module.
       return const Center(
         child: Text(
           'No logged-in cashier.',
@@ -870,10 +923,12 @@ class _CashierTransactionHistoryScreenState
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load transaction history.\n'
@@ -944,6 +999,7 @@ class _CashierTransactionHistoryScreenState
           totalSavings += (data['totalSavings'] as num?)?.toDouble() ?? 0;
         }
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           child: SingleChildScrollView(
@@ -1010,6 +1066,7 @@ class _CashierTransactionHistoryScreenState
                         ],
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -1059,6 +1116,7 @@ class _CashierTransactionHistoryScreenState
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -1117,10 +1175,13 @@ class _CashierTransactionHistoryScreenState
                           child: Row(
                             children: [
                               _filterChip('All'),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(width: 8),
                               _filterChip('Today'),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(width: 8),
                               _filterChip('This Week'),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(width: 8),
                               _filterChip('This Month'),
                             ],
@@ -1128,27 +1189,33 @@ class _CashierTransactionHistoryScreenState
                         );
 
                         if (compact) {
+                          // Handles the column logic used by this module.
                           return Column(
                             children: [
                               search,
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 12),
                               filters,
                             ],
                           );
                         }
 
+                        // Handles the row logic used by this module.
                         return Row(
                           children: [
                             Expanded(child: search),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 14),
                             filters,
                           ],
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 18),
                     Row(
                       children: [
+                        // Handles the expanded logic used by this module.
                         const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1192,8 +1259,10 @@ class _CashierTransactionHistoryScreenState
                         ),
                       ],
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 12),
                     if (filtered.isEmpty)
+                      // Handles the sized box logic used by this module.
                       const SizedBox(
                         height: 230,
                         child: _CashierHistoryEmptyState(),
@@ -1237,6 +1306,7 @@ class _CashierTransactionHistoryScreenState
                           final items =
                               data['items'] as List<dynamic>? ?? <dynamic>[];
 
+                          // Handles the cashier transaction card logic used by this module.
                           return _CashierTransactionCard(
                             receiptNumber: receiptNumber,
                             date: _formatDate(createdAt),

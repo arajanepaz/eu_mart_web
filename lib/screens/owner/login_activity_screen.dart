@@ -1,9 +1,16 @@
+// -----------------------------------------------------------------------------
+// Module overview: Shows authentication-session history such as login, logout, and session duration information.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _LoginActivityHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Records login activity hover card information for monitoring or traceability.
   const _LoginActivityHoverCard({required this.child});
 
   @override
@@ -11,11 +18,13 @@ class _LoginActivityHoverCard extends StatefulWidget {
       _LoginActivityHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _LoginActivityHoverCardState extends State<_LoginActivityHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -40,12 +49,14 @@ class _LoginActivityHoverCardState extends State<_LoginActivityHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _LoginActivityPill extends StatelessWidget {
   final String label;
   final int value;
   final IconData icon;
   final Color color;
 
+  // Records login activity pill information for monitoring or traceability.
   const _LoginActivityPill({
     required this.label,
     required this.value,
@@ -55,6 +66,7 @@ class _LoginActivityPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -65,6 +77,7 @@ class _LoginActivityPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 18),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Text(
             '$label: $value',
@@ -80,6 +93,7 @@ class _LoginActivityPill extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _LoginSessionCard extends StatefulWidget {
   final String name;
   final String email;
@@ -91,6 +105,7 @@ class _LoginSessionCard extends StatefulWidget {
   final String logoutTime;
   final String? duration;
 
+  // Records login session card information for monitoring or traceability.
   const _LoginSessionCard({
     required this.name,
     required this.email,
@@ -107,6 +122,7 @@ class _LoginSessionCard extends StatefulWidget {
   State<_LoginSessionCard> createState() => _LoginSessionCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _LoginSessionCardState extends State<_LoginSessionCard> {
   bool _hovered = false;
 
@@ -121,6 +137,7 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
         ? const Color(0xFF159447)
         : const Color(0xFF7B1FA2);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -169,6 +186,7 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
                     size: 26,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 13),
                 Expanded(
                   child: Column(
@@ -184,6 +202,7 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 3),
                       Text(
                         widget.email,
@@ -241,6 +260,7 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
                   value: widget.loginTime,
                   color: const Color(0xFF1565C0),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 7),
                 _LoginTimeLine(
                   icon: isClosed ? Icons.logout_outlined : Icons.circle,
@@ -249,6 +269,7 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
                   color: sessionColor,
                 ),
                 if (widget.duration != null) ...[
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 7),
                   _LoginTimeLine(
                     icon: Icons.timer_outlined,
@@ -261,12 +282,15 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   account,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 12),
                   badges,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
                   Container(
                     width: double.infinity,
@@ -281,11 +305,14 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(flex: 3, child: account),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(flex: 4, child: badges),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(flex: 3, child: times),
               ],
@@ -297,11 +324,13 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _LoginDetailPill extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
 
+  // Records login detail pill information for monitoring or traceability.
   const _LoginDetailPill({
     required this.icon,
     required this.label,
@@ -310,6 +339,7 @@ class _LoginDetailPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -320,6 +350,7 @@ class _LoginDetailPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 15, color: color),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 5),
           Text(
             label,
@@ -335,12 +366,14 @@ class _LoginDetailPill extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _LoginTimeLine extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
   final Color color;
 
+  // Records login time line information for monitoring or traceability.
   const _LoginTimeLine({
     required this.icon,
     required this.label,
@@ -350,10 +383,12 @@ class _LoginTimeLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the row logic used by this module.
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 15, color: color),
+        // Handles the sized box logic used by this module.
         const SizedBox(width: 6),
         Flexible(
           child: Text(
@@ -373,15 +408,19 @@ class _LoginTimeLine extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _LoginActivityEmptyState extends StatelessWidget {
+  // Records login activity empty state information for monitoring or traceability.
   const _LoginActivityEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the layout builder logic used by this module.
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 180;
 
+        // Handles the single child scroll view logic used by this module.
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           padding: EdgeInsets.symmetric(
@@ -430,16 +469,20 @@ class _LoginActivityEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for shows authentication-session history such as login, logout, and session duration information.
 class LoginActivityScreen extends StatefulWidget {
+  // Records login activity screen information for monitoring or traceability.
   const LoginActivityScreen({super.key});
 
   @override
   State<LoginActivityScreen> createState() => _LoginActivityScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _LoginActivityScreenState extends State<LoginActivityScreen> {
   String _selectedFilter = 'Today';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -447,6 +490,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
     return null;
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(DateTime? date) {
     if (date == null) return false;
 
@@ -472,6 +516,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
     }
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Unavailable';
 
@@ -489,9 +534,11 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
         '$hour:$minute:$second $period';
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -508,12 +555,14 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Records login activity hover card information for monitoring or traceability.
     return _LoginActivityHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -544,6 +593,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -557,6 +607,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -589,10 +640,12 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load login activity.\n'
@@ -608,6 +661,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
               snapshot.data?.docs ??
                   <QueryDocumentSnapshot<Map<String, dynamic>>>[],
             ).where((document) {
+              // Checks whether the current value satisfies the matches filter rule used by this module.
               return _matchesFilter(_readDate(document.data()['createdAt']));
             }).toList();
 
@@ -666,6 +720,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
             ? 0
             : totalSessionDuration ~/ durationRecordCount;
 
+        // Formats session duration into a user-friendly display value.
         String formatSessionDuration(int seconds) {
           final hours = seconds ~/ 3600;
           final minutes = (seconds % 3600) ~/ 60;
@@ -682,6 +737,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
           return '${remaining}s';
         }
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           child: SingleChildScrollView(
@@ -748,6 +804,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                       ],
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 16),
                   Container(
                     width: double.infinity,
@@ -765,16 +822,20 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                       child: Row(
                         children: [
                           _filterChip('Today'),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 8),
                           _filterChip('This Week'),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 8),
                           _filterChip('This Month'),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 8),
                           _filterChip('All Time'),
                         ],
                       ),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 16),
                   LayoutBuilder(
                     builder: (context, constraints) {
@@ -796,6 +857,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                           : (constraints.maxWidth - (spacing * (count - 1))) /
                                 count;
 
+                      // Handles the wrap logic used by this module.
                       return Wrap(
                         spacing: spacing,
                         runSpacing: spacing,
@@ -856,6 +918,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                       );
                     },
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 16),
                   _LoginActivityHoverCard(
                     child: Container(
@@ -900,9 +963,11 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                       ),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 18),
                   Row(
                     children: [
+                      // Handles the expanded logic used by this module.
                       const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -946,8 +1011,10 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                       ),
                     ],
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 12),
                   if (records.isEmpty)
+                    // Handles the sized box logic used by this module.
                     const SizedBox(
                       height: 220,
                       child: _LoginActivityEmptyState(),
@@ -983,6 +1050,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                         final durationSeconds =
                             (data['sessionDurationSeconds'] as num?)?.toInt();
 
+                        // Records login session card information for monitoring or traceability.
                         return _LoginSessionCard(
                           name: name,
                           email: email,

@@ -1,20 +1,29 @@
+// -----------------------------------------------------------------------------
+// Module overview: Estimates gross profit from transaction item values using recorded selling and buying prices.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _ProfitHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the profit hover card logic used by this module.
   const _ProfitHoverCard({required this.child});
 
   @override
   State<_ProfitHoverCard> createState() => _ProfitHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProfitHoverCardState extends State<_ProfitHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -39,6 +48,7 @@ class _ProfitHoverCardState extends State<_ProfitHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ProfitProductCard extends StatefulWidget {
   final int rank;
   final String productName;
@@ -49,6 +59,7 @@ class _ProfitProductCard extends StatefulWidget {
   final double margin;
   final Color profitColor;
 
+  // Handles the profit product card logic used by this module.
   const _ProfitProductCard({
     required this.rank,
     required this.productName,
@@ -64,11 +75,13 @@ class _ProfitProductCard extends StatefulWidget {
   State<_ProfitProductCard> createState() => _ProfitProductCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProfitProductCardState extends State<_ProfitProductCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -121,6 +134,7 @@ class _ProfitProductCardState extends State<_ProfitProductCard> {
                     ),
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(
                   child: Text(
@@ -170,15 +184,18 @@ class _ProfitProductCardState extends State<_ProfitProductCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [product, const SizedBox(height: 14), metrics],
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(flex: 4, child: product),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 16),
                 Expanded(
                   flex: 6,
@@ -196,11 +213,13 @@ class _ProfitProductCardState extends State<_ProfitProductCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ProfitMetricBox extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
+  // Handles the profit metric box logic used by this module.
   const _ProfitMetricBox({
     required this.label,
     required this.value,
@@ -209,6 +228,7 @@ class _ProfitMetricBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       constraints: const BoxConstraints(minWidth: 108),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -227,6 +247,7 @@ class _ProfitMetricBox extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 3),
           Text(
             value,
@@ -242,11 +263,14 @@ class _ProfitMetricBox extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProfitEmptyState extends StatelessWidget {
+  // Handles the profit empty state logic used by this module.
   const _ProfitEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -278,7 +302,9 @@ class _ProfitEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for estimates gross profit from transaction item values using recorded selling and buying prices.
 class EstimatedProfitReportScreen extends StatefulWidget {
+  // Handles the estimated profit report screen logic used by this module.
   const EstimatedProfitReportScreen({super.key});
 
   @override
@@ -286,10 +312,12 @@ class EstimatedProfitReportScreen extends StatefulWidget {
       _EstimatedProfitReportScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _EstimatedProfitReportScreenState
     extends State<EstimatedProfitReportScreen> {
   String _selectedFilter = 'This Month';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -297,6 +325,7 @@ class _EstimatedProfitReportScreenState
     return null;
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(DateTime? date) {
     if (date == null) return false;
 
@@ -321,9 +350,11 @@ class _EstimatedProfitReportScreenState
     }
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -340,12 +371,14 @@ class _EstimatedProfitReportScreenState
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the profit hover card logic used by this module.
     return _ProfitHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -376,6 +409,7 @@ class _EstimatedProfitReportScreenState
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -389,6 +423,7 @@ class _EstimatedProfitReportScreenState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -419,6 +454,7 @@ class _EstimatedProfitReportScreenState
       builder: (context, productSnapshot) {
         if (productSnapshot.connectionState == ConnectionState.waiting &&
             !productSnapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
@@ -445,10 +481,12 @@ class _EstimatedProfitReportScreenState
             if (transactionSnapshot.connectionState ==
                     ConnectionState.waiting &&
                 !transactionSnapshot.hasData) {
+              // Handles the center logic used by this module.
               return const Center(child: CircularProgressIndicator());
             }
 
             if (transactionSnapshot.hasError) {
+              // Handles the center logic used by this module.
               return Center(
                 child: Text(
                   'Unable to load estimated profit report.\n'
@@ -550,6 +588,7 @@ class _EstimatedProfitReportScreenState
             final productRows = productProfit.values.toList()
               ..sort((a, b) => b.estimatedProfit.compareTo(a.estimatedProfit));
 
+            // Handles the container logic used by this module.
             return Container(
               color: const Color(0xFFF2F6FC),
               child: SingleChildScrollView(
@@ -616,6 +655,7 @@ class _EstimatedProfitReportScreenState
                             ],
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         Container(
                           width: double.infinity,
@@ -633,16 +673,20 @@ class _EstimatedProfitReportScreenState
                             child: Row(
                               children: [
                                 _filterChip('Today'),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 8),
                                 _filterChip('This Week'),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 8),
                                 _filterChip('This Month'),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 8),
                                 _filterChip('All Time'),
                               ],
                             ),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         LayoutBuilder(
                           builder: (context, constraints) {
@@ -693,6 +737,7 @@ class _EstimatedProfitReportScreenState
                             );
                           },
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         _ProfitHoverCard(
                           child: Container(
@@ -734,6 +779,7 @@ class _EstimatedProfitReportScreenState
                                         : const Color(0xFF1565C0),
                                   ),
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
@@ -757,9 +803,11 @@ class _EstimatedProfitReportScreenState
                             ),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 20),
                         Row(
                           children: [
+                            // Handles the expanded logic used by this module.
                             const Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -803,8 +851,10 @@ class _EstimatedProfitReportScreenState
                             ),
                           ],
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 12),
                         if (productRows.isEmpty)
+                          // Handles the sized box logic used by this module.
                           const SizedBox(
                             height: 230,
                             child: _ProfitEmptyState(),
@@ -815,6 +865,7 @@ class _EstimatedProfitReportScreenState
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: productRows.length,
                             separatorBuilder: (_, _) =>
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final product = productRows[index];
@@ -828,6 +879,7 @@ class _EstimatedProfitReportScreenState
                                   ? const Color(0xFFD32F2F)
                                   : const Color(0xFF159447);
 
+                              // Handles the profit product card logic used by this module.
                               return _ProfitProductCard(
                                 rank: index + 1,
                                 productName: product.productName,
@@ -853,6 +905,7 @@ class _EstimatedProfitReportScreenState
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ProfitProduct {
   final String productName;
 

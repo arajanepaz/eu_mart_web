@@ -1,22 +1,31 @@
+// -----------------------------------------------------------------------------
+// Module overview: Tracks business permit expiration dates and determines when renewal reminders should be shown.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/audit_log_service.dart';
 
+// Private UI/data helper used only inside this module.
 class _PermitHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the permit hover card logic used by this module.
   const _PermitHoverCard({required this.child});
 
   @override
   State<_PermitHoverCard> createState() => _PermitHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PermitHoverCardState extends State<_PermitHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -41,12 +50,14 @@ class _PermitHoverCardState extends State<_PermitHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PermitSummaryCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color color;
 
+  // Handles the permit summary card logic used by this module.
   const _PermitSummaryCard({
     required this.title,
     required this.value,
@@ -56,6 +67,7 @@ class _PermitSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the permit hover card logic used by this module.
     return _PermitHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -86,6 +98,7 @@ class _PermitSummaryCard extends StatelessWidget {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -99,6 +112,7 @@ class _PermitSummaryCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     value,
@@ -118,6 +132,7 @@ class _PermitSummaryCard extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PermitCard extends StatefulWidget {
   final String name;
   final String permitNumber;
@@ -131,6 +146,7 @@ class _PermitCard extends StatefulWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
+  // Handles the permit card logic used by this module.
   const _PermitCard({
     required this.name,
     required this.permitNumber,
@@ -149,11 +165,13 @@ class _PermitCard extends StatefulWidget {
   State<_PermitCard> createState() => _PermitCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PermitCardState extends State<_PermitCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -201,6 +219,7 @@ class _PermitCardState extends State<_PermitCard> {
                     size: 27,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -240,6 +259,7 @@ class _PermitCardState extends State<_PermitCard> {
                           ),
                         ],
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 9,
@@ -265,6 +285,7 @@ class _PermitCardState extends State<_PermitCard> {
                         ],
                       ),
                       if (widget.notes.isNotEmpty) ...[
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 10),
                         Text(
                           widget.notes,
@@ -294,6 +315,7 @@ class _PermitCardState extends State<_PermitCard> {
                     ? CrossAxisAlignment.start
                     : CrossAxisAlignment.end,
                 children: [
+                  // Handles the text logic used by this module.
                   const Text(
                     'EXPIRATION DATE',
                     style: TextStyle(
@@ -303,6 +325,7 @@ class _PermitCardState extends State<_PermitCard> {
                       letterSpacing: 0.5,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     widget.expirationDate,
@@ -311,6 +334,7 @@ class _PermitCardState extends State<_PermitCard> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     widget.remainingText,
@@ -344,24 +368,30 @@ class _PermitCardState extends State<_PermitCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   mainInfo,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
                   deadline,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 8),
                   Align(alignment: Alignment.centerRight, child: actions),
                 ],
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: mainInfo),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 16),
                 deadline,
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 8),
                 actions,
               ],
@@ -373,11 +403,13 @@ class _PermitCardState extends State<_PermitCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PermitInfoPill extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
 
+  // Handles the permit info pill logic used by this module.
   const _PermitInfoPill({
     required this.icon,
     required this.label,
@@ -386,6 +418,7 @@ class _PermitInfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -396,6 +429,7 @@ class _PermitInfoPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 15, color: color),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 5),
           Text(
             label,
@@ -411,11 +445,14 @@ class _PermitInfoPill extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PermitEmptyState extends StatelessWidget {
+  // Handles the permit empty state logic used by this module.
   const _PermitEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -453,7 +490,9 @@ class _PermitEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for tracks business permit expiration dates and determines when renewal reminders should be shown.
 class PermitRenewalReminderScreen extends StatefulWidget {
+  // Handles the permit renewal reminder screen logic used by this module.
   const PermitRenewalReminderScreen({super.key});
 
   @override
@@ -461,8 +500,10 @@ class PermitRenewalReminderScreen extends StatefulWidget {
       _PermitRenewalReminderScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PermitRenewalReminderScreenState
     extends State<PermitRenewalReminderScreen> {
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -470,6 +511,7 @@ class _PermitRenewalReminderScreenState
     return null;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'No date';
 
@@ -491,6 +533,7 @@ class _PermitRenewalReminderScreenState
     return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
+  // Handles the days until logic used by this module.
   int _daysUntil(DateTime? expirationDate) {
     if (expirationDate == null) return 999999;
 
@@ -505,6 +548,7 @@ class _PermitRenewalReminderScreenState
     return expiration.difference(today).inDays;
   }
 
+  // Handles the status label logic used by this module.
   String _statusLabel({
     required DateTime? expirationDate,
     required int reminderDays,
@@ -520,6 +564,7 @@ class _PermitRenewalReminderScreenState
     return 'ACTIVE';
   }
 
+  // Handles the status color logic used by this module.
   Color _statusColor(String status) {
     switch (status) {
       case 'EXPIRED':
@@ -534,6 +579,7 @@ class _PermitRenewalReminderScreenState
     }
   }
 
+  // Opens the permit dialog interface using the current record or screen state.
   Future<void> _showPermitDialog({
     DocumentSnapshot<Map<String, dynamic>>? document,
   }) async {
@@ -570,13 +616,16 @@ class _PermitRenewalReminderScreenState
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Validates and saves permit data to the application data store.
             Future<void> savePermit() async {
               if (!formKey.currentState!.validate()) return;
 
               if (expirationDate == null) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  // Handles the snack bar logic used by this module.
                   const SnackBar(
                     content: Text('Select the permit expiration date.'),
                     backgroundColor: Colors.orange,
@@ -649,6 +698,7 @@ class _PermitRenewalReminderScreenState
               }
             }
 
+            // Handles the alert dialog logic used by this module.
             return AlertDialog(
               title: Text(
                 document == null
@@ -677,6 +727,7 @@ class _PermitRenewalReminderScreenState
                             return null;
                           },
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 14),
                         TextFormField(
                           controller: permitNumberController,
@@ -686,6 +737,7 @@ class _PermitRenewalReminderScreenState
                             border: OutlineInputBorder(),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 14),
                         TextFormField(
                           controller: issuingOfficeController,
@@ -696,6 +748,7 @@ class _PermitRenewalReminderScreenState
                             border: OutlineInputBorder(),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 14),
                         Row(
                           children: [
@@ -709,12 +762,15 @@ class _PermitRenewalReminderScreenState
                                           initialDate:
                                               expirationDate ??
                                               DateTime.now().add(
+                                                // Handles the duration logic used by this module.
                                                 const Duration(days: 30),
                                               ),
                                           firstDate: DateTime.now().subtract(
+                                            // Handles the duration logic used by this module.
                                             const Duration(days: 3650),
                                           ),
                                           lastDate: DateTime.now().add(
+                                            // Handles the duration logic used by this module.
                                             const Duration(days: 3650),
                                           ),
                                         );
@@ -733,6 +789,7 @@ class _PermitRenewalReminderScreenState
                                 ),
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 14),
                             SizedBox(
                               width: 190,
@@ -759,6 +816,7 @@ class _PermitRenewalReminderScreenState
                             ),
                           ],
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 14),
                         TextFormField(
                           controller: notesController,
@@ -770,6 +828,7 @@ class _PermitRenewalReminderScreenState
                             border: OutlineInputBorder(),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 8),
                         SwitchListTile(
                           value: renewed,
@@ -826,6 +885,7 @@ class _PermitRenewalReminderScreenState
 
     if (saved == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Permit reminder saved successfully.'),
           backgroundColor: Colors.green,
@@ -834,6 +894,7 @@ class _PermitRenewalReminderScreenState
     }
   }
 
+  // Deletes the selected permit record after the required checks.
   Future<void> _deletePermit(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -843,6 +904,7 @@ class _PermitRenewalReminderScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Delete Permit Reminder'),
           content: Text('Delete the reminder for "$name"?'),
@@ -879,6 +941,7 @@ class _PermitRenewalReminderScreenState
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
+      // Handles the snack bar logic used by this module.
       const SnackBar(
         content: Text('Permit reminder deleted.'),
         backgroundColor: Colors.green,
@@ -886,12 +949,14 @@ class _PermitRenewalReminderScreenState
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -916,6 +981,7 @@ class _PermitRenewalReminderScreenState
             ),
             child: Icon(icon, color: color),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 14),
           Expanded(
             child: Column(
@@ -925,6 +991,7 @@ class _PermitRenewalReminderScreenState
                   title,
                   style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 5),
                 Text(
                   value,
@@ -950,10 +1017,12 @@ class _PermitRenewalReminderScreenState
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load permit reminders.\n'
@@ -1012,6 +1081,7 @@ class _PermitRenewalReminderScreenState
           }
         }
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
@@ -1099,15 +1169,18 @@ class _PermitRenewalReminderScreenState
                     );
 
                     if (compact) {
+                      // Handles the column logic used by this module.
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [title, const SizedBox(height: 14), button],
                       );
                     }
 
+                    // Handles the row logic used by this module.
                     return Row(
                       children: [
                         Expanded(child: title),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 16),
                         button,
                       ],
@@ -1115,6 +1188,7 @@ class _PermitRenewalReminderScreenState
                   },
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -1164,6 +1238,7 @@ class _PermitRenewalReminderScreenState
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               Expanded(
                 child: permits.isEmpty
@@ -1205,6 +1280,7 @@ class _PermitRenewalReminderScreenState
 
                           final color = _statusColor(status);
 
+                          // Handles the permit card logic used by this module.
                           return _PermitCard(
                             name: name,
                             permitNumber: permitNumber,

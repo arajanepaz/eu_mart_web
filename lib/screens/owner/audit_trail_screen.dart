@@ -1,19 +1,28 @@
+// -----------------------------------------------------------------------------
+// Module overview: Displays system audit records so the owner can review important user and data-management actions.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Screen widget for displays system audit records so the owner can review important user and data-management actions.
 class AuditTrailScreen extends StatefulWidget {
+  // Handles the audit trail screen logic used by this module.
   const AuditTrailScreen({super.key});
 
   @override
   State<AuditTrailScreen> createState() => _AuditTrailScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _AuditTrailScreenState extends State<AuditTrailScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
   String _selectedModule = 'All';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -23,6 +32,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
     return null;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Date unavailable';
 
@@ -55,6 +65,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
         '$hour:$minute $period';
   }
 
+  // Handles the icon for action logic used by this module.
   IconData _iconForAction(String action) {
     final normalized = action.toLowerCase();
 
@@ -93,6 +104,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
     return Icons.history_rounded;
   }
 
+  // Handles the color for action logic used by this module.
   Color _colorForAction(String action) {
     final normalized = action.toLowerCase();
 
@@ -100,28 +112,34 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
         normalized.contains('add') ||
         normalized.contains('enable') ||
         normalized.contains('import')) {
+      // Handles the color logic used by this module.
       return const Color(0xFF159447);
     }
 
     if (normalized.contains('disable') ||
         normalized.contains('void') ||
         normalized.contains('delete')) {
+      // Handles the color logic used by this module.
       return const Color(0xFFD32F2F);
     }
 
     if (normalized.contains('update') ||
         normalized.contains('edit') ||
         normalized.contains('renew')) {
+      // Handles the color logic used by this module.
       return const Color(0xFFF59E0B);
     }
 
     if (normalized.contains('restore') || normalized.contains('backup')) {
+      // Handles the color logic used by this module.
       return const Color(0xFF7B1FA2);
     }
 
+    // Handles the color logic used by this module.
     return const Color(0xFF1565C0);
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String label,
     required String value,
@@ -156,6 +174,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                 ),
                 child: Icon(icon, color: color, size: 23),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -169,6 +188,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 3),
                     Text(
                       value,
@@ -198,10 +218,12 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load audit logs.\n'
@@ -278,6 +300,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
 
         final moduleCount = modules.where((module) => module != 'All').length;
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
@@ -339,6 +362,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                   ],
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -380,6 +404,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -463,24 +488,29 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                   );
 
                   if (compact) {
+                    // Handles the column logic used by this module.
                     return Column(
                       children: [
                         searchField,
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 12),
                         moduleFilter,
                       ],
                     );
                   }
 
+                  // Handles the row logic used by this module.
                   return Row(
                     children: [
                       Expanded(child: searchField),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 14),
                       SizedBox(width: 230, child: moduleFilter),
                     ],
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               Expanded(
                 child: filtered.isEmpty
@@ -505,6 +535,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
 
                           final color = _colorForAction(action);
 
+                          // Handles the audit log card logic used by this module.
                           return _AuditLogCard(
                             color: color,
                             icon: _iconForAction(action),
@@ -532,20 +563,24 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _AuditHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the audit hover card logic used by this module.
   const _AuditHoverCard({required this.child});
 
   @override
   State<_AuditHoverCard> createState() => _AuditHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _AuditHoverCardState extends State<_AuditHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -570,6 +605,7 @@ class _AuditHoverCardState extends State<_AuditHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _AuditLogCard extends StatefulWidget {
   final Color color;
   final IconData icon;
@@ -580,6 +616,7 @@ class _AuditLogCard extends StatefulWidget {
   final String target;
   final String formattedDate;
 
+  // Handles the audit log card logic used by this module.
   const _AuditLogCard({
     required this.color,
     required this.icon,
@@ -595,11 +632,13 @@ class _AuditLogCard extends StatefulWidget {
   State<_AuditLogCard> createState() => _AuditLogCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _AuditLogCardState extends State<_AuditLogCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -639,6 +678,7 @@ class _AuditLogCardState extends State<_AuditLogCard> {
               ),
               child: Icon(widget.icon, color: widget.color, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -677,6 +717,7 @@ class _AuditLogCardState extends State<_AuditLogCard> {
                     ],
                   ),
                   if (widget.description.isNotEmpty) ...[
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 5),
                     Text(
                       widget.description,
@@ -687,6 +728,7 @@ class _AuditLogCardState extends State<_AuditLogCard> {
                     ),
                   ],
                   if (widget.target.isNotEmpty) ...[
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 7),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -707,6 +749,7 @@ class _AuditLogCardState extends State<_AuditLogCard> {
                       ),
                     ),
                   ],
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 9),
                   Wrap(
                     spacing: 12,
@@ -715,11 +758,13 @@ class _AuditLogCardState extends State<_AuditLogCard> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Handles the icon logic used by this module.
                           const Icon(
                             Icons.account_circle_outlined,
                             size: 15,
                             color: Color(0xFF8A95A4),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 5),
                           Text(
                             widget.email,
@@ -733,11 +778,13 @@ class _AuditLogCardState extends State<_AuditLogCard> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Handles the icon logic used by this module.
                           const Icon(
                             Icons.schedule_outlined,
                             size: 15,
                             color: Color(0xFF8A95A4),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 5),
                           Text(
                             widget.formattedDate,
@@ -760,11 +807,14 @@ class _AuditLogCardState extends State<_AuditLogCard> {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _AuditEmptyState extends StatelessWidget {
+  // Handles the audit empty state logic used by this module.
   const _AuditEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),

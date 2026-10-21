@@ -1,9 +1,16 @@
+// -----------------------------------------------------------------------------
+// Module overview: Analyzes cashier transaction and service data to present basic cashier performance indicators.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _CashierPerformanceHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the cashier performance hover card logic used by this module.
   const _CashierPerformanceHoverCard({required this.child});
 
   @override
@@ -11,12 +18,14 @@ class _CashierPerformanceHoverCard extends StatefulWidget {
       _CashierPerformanceHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierPerformanceHoverCardState
     extends State<_CashierPerformanceHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -41,6 +50,7 @@ class _CashierPerformanceHoverCardState
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _CashierRankingCard extends StatefulWidget {
   final int rank;
   final String name;
@@ -51,6 +61,7 @@ class _CashierRankingCard extends StatefulWidget {
   final double totalSales;
   final bool topPerformer;
 
+  // Handles the cashier ranking card logic used by this module.
   const _CashierRankingCard({
     required this.rank,
     required this.name,
@@ -66,6 +77,7 @@ class _CashierRankingCard extends StatefulWidget {
   State<_CashierRankingCard> createState() => _CashierRankingCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierRankingCardState extends State<_CashierRankingCard> {
   bool _hovered = false;
 
@@ -75,6 +87,7 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
         ? const Color(0xFFF59E0B)
         : const Color(0xFF1565C0);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -132,6 +145,7 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
                           ),
                         ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 13),
                 Expanded(
                   child: Column(
@@ -152,6 +166,7 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
                             ),
                           ),
                           if (widget.topPerformer) ...[
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -175,6 +190,7 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
                         ],
                       ),
                       if (widget.email.isNotEmpty) ...[
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 3),
                         Text(
                           widget.email,
@@ -220,15 +236,18 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [account, const SizedBox(height: 14), metrics],
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(flex: 3, child: account),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 16),
                 Expanded(
                   flex: 5,
@@ -246,11 +265,13 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _CashierMetricPill extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
+  // Handles the cashier metric pill logic used by this module.
   const _CashierMetricPill({
     required this.label,
     required this.value,
@@ -259,6 +280,7 @@ class _CashierMetricPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -276,6 +298,7 @@ class _CashierMetricPill extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 2),
           Text(
             value,
@@ -291,15 +314,19 @@ class _CashierMetricPill extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierPerformanceEmptyState extends StatelessWidget {
+  // Handles the cashier performance empty state logic used by this module.
   const _CashierPerformanceEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the layout builder logic used by this module.
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 180;
 
+        // Handles the single child scroll view logic used by this module.
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           padding: EdgeInsets.symmetric(
@@ -348,7 +375,9 @@ class _CashierPerformanceEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for analyzes cashier transaction and service data to present basic cashier performance indicators.
 class CashierPerformanceReportScreen extends StatefulWidget {
+  // Handles the cashier performance report screen logic used by this module.
   const CashierPerformanceReportScreen({super.key});
 
   @override
@@ -356,10 +385,12 @@ class CashierPerformanceReportScreen extends StatefulWidget {
       _CashierPerformanceReportScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierPerformanceReportScreenState
     extends State<CashierPerformanceReportScreen> {
   String _selectedFilter = 'This Month';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -367,6 +398,7 @@ class _CashierPerformanceReportScreenState
     return null;
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(DateTime? date) {
     if (date == null) return false;
 
@@ -391,9 +423,11 @@ class _CashierPerformanceReportScreenState
     }
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -410,12 +444,14 @@ class _CashierPerformanceReportScreenState
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the cashier performance hover card logic used by this module.
     return _CashierPerformanceHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -446,6 +482,7 @@ class _CashierPerformanceReportScreenState
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -459,6 +496,7 @@ class _CashierPerformanceReportScreenState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -489,10 +527,12 @@ class _CashierPerformanceReportScreenState
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load cashier performance.\n'
@@ -584,6 +624,7 @@ class _CashierPerformanceReportScreenState
 
         final topCashier = cashiers.isEmpty ? null : cashiers.first;
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           child: SingleChildScrollView(
@@ -650,6 +691,7 @@ class _CashierPerformanceReportScreenState
                       ],
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 16),
                   Container(
                     width: double.infinity,
@@ -667,16 +709,20 @@ class _CashierPerformanceReportScreenState
                       child: Row(
                         children: [
                           _filterChip('Today'),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 8),
                           _filterChip('This Week'),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 8),
                           _filterChip('This Month'),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 8),
                           _filterChip('All Time'),
                         ],
                       ),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 16),
                   LayoutBuilder(
                     builder: (context, constraints) {
@@ -720,6 +766,7 @@ class _CashierPerformanceReportScreenState
                       );
                     },
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 16),
                   _CashierPerformanceHoverCard(
                     child: Container(
@@ -758,6 +805,7 @@ class _CashierPerformanceReportScreenState
                                   : const Color(0xFFF59E0B),
                             ),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
@@ -777,9 +825,11 @@ class _CashierPerformanceReportScreenState
                       ),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 18),
                   Row(
                     children: [
+                      // Handles the expanded logic used by this module.
                       const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -823,8 +873,10 @@ class _CashierPerformanceReportScreenState
                       ),
                     ],
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 12),
                   if (cashiers.isEmpty)
+                    // Handles the sized box logic used by this module.
                     const SizedBox(
                       height: 230,
                       child: _CashierPerformanceEmptyState(),
@@ -838,6 +890,7 @@ class _CashierPerformanceReportScreenState
                       itemBuilder: (context, index) {
                         final cashier = cashiers[index];
 
+                        // Handles the constrained box logic used by this module.
                         return ConstrainedBox(
                           constraints: const BoxConstraints(minHeight: 124),
                           child: _CashierRankingCard(
@@ -862,11 +915,14 @@ class _CashierPerformanceReportScreenState
     );
   }
 
+  // Handles the metric logic used by this module.
   Widget _metric(String label, String value) {
+    // Handles the column logic used by this module.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        // Handles the sized box logic used by this module.
         const SizedBox(height: 4),
         Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
       ],
@@ -874,6 +930,7 @@ class _CashierPerformanceReportScreenState
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _CashierPerformance {
   final String cashierName;
   final String cashierEmail;

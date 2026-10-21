@@ -1,22 +1,31 @@
+// -----------------------------------------------------------------------------
+// Module overview: Owner configuration for operational thresholds, store details, alerts, and other system-level settings.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/audit_log_service.dart';
 
+// Private UI/data helper used only inside this module.
 class _SettingsHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the settings hover card logic used by this module.
   const _SettingsHoverCard({required this.child});
 
   @override
   State<_SettingsHoverCard> createState() => _SettingsHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SettingsHoverCardState extends State<_SettingsHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -41,6 +50,7 @@ class _SettingsHoverCardState extends State<_SettingsHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _SettingsToggleTile extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -48,6 +58,7 @@ class _SettingsToggleTile extends StatelessWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
 
+  // Handles the settings toggle tile logic used by this module.
   const _SettingsToggleTile({
     required this.title,
     required this.subtitle,
@@ -60,6 +71,7 @@ class _SettingsToggleTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = value ? const Color(0xFF1565C0) : const Color(0xFF8A95A4);
 
+    // Handles the animated container logic used by this module.
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -85,6 +97,7 @@ class _SettingsToggleTile extends StatelessWidget {
             ),
             child: Icon(icon, color: accent, size: 21),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -97,6 +110,7 @@ class _SettingsToggleTile extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 3),
                 Text(
                   subtitle,
@@ -125,6 +139,7 @@ class _SettingsToggleTile extends StatelessWidget {
               ),
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 8),
           Switch(
             value: value,
@@ -137,13 +152,16 @@ class _SettingsToggleTile extends StatelessWidget {
   }
 }
 
+// Screen widget for owner configuration for operational thresholds, store details, alerts, and other system-level settings.
 class SettingsScreen extends StatefulWidget {
+  // Handles the settings screen logic used by this module.
   const SettingsScreen({super.key});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SettingsScreenState extends State<SettingsScreen> {
   final _formKey = GlobalKey<FormState>();
 
@@ -170,6 +188,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadSettings();
   }
 
+  // Loads settings data needed by this module and prepares it for display or processing.
   Future<void> _loadSettings() async {
     try {
       final snapshot = await _settingsRef.get();
@@ -212,6 +231,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // Handles the current settings logic used by this module.
   Map<String, dynamic> _currentSettings() {
     return {
       'storeName': _storeNameController.text.trim(),
@@ -227,6 +247,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     };
   }
 
+  // Handles the changed values logic used by this module.
   Map<String, dynamic> _changedValues(Map<String, dynamic> updated) {
     final changes = <String, dynamic>{};
 
@@ -241,6 +262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return changes;
   }
 
+  // Validates and saves settings data to the application data store.
   Future<void> _saveSettings() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -256,6 +278,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (!mounted) return;
 
         ScaffoldMessenger.of(context).showSnackBar(
+          // Handles the snack bar logic used by this module.
           const SnackBar(
             content: Text('No settings changes detected.'),
             backgroundColor: Colors.orange,
@@ -283,6 +306,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Settings saved successfully.'),
           backgroundColor: Colors.green,
@@ -304,6 +328,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // Handles the required validator logic used by this module.
   String? _requiredValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'This field is required.';
@@ -312,6 +337,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return null;
   }
 
+  // Handles the positive integer validator logic used by this module.
   String? _positiveIntegerValidator(String? value) {
     final parsed = int.tryParse(value?.trim() ?? '');
 
@@ -322,11 +348,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return null;
   }
 
+  // Handles the decoration logic used by this module.
   InputDecoration _decoration({
     required String label,
     required IconData icon,
     String? suffixText,
   }) {
+    // Handles the input decoration logic used by this module.
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon, color: const Color(0xFF1565C0)),
@@ -353,6 +381,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  // Handles the section logic used by this module.
   Widget _section({
     required String title,
     required String subtitle,
@@ -366,6 +395,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _ => const Color(0xFF1565C0),
     };
 
+    // Handles the settings hover card logic used by this module.
     return _SettingsHoverCard(
       child: Container(
         width: double.infinity,
@@ -415,6 +445,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     child: Icon(icon, color: Colors.white, size: 24),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -428,6 +459,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             fontWeight: FontWeight.w900,
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 3),
                         Text(
                           subtitle,
@@ -474,9 +506,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
+      // Handles the center logic used by this module.
       return const Center(child: CircularProgressIndicator());
     }
 
+    // Handles the container logic used by this module.
     return Container(
       color: const Color(0xFFF2F6FC),
       child: SingleChildScrollView(
@@ -544,6 +578,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ],
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 18),
                   _section(
                     title: 'Store Information',
@@ -575,24 +610,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           );
 
                           if (isWide) {
+                            // Handles the row logic used by this module.
                             return Row(
                               children: [
                                 Expanded(child: nameField),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 16),
                                 Expanded(child: contactField),
                               ],
                             );
                           }
 
+                          // Handles the column logic used by this module.
                           return Column(
                             children: [
                               nameField,
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 16),
                               contactField,
                             ],
                           );
                         },
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _storeAddressController,
@@ -605,6 +645,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 18),
                   _section(
                     title: 'Inventory Alerts',
@@ -641,24 +682,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           );
 
                           if (isWide) {
+                            // Handles the row logic used by this module.
                             return Row(
                               children: [
                                 Expanded(child: lowStock),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 16),
                                 Expanded(child: expiration),
                               ],
                             );
                           }
 
+                          // Handles the column logic used by this module.
                           return Column(
                             children: [
                               lowStock,
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 16),
                               expiration,
                             ],
                           );
                         },
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 14),
                       _SettingsToggleTile(
                         title: 'Enable low-stock alerts',
@@ -674,6 +720,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 });
                               },
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 10),
                       _SettingsToggleTile(
                         title: 'Enable expiration alerts',
@@ -691,6 +738,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 18),
                   _section(
                     title: 'Receipt Settings',
@@ -709,6 +757,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 22),
                   Container(
                     width: double.infinity,
@@ -722,11 +771,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     child: Row(
                       children: [
+                        // Handles the icon logic used by this module.
                         const Icon(
                           Icons.info_outline,
                           color: Color(0xFF1565C0),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 10),
+                        // Handles the expanded logic used by this module.
                         const Expanded(
                           child: Text(
                             'Changes are saved to Firestore '

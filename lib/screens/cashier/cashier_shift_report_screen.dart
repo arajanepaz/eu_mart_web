@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Summarizes the current cashier shift using transaction totals, service activity, and related operational metrics.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,20 +10,24 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+// Private UI/data helper used only inside this module.
 class _ShiftHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the shift hover card logic used by this module.
   const _ShiftHoverCard({required this.child});
 
   @override
   State<_ShiftHoverCard> createState() => _ShiftHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ShiftHoverCardState extends State<_ShiftHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -43,12 +52,14 @@ class _ShiftHoverCardState extends State<_ShiftHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ShiftMetricPill extends StatelessWidget {
   final String label;
   final String value;
   final IconData icon;
   final Color color;
 
+  // Handles the shift metric pill logic used by this module.
   const _ShiftMetricPill({
     required this.label,
     required this.value,
@@ -58,6 +69,7 @@ class _ShiftMetricPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
@@ -68,6 +80,7 @@ class _ShiftMetricPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 18),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,6 +93,7 @@ class _ShiftMetricPill extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 2),
               Text(
                 value,
@@ -97,6 +111,7 @@ class _ShiftMetricPill extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ShiftTransactionCard extends StatefulWidget {
   final String receipt;
   final int itemCount;
@@ -106,6 +121,7 @@ class _ShiftTransactionCard extends StatefulWidget {
   final double savings;
   final String time;
 
+  // Handles the shift transaction card logic used by this module.
   const _ShiftTransactionCard({
     required this.receipt,
     required this.itemCount,
@@ -120,6 +136,7 @@ class _ShiftTransactionCard extends StatefulWidget {
   State<_ShiftTransactionCard> createState() => _ShiftTransactionCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ShiftTransactionCardState extends State<_ShiftTransactionCard> {
   bool _hovered = false;
 
@@ -127,6 +144,7 @@ class _ShiftTransactionCardState extends State<_ShiftTransactionCard> {
   Widget build(BuildContext context) {
     const accent = Color(0xFF1565C0);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -171,6 +189,7 @@ class _ShiftTransactionCardState extends State<_ShiftTransactionCard> {
                     size: 26,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 13),
                 Expanded(
                   child: Column(
@@ -186,14 +205,17 @@ class _ShiftTransactionCardState extends State<_ShiftTransactionCard> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 4),
                       Row(
                         children: [
+                          // Handles the icon logic used by this module.
                           const Icon(
                             Icons.schedule_outlined,
                             size: 15,
                             color: Color(0xFF8A95A4),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
@@ -251,6 +273,7 @@ class _ShiftTransactionCardState extends State<_ShiftTransactionCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  // Handles the text logic used by this module.
                   const Text(
                     'TOTAL',
                     style: TextStyle(
@@ -259,6 +282,7 @@ class _ShiftTransactionCardState extends State<_ShiftTransactionCard> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 3),
                   Text(
                     '₱${widget.total.toStringAsFixed(2)}',
@@ -273,23 +297,29 @@ class _ShiftTransactionCardState extends State<_ShiftTransactionCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   transaction,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 12),
                   metrics,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 12),
                   Align(alignment: Alignment.centerRight, child: total),
                 ],
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(flex: 3, child: transaction),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(flex: 4, child: metrics),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 total,
               ],
@@ -301,11 +331,13 @@ class _ShiftTransactionCardState extends State<_ShiftTransactionCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ShiftSmallMetric extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
+  // Handles the shift small metric logic used by this module.
   const _ShiftSmallMetric({
     required this.label,
     required this.value,
@@ -314,6 +346,7 @@ class _ShiftSmallMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
@@ -331,6 +364,7 @@ class _ShiftSmallMetric extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 2),
           Text(
             value,
@@ -346,21 +380,27 @@ class _ShiftSmallMetric extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ShiftReportEmptyState extends StatelessWidget {
+  // Handles the shift report empty state logic used by this module.
   const _ShiftReportEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Handles the icon logic used by this module.
           const Icon(
             Icons.receipt_long_outlined,
             size: 60,
             color: Color(0xFFB8C5D5),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 11),
+          // Handles the text logic used by this module.
           const Text(
             'No completed transactions today',
             textAlign: TextAlign.center,
@@ -370,7 +410,9 @@ class _ShiftReportEmptyState extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 4),
+          // Handles the text logic used by this module.
           const Text(
             'Completed cashier transactions will appear here.',
             textAlign: TextAlign.center,
@@ -382,7 +424,9 @@ class _ShiftReportEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for summarizes the current cashier shift using transaction totals, service activity, and related operational metrics.
 class CashierShiftReportScreen extends StatefulWidget {
+  // Handles the cashier shift report screen logic used by this module.
   const CashierShiftReportScreen({super.key});
 
   @override
@@ -390,7 +434,9 @@ class CashierShiftReportScreen extends StatefulWidget {
       _CashierShiftReportScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -398,6 +444,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
     return null;
   }
 
+  // Checks whether the current value satisfies the is today rule used by this module.
   bool _isToday(DateTime? date) {
     if (date == null) return false;
 
@@ -408,6 +455,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
         date.day == now.day;
   }
 
+  // Formats date time into a user-friendly display value.
   String _formatDateTime(DateTime date) {
     final hour = date.hour == 0
         ? 12
@@ -422,12 +470,14 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
         '$hour:$minute $period';
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the shift hover card logic used by this module.
     return _ShiftHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -458,6 +508,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -471,6 +522,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -494,6 +546,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
     );
   }
 
+  // Handles the print shift report logic used by this module.
   Future<void> _printShiftReport({
     required String cashierName,
     required String cashierEmail,
@@ -636,12 +689,14 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
     );
   }
 
+  // Handles the pdf summary row logic used by this module.
   pw.TableRow _pdfSummaryRow(String label, String value) {
     return pw.TableRow(
       children: [_pdfCell(label, bold: true), _pdfCell(value)],
     );
   }
 
+  // Handles the pdf cell logic used by this module.
   pw.Widget _pdfCell(String value, {bool bold = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(7),
@@ -660,6 +715,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
+      // Handles the center logic used by this module.
       return const Center(
         child: Text(
           'No logged-in cashier.',
@@ -694,10 +750,12 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting &&
                 !snapshot.hasData) {
+              // Handles the center logic used by this module.
               return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
+              // Handles the center logic used by this module.
               return Center(
                 child: Text(
                   'Unable to load shift report.\n'
@@ -766,6 +824,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                 ? 0.0
                 : totalSales / transactions.length;
 
+            // Handles the container logic used by this module.
             return Container(
               color: const Color(0xFFF2F6FC),
               child: SingleChildScrollView(
@@ -803,17 +862,20 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
 
                               final title = Row(
                                 children: [
+                                  // Handles the icon logic used by this module.
                                   const Icon(
                                     Icons.summarize_outlined,
                                     color: Colors.white,
                                     size: 29,
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
+                                        // Handles the text logic used by this module.
                                         const Text(
                                           'Cashier Shift Report',
                                           style: TextStyle(
@@ -822,6 +884,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
+                                        // Handles the sized box logic used by this module.
                                         const SizedBox(height: 4),
                                         Text(
                                           '$cashierName • '
@@ -875,20 +938,24 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                               );
 
                               if (compact) {
+                                // Handles the column logic used by this module.
                                 return Column(
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
                                     title,
+                                    // Handles the sized box logic used by this module.
                                     const SizedBox(height: 14),
                                     printButton,
                                   ],
                                 );
                               }
 
+                              // Handles the row logic used by this module.
                               return Row(
                                 children: [
                                   Expanded(child: title),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(width: 16),
                                   printButton,
                                 ],
@@ -896,6 +963,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                             },
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         LayoutBuilder(
                           builder: (context, constraints) {
@@ -946,6 +1014,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                             );
                           },
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         _ShiftHoverCard(
                           child: Container(
@@ -986,9 +1055,11 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                             ),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 20),
                         Row(
                           children: [
+                            // Handles the expanded logic used by this module.
                             const Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1032,8 +1103,10 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                             ),
                           ],
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 12),
                         if (transactions.isEmpty)
+                          // Handles the sized box logic used by this module.
                           const SizedBox(
                             height: 230,
                             child: _ShiftReportEmptyState(),
@@ -1044,6 +1117,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: transactions.length,
                             separatorBuilder: (_, _) =>
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final document = transactions[index];
@@ -1088,6 +1162,7 @@ class _CashierShiftReportScreenState extends State<CashierShiftReportScreen> {
 
                               final createdAt = _readDate(data['createdAt']);
 
+                              // Handles the shift transaction card logic used by this module.
                               return _ShiftTransactionCard(
                                 receipt: receipt,
                                 itemCount: itemCount,

@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Authenticates users, determines their role, logs session activity, and routes Owner or Cashier accounts to the correct dashboard.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -10,14 +15,17 @@ import '../cashier/cashier_dashboard.dart';
 import '../owner/owner_dashboard.dart';
 import 'forgot_password_screen.dart';
 
+// Private UI/data helper used only inside this module.
 class _FeatureChip extends StatelessWidget {
   final IconData icon;
   final String label;
 
+  // Handles the feature chip logic used by this module.
   const _FeatureChip({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
       decoration: BoxDecoration(
@@ -29,6 +37,7 @@ class _FeatureChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: Colors.white, size: 17),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Text(
             label,
@@ -44,13 +53,16 @@ class _FeatureChip extends StatelessWidget {
   }
 }
 
+// Screen widget for authenticates users, determines their role, logs session activity, and routes Owner or Cashier accounts to the correct dashboard.
 class LoginScreen extends StatefulWidget {
+  // Records login screen information for monitoring or traceability.
   const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -68,11 +80,14 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Loads remembered account data needed by this module and prepares it for display or processing.
       await _loadRememberedAccount();
+      // Handles the check saved session logic used by this module.
       await _checkSavedSession();
     });
   }
 
+  // Loads remembered account data needed by this module and prepares it for display or processing.
   Future<void> _loadRememberedAccount() async {
     final preferences = await SharedPreferences.getInstance();
     final rememberAccount = preferences.getBool('rememberAccount') ?? false;
@@ -88,6 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  // Validates and saves remembered account data to the application data store.
   Future<void> _saveRememberedAccount(String email) async {
     final preferences = await SharedPreferences.getInstance();
 
@@ -100,6 +116,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Handles the check saved session logic used by this module.
   Future<void> _checkSavedSession() async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -122,6 +139,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+      // Opens the dashboard for user flow from the current screen.
       await _openDashboardForUser(
         refreshedUser,
         showLoginErrors: false,
@@ -139,6 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Handles the record login activity logic used by this module.
   Future<void> _recordLoginActivity({
     required User user,
     required String role,
@@ -177,6 +196,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Opens the dashboard for user flow from the current screen.
   Future<void> _openDashboardForUser(
     User user, {
     bool showLoginErrors = true,
@@ -190,6 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!userDocument.exists) {
       await FirebaseAuth.instance.signOut();
+      // Handles the exception logic used by this module.
       throw Exception('User record was not found in Firestore.');
     }
 
@@ -201,9 +222,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!isActive) {
       await FirebaseAuth.instance.signOut();
+      // Handles the exception logic used by this module.
       throw Exception('This account is currently disabled.');
     }
 
+    // Handles the record login activity logic used by this module.
     await _recordLoginActivity(
       user: user,
       role: role,
@@ -233,9 +256,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
     await FirebaseAuth.instance.signOut();
 
+    // Handles the exception logic used by this module.
     throw Exception('Unknown user role: $role');
   }
 
+  // Records login information for monitoring or traceability.
   Future<void> _login() async {
     FocusScope.of(context).unfocus();
 
@@ -269,13 +294,16 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = credential.user;
 
       if (user == null) {
+        // Handles the exception logic used by this module.
         throw Exception('Unable to load user account.');
       }
 
+      // Validates and saves remembered account data to the application data store.
       await _saveRememberedAccount(email);
 
       TextInput.finishAutofillContext(shouldSave: _rememberMe);
 
+      // Opens the dashboard for user flow from the current screen.
       await _openDashboardForUser(
         user,
         loginMethod: 'password',
@@ -327,6 +355,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // Handles the input decoration logic used by this module.
   InputDecoration _inputDecoration({
     required String label,
     required IconData icon,
@@ -335,6 +364,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }) {
     final hasError = errorText != null;
 
+    // Handles the input decoration logic used by this module.
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(
@@ -371,11 +401,13 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // Handles the decorative circle logic used by this module.
   Widget _decorativeCircle({
     required double size,
     required Alignment alignment,
     required double opacity,
   }) {
+    // Handles the align logic used by this module.
     return Align(
       alignment: alignment,
       child: TweenAnimationBuilder<double>(
@@ -408,7 +440,9 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // Builds the brand panel UI from the current data and screen state.
   Widget _buildBrandPanel() {
+    // Handles the container logic used by this module.
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -457,6 +491,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   curve: Curves.easeOutCubic,
                   tween: Tween<double>(begin: 0, end: 1),
                   builder: (context, value, child) {
+                    // Handles the opacity logic used by this module.
                     return Opacity(
                       opacity: value,
                       child: Transform.translate(
@@ -492,6 +527,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           fit: BoxFit.contain,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 26),
                       Text(
                         'EÜ MART',
@@ -503,6 +539,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           letterSpacing: 1.4,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 10),
                       Text(
                         'Point-of-Sale Service Management System',
@@ -514,7 +551,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 1.3,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 10),
+                      // Handles the text logic used by this module.
                       const Text(
                         'AI-Assisted Product Search and Basic '
                         'Business Monitoring',
@@ -556,7 +595,9 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // Builds the login form UI from the current data and screen state.
   Widget _buildLoginForm() {
+    // Handles the container logic used by this module.
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -575,6 +616,7 @@ class _LoginScreenState extends State<LoginScreen> {
               curve: Curves.easeOutCubic,
               tween: Tween<double>(begin: 0, end: 1),
               builder: (context, value, child) {
+                // Handles the opacity logic used by this module.
                 return Opacity(
                   opacity: value,
                   child: Transform.translate(
@@ -622,6 +664,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         size: 27,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 22),
                     Text(
                       'Welcome Back',
@@ -631,7 +674,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: const Color(0xFF172033),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 7),
+                    // Handles the text logic used by this module.
                     const Text(
                       'Sign in to continue to your EÜ MART account.',
                       style: TextStyle(
@@ -640,6 +685,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         height: 1.4,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 28),
                     TextField(
                       controller: _emailController,
@@ -664,6 +710,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         errorText: _emailError,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 17),
                     TextField(
                       controller: _passwordController,
@@ -709,6 +756,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 11),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -739,6 +787,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         },
                                   activeColor: const Color(0xFF1565C0),
                                 ),
+                                // Handles the text logic used by this module.
                                 const Text(
                                   'Remember me',
                                   style: TextStyle(
@@ -758,6 +807,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   Navigator.of(context).push(
                                     MaterialPageRoute(
                                       builder: (_) =>
+                                          // Handles the forgot password screen logic used by this module.
                                           const ForgotPasswordScreen(),
                                     ),
                                   );
@@ -769,6 +819,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         );
 
                         if (compact) {
+                          // Handles the column logic used by this module.
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -781,9 +832,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           );
                         }
 
+                        // Handles the row logic used by this module.
                         return Row(
                           children: [
                             rememberWidget,
+                            // Handles the spacer logic used by this module.
                             const Spacer(),
                             forgotWidget,
                           ],
@@ -808,11 +861,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Handles the icon logic used by this module.
                                   const Icon(
                                     Icons.error_outline,
                                     color: Colors.red,
                                     size: 20,
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(width: 9),
                                   Expanded(
                                     child: Text(
@@ -827,6 +882,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 17),
                     SizedBox(
                       height: 54,
@@ -883,7 +939,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 20),
+                    // Handles the row logic used by this module.
                     const Row(
                       children: [
                         Expanded(child: Divider(color: Color(0xFFE2E8F0))),
@@ -902,7 +960,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Expanded(child: Divider(color: Color(0xFFE2E8F0))),
                       ],
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 14),
+                    // Handles the text logic used by this module.
                     const Text(
                       'Authorized Owner and Cashier accounts only.',
                       textAlign: TextAlign.center,
@@ -924,6 +984,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     if (_checkingSession) {
+      // Handles the scaffold logic used by this module.
       return Scaffold(
         backgroundColor: const Color(0xFFF3F7FC),
         body: Center(
@@ -967,6 +1028,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
 
+    // Handles the scaffold logic used by this module.
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: LayoutBuilder(
@@ -977,6 +1039,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // Desktop/tablet landscape keeps the original branded blue panel
           // beside the login form.
           if (desktopTwoPanel) {
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(flex: 5, child: _buildBrandPanel()),

@@ -1,9 +1,17 @@
+// -----------------------------------------------------------------------------
+// Module overview: Combines daily operational information into a concise owner-facing store summary.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Screen widget for combines daily operational information into a concise owner-facing store summary.
 class DailyOperationsSummaryScreen extends StatelessWidget {
+  // Handles the daily operations summary screen logic used by this module.
   const DailyOperationsSummaryScreen({super.key});
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -11,6 +19,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
     return null;
   }
 
+  // Checks whether the current value satisfies the is today rule used by this module.
   bool _isToday(DateTime? date) {
     if (date == null) return false;
 
@@ -21,6 +30,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
         date.day == now.day;
   }
 
+  // Handles the days until logic used by this module.
   int _daysUntil(DateTime? date) {
     if (date == null) return 999999;
 
@@ -31,6 +41,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
     return target.difference(today).inDays;
   }
 
+  // Formats duration into a user-friendly display value.
   String _formatDuration(double seconds) {
     if (seconds <= 0) return '0s';
 
@@ -43,6 +54,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
     return '${minutes}m ${remaining}s';
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
@@ -50,6 +62,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
     required Color color,
     String? subtitle,
   }) {
+    // Handles the daily ops hover card logic used by this module.
     return _DailyOpsHoverCard(
       child: Container(
         padding: const EdgeInsets.all(18),
@@ -82,6 +95,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -95,6 +109,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -110,6 +125,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                     ),
                   ),
                   if (subtitle != null) ...[
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 3),
                     Text(
                       subtitle,
@@ -131,12 +147,14 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
     );
   }
 
+  // Handles the alert row logic used by this module.
   Widget _alertRow({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the daily ops hover card logic used by this module.
     return _DailyOpsHoverCard(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -161,6 +179,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
               ),
               child: Icon(icon, color: color, size: 20),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 11),
             Expanded(
               child: Text(
@@ -194,6 +213,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
     );
   }
 
+  // Builds the content UI from the current data and screen state.
   Widget _buildContent({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions,
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
@@ -275,6 +295,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
     }
 
     final todayIssues = issues.where((document) {
+      // Checks whether the current value satisfies the is today rule used by this module.
       return _isToday(_readDate(document.data()['createdAt']));
     }).toList();
 
@@ -342,6 +363,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
       overallColor = Colors.green;
     }
 
+    // Handles the container logic used by this module.
     return Container(
       color: const Color(0xFFF2F6FC),
       child: SingleChildScrollView(
@@ -408,6 +430,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                     ],
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 16),
                 _DailyOpsHoverCard(
                   child: Container(
@@ -448,11 +471,13 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                                 size: 29,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 14),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Handles the text logic used by this module.
                                   const Text(
                                     'TODAY’S OPERATIONAL STATUS',
                                     style: TextStyle(
@@ -462,6 +487,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                                       letterSpacing: 0.6,
                                     ),
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 4),
                                   Text(
                                     overallStatus,
@@ -497,10 +523,12 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                         );
 
                         if (compact) {
+                          // Handles the column logic used by this module.
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               statusInfo,
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 12),
                               Align(
                                 alignment: Alignment.centerLeft,
@@ -510,9 +538,11 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                           );
                         }
 
+                        // Handles the row logic used by this module.
                         return Row(
                           children: [
                             Expanded(child: statusInfo),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 14),
                             alertBadge,
                           ],
@@ -521,6 +551,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 16),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -581,6 +612,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                     );
                   },
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 20),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -600,6 +632,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             icon: Icons.check_circle_outline,
                             color: const Color(0xFF159447),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
                           _alertRow(
                             title: 'Minor Delay',
@@ -607,6 +640,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             icon: Icons.schedule_outlined,
                             color: const Color(0xFFF59E0B),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
                           _alertRow(
                             title: 'Long Delay',
@@ -614,6 +648,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             icon: Icons.warning_amber_outlined,
                             color: const Color(0xFFD32F2F),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
                           _alertRow(
                             title: 'Major Open Issues',
@@ -638,6 +673,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             icon: Icons.remove_shopping_cart_outlined,
                             color: const Color(0xFFD32F2F),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
                           _alertRow(
                             title: 'Low Stock',
@@ -645,6 +681,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             icon: Icons.inventory_2_outlined,
                             color: const Color(0xFFF59E0B),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
                           _alertRow(
                             title: 'Expired Products',
@@ -652,6 +689,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             icon: Icons.event_busy_outlined,
                             color: const Color(0xFFD32F2F),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
                           _alertRow(
                             title: 'Expiring Products',
@@ -659,6 +697,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             icon: Icons.event_outlined,
                             color: const Color(0xFFF59E0B),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
                           _alertRow(
                             title: 'Expired Permits',
@@ -666,6 +705,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             icon: Icons.assignment_late_outlined,
                             color: const Color(0xFFD32F2F),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
                           _alertRow(
                             title: 'Permits Due Soon',
@@ -678,19 +718,23 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                     );
 
                     if (compact) {
+                      // Handles the column logic used by this module.
                       return Column(
                         children: [
                           servicePanel,
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 16),
                           inventoryPanel,
                         ],
                       );
                     }
 
+                    // Handles the row logic used by this module.
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(child: servicePanel),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 16),
                         Expanded(child: inventoryPanel),
                       ],
@@ -712,10 +756,12 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
       builder: (context, transactionSnapshot) {
         if (transactionSnapshot.connectionState == ConnectionState.waiting &&
             !transactionSnapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (transactionSnapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load transaction data.\n'
@@ -731,10 +777,12 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
           builder: (context, productSnapshot) {
             if (productSnapshot.connectionState == ConnectionState.waiting &&
                 !productSnapshot.hasData) {
+              // Handles the center logic used by this module.
               return const Center(child: CircularProgressIndicator());
             }
 
             if (productSnapshot.hasError) {
+              // Handles the center logic used by this module.
               return Center(
                 child: Text(
                   'Unable to load product data.\n'
@@ -752,10 +800,12 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
               builder: (context, issueSnapshot) {
                 if (issueSnapshot.connectionState == ConnectionState.waiting &&
                     !issueSnapshot.hasData) {
+                  // Handles the center logic used by this module.
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 if (issueSnapshot.hasError) {
+                  // Handles the center logic used by this module.
                   return Center(
                     child: Text(
                       'Unable to load service issues.\n'
@@ -774,10 +824,12 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                     if (permitSnapshot.connectionState ==
                             ConnectionState.waiting &&
                         !permitSnapshot.hasData) {
+                      // Handles the center logic used by this module.
                       return const Center(child: CircularProgressIndicator());
                     }
 
                     if (permitSnapshot.hasError) {
+                      // Handles the center logic used by this module.
                       return Center(
                         child: Text(
                           'Unable to load permit data.\n'
@@ -788,6 +840,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                       );
                     }
 
+                    // Builds the content UI from the current data and screen state.
                     return _buildContent(
                       transactions:
                           transactionSnapshot.data?.docs ??
@@ -813,20 +866,24 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _DailyOpsHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the daily ops hover card logic used by this module.
   const _DailyOpsHoverCard({required this.child});
 
   @override
   State<_DailyOpsHoverCard> createState() => _DailyOpsHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _DailyOpsHoverCardState extends State<_DailyOpsHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -851,6 +908,7 @@ class _DailyOpsHoverCardState extends State<_DailyOpsHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _OperationsPanel extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -858,6 +916,7 @@ class _OperationsPanel extends StatelessWidget {
   final Color accent;
   final Widget child;
 
+  // Handles the operations panel logic used by this module.
   const _OperationsPanel({
     required this.title,
     required this.subtitle,
@@ -868,6 +927,7 @@ class _OperationsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the daily ops hover card logic used by this module.
     return _DailyOpsHoverCard(
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -894,6 +954,7 @@ class _OperationsPanel extends StatelessWidget {
                   ),
                   child: Icon(icon, color: Colors.white, size: 24),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -907,6 +968,7 @@ class _OperationsPanel extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 3),
                       Text(
                         subtitle,
@@ -920,6 +982,7 @@ class _OperationsPanel extends StatelessWidget {
                 ),
               ],
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 16),
             child,
           ],

@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Main cashier navigation shell that exposes POS, products, transactions, shift reporting, and account actions.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -14,13 +19,16 @@ import 'cashier_shift_report_screen.dart';
 import '../shared/service_issue_logging_screen.dart';
 import '../shared/change_password_screen.dart';
 
+// Defines a reusable component or data structure used by this module.
 class CashierDashboard extends StatefulWidget {
+  // Handles the cashier dashboard logic used by this module.
   const CashierDashboard({super.key});
 
   @override
   State<CashierDashboard> createState() => _CashierDashboardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierDashboardState extends State<CashierDashboard> {
   int _selectedIndex = 0;
 
@@ -35,6 +43,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
     _MenuItem('Change Password', Icons.password_outlined),
   ];
 
+  // Finalizes the current login-activity record with logout time and session duration.
   Future<void> _closeLoginSession() async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -81,7 +90,9 @@ class _CashierDashboardState extends State<CashierDashboard> {
     }
   }
 
+  // Closes the active login session, signs the user out, and returns to the login screen.
   Future<void> _logout() async {
+    // Finalizes the current login-activity record with logout time and session duration.
     await _closeLoginSession();
     await FirebaseAuth.instance.signOut();
 
@@ -94,7 +105,9 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Builds the sidebar UI from the current data and screen state.
   Widget _buildSidebar({required bool compact, bool drawerMode = false}) {
+    // Handles the animated container logic used by this module.
     return AnimatedContainer(
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeInOutCubic,
@@ -145,6 +158,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                       fit: BoxFit.contain,
                     ),
                     if (!compact) ...[
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -159,6 +173,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
+                            // Handles the text logic used by this module.
                             const Text(
                               'Cashier Portal',
                               style: TextStyle(
@@ -232,6 +247,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                                         : Colors.white,
                                   ),
                                   if (!compact) ...[
+                                    // Handles the sized box logic used by this module.
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Text(
@@ -283,13 +299,16 @@ class _CashierDashboardState extends State<CashierDashboard> {
                           : MainAxisAlignment.start,
                       children: [
                         SizedBox(width: compact ? 0 : 14),
+                        // Handles the icon logic used by this module.
                         const Icon(
                           Icons.logout_rounded,
                           color: Colors.white,
                           size: 21,
                         ),
                         if (!compact) ...[
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 12),
+                          // Handles the text logic used by this module.
                           const Text(
                             'Logout',
                             style: TextStyle(
@@ -310,10 +329,12 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Builds the top bar UI from the current data and screen state.
   Widget _buildTopBar({bool mobile = false, VoidCallback? onMenuPressed}) {
     final user = FirebaseAuth.instance.currentUser;
     final pageTitle = _menuItems[_selectedIndex].label;
 
+    // Handles the container logic used by this module.
     return Container(
       height: 68,
       padding: const EdgeInsets.symmetric(horizontal: 22),
@@ -347,6 +368,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                 ),
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 10),
           ],
           if (_selectedIndex != 0) ...[
@@ -370,6 +392,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                 ),
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 14),
           ],
           Expanded(
@@ -406,6 +429,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
             ),
           ),
           if (mobile)
+            // Handles the circle avatar logic used by this module.
             const CircleAvatar(
               radius: 18,
               backgroundColor: Color(0xFF1565C0),
@@ -422,6 +446,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
             ),
             child: Row(
               children: [
+                // Handles the circle avatar logic used by this module.
                 const CircleAvatar(
                   radius: 17,
                   backgroundColor: Color(0xFF1565C0),
@@ -431,11 +456,13 @@ class _CashierDashboardState extends State<CashierDashboard> {
                     size: 19,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 9),
                 Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Handles the text logic used by this module.
                     const Text(
                       'Cashier',
                       style: TextStyle(
@@ -461,12 +488,14 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -491,6 +520,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
             ),
             child: Icon(icon, color: color, size: 28),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -500,6 +530,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                   title,
                   style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 5),
                 Text(
                   value,
@@ -516,6 +547,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -523,6 +555,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
     return null;
   }
 
+  // Formats date/time values used in the owner dashboard overview.
   String _formatDashboardDate(DateTime? date) {
     if (date == null) return 'Date unavailable';
 
@@ -539,11 +572,13 @@ class _CashierDashboardState extends State<CashierDashboard> {
     return '${date.year}-$month-$day • $hour:$minute $period';
   }
 
+  // Handles the dashboard panel logic used by this module.
   Widget _dashboardPanel({
     required String title,
     required Widget child,
     VoidCallback? onViewAll,
   }) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -575,6 +610,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                 TextButton(onPressed: onViewAll, child: const Text('View All')),
             ],
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 14),
           child,
         ],
@@ -582,12 +618,14 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Builds the cashier promo carousel UI from the current data and screen state.
   Widget _buildCashierPromoCarousel(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
+    // Reads and normalizes date from stored data.
     DateTime? readDate(dynamic value) {
       if (value is Timestamp) return value.toDate();
       if (value is DateTime) return value;
@@ -633,11 +671,13 @@ class _CashierDashboardState extends State<CashierDashboard> {
       return const SizedBox.shrink();
     }
 
+    // Handles the column logic used by this module.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
+            // Handles the expanded logic used by this module.
             const Expanded(
               child: Text(
                 'Available Store Promos',
@@ -659,6 +699,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
             ),
           ],
         ),
+        // Handles the sized box logic used by this module.
         const SizedBox(height: 12),
         SizedBox(
           height: 205,
@@ -690,6 +731,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                   ? '₱${promoPrice.toStringAsFixed(2)}'
                   : promoType.toUpperCase();
 
+              // Handles the material logic used by this module.
               return Material(
                 color: Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
@@ -741,6 +783,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                             ),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 12),
                         Text(
                           productName,
@@ -752,6 +795,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                        // Handles the spacer logic used by this module.
                         const Spacer(),
                         if (promoType != 'Buy 1 Take 1' && promoPrice != null)
                           Text(
@@ -769,6 +813,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                             fontWeight: FontWeight.w900,
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 5),
                         Row(
                           children: [
@@ -808,6 +853,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Builds the dashboard overview UI from the current data and screen state.
   Widget _buildDashboardOverview() {
     final currentUser = FirebaseAuth.instance.currentUser;
 
@@ -907,6 +953,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                   }
                 }
 
+                // Handles the single child scroll view logic used by this module.
                 return SingleChildScrollView(
                   padding: const EdgeInsets.all(28),
                   child: Column(
@@ -920,16 +967,20 @@ class _CashierDashboardState extends State<CashierDashboard> {
                           color: const Color(0xFF1F2937),
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 8),
+                      // Handles the text logic used by this module.
                       const Text(
                         'Here is your current cashier activity and store status.',
                         style: TextStyle(color: Colors.grey),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 24),
                       _buildCashierPromoCarousel(productDocs),
                       if (productDocs.any(
                         (document) => document.data()['promoActive'] == true,
                       ))
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 26),
                       LayoutBuilder(
                         builder: (context, constraints) {
@@ -979,6 +1030,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                           );
                         },
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 26),
                       LayoutBuilder(
                         builder: (context, constraints) {
@@ -1017,6 +1069,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                                                 ?.toDouble() ??
                                             0;
 
+                                        // Handles the list tile logic used by this module.
                                         return ListTile(
                                           contentPadding: EdgeInsets.zero,
                                           leading: const CircleAvatar(
@@ -1079,6 +1132,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                                       final stock =
                                           (data['stock'] as num?)?.toInt() ?? 0;
 
+                                      // Handles the list tile logic used by this module.
                                       return ListTile(
                                         contentPadding: EdgeInsets.zero,
                                         leading: CircleAvatar(
@@ -1110,25 +1164,30 @@ class _CashierDashboardState extends State<CashierDashboard> {
                           );
 
                           if (isWide) {
+                            // Handles the row logic used by this module.
                             return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Expanded(flex: 3, child: recentTransactions),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 20),
                                 Expanded(flex: 2, child: stockPanel),
                               ],
                             );
                           }
 
+                          // Handles the column logic used by this module.
                           return Column(
                             children: [
                               recentTransactions,
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 20),
                               stockPanel,
                             ],
                           );
                         },
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 20),
                       _dashboardPanel(
                         title: 'Quick Actions',
@@ -1186,11 +1245,13 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Handles the quick action button logic used by this module.
   Widget _quickActionButton({
     required String label,
     required IconData icon,
     required VoidCallback onPressed,
   }) {
+    // Handles the sized box logic used by this module.
     return SizedBox(
       width: 210,
       height: 52,
@@ -1202,9 +1263,11 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Builds the placeholder page UI from the current data and screen state.
   Widget _buildPlaceholderPage() {
     final item = _menuItems[_selectedIndex];
 
+    // Handles the center logic used by this module.
     return Center(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 520),
@@ -1225,13 +1288,16 @@ class _CashierDashboardState extends State<CashierDashboard> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(item.icon, size: 72, color: const Color(0xFF1565C0)),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 18),
             Text(
               item.label,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 27, fontWeight: FontWeight.bold),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 10),
+            // Handles the text logic used by this module.
             const Text(
               'This module will be developed next.',
               textAlign: TextAlign.center,
@@ -1243,7 +1309,9 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  // Handles the selected page logic used by this module.
   Widget _selectedPage() {
+    // Handles the keyed subtree logic used by this module.
     return KeyedSubtree(
       key: ValueKey<int>(_selectedIndex),
       child: switch (_selectedIndex) {
@@ -1262,6 +1330,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the layout builder logic used by this module.
     return LayoutBuilder(
       builder: (context, constraints) {
         final isPhone = ResponsiveDevice.useMobileLayout(
@@ -1270,6 +1339,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
         );
 
         if (isPhone) {
+          // Handles the scaffold logic used by this module.
           return Scaffold(
             backgroundColor: const Color(0xFFF2F6FC),
             drawer: Drawer(
@@ -1279,6 +1349,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
             body: SafeArea(
               child: Builder(
                 builder: (scaffoldContext) {
+                  // Handles the column logic used by this module.
                   return Column(
                     children: [
                       _buildTopBar(
@@ -1305,6 +1376,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
 
         final compactSidebar = constraints.maxWidth < 1050;
 
+        // Handles the scaffold logic used by this module.
         return Scaffold(
           backgroundColor: const Color(0xFFF2F6FC),
           body: Row(
@@ -1335,9 +1407,11 @@ class _CashierDashboardState extends State<CashierDashboard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _MenuItem {
   final String label;
   final IconData icon;
 
+  // Handles the menu item logic used by this module.
   const _MenuItem(this.label, this.icon);
 }

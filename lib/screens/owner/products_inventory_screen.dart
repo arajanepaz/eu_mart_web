@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Owner product and inventory management including product creation, editing, stock data, pricing, and expiration information.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,11 +12,14 @@ import 'package:flutter/material.dart';
 
 import '../../services/audit_log_service.dart';
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _InventoryEmptyState extends StatelessWidget {
+  // Handles the inventory empty state logic used by this module.
   const _InventoryEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -49,6 +57,7 @@ class _InventoryEmptyState extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _InventoryProductCard extends StatefulWidget {
   final String productName;
   final String category;
@@ -61,6 +70,7 @@ class _InventoryProductCard extends StatefulWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
+  // Handles the inventory product card logic used by this module.
   const _InventoryProductCard({
     required this.productName,
     required this.category,
@@ -78,6 +88,7 @@ class _InventoryProductCard extends StatefulWidget {
   State<_InventoryProductCard> createState() => _InventoryProductCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _InventoryProductCardState extends State<_InventoryProductCard> {
   bool _hovered = false;
 
@@ -85,6 +96,7 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
   Widget build(BuildContext context) {
     final lowStock = widget.stock <= 10;
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
@@ -131,6 +143,7 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                   size: 27,
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -174,6 +187,7 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                         ),
                       ],
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 5),
                     Text(
                       '${widget.category} • ${widget.unit}',
@@ -182,6 +196,7 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                         fontSize: 12,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 4),
                     Text(
                       widget.barcode.trim().isEmpty
@@ -195,6 +210,7 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                   ],
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 14),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -207,6 +223,7 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 5),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -232,6 +249,7 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                   ),
                 ],
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 8),
               IconButton(
                 tooltip: 'Edit',
@@ -251,7 +269,9 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
   }
 }
 
+// Screen widget for owner product and inventory management including product creation, editing, stock data, pricing, and expiration information.
 class ProductsInventoryScreen extends StatefulWidget {
+  // Handles the products inventory screen logic used by this module.
   const ProductsInventoryScreen({super.key});
 
   @override
@@ -259,6 +279,7 @@ class ProductsInventoryScreen extends StatefulWidget {
       _ProductsInventoryScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -280,6 +301,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     return 0;
   }
 
+  // Reads and normalizes int from stored data.
   int _readInt(dynamic value) {
     if (value is num) return value.toInt();
 
@@ -290,6 +312,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     return 0;
   }
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -297,6 +320,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     return null;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Not set';
 
@@ -326,6 +350,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       final bytes = file.bytes;
 
       if (bytes == null) {
+        // Handles the exception logic used by this module.
         throw Exception('Unable to read the selected CSV file.');
       }
 
@@ -333,6 +358,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       final List<List<dynamic>> rows = csv.decode(csvText);
 
       if (rows.isEmpty) {
+        // Handles the exception logic used by this module.
         throw Exception('The CSV file is empty.');
       }
 
@@ -350,10 +376,12 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
       for (final header in requiredHeaders) {
         if (!headers.contains(header)) {
+          // Handles the exception logic used by this module.
           throw Exception('Missing required column: $header');
         }
       }
 
+      // Handles the value at logic used by this module.
       String valueAt(List<dynamic> row, String header) {
         final index = headers.indexOf(header);
         if (index < 0 || index >= row.length) return '';
@@ -367,6 +395,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         context: context,
         barrierDismissible: false,
         builder: (_) {
+          // Handles the alert dialog logic used by this module.
           return const AlertDialog(
             content: SizedBox(
               width: 360,
@@ -409,6 +438,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       WriteBatch batch = FirebaseFirestore.instance.batch();
       int batchCount = 0;
 
+      // Handles the commit batch if needed logic used by this module.
       Future<void> commitBatchIfNeeded({bool force = false}) async {
         if (batchCount == 0) return;
         if (!force && batchCount < 350) return;
@@ -487,6 +517,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         await commitBatchIfNeeded();
       }
 
+      // Handles the commit batch if needed logic used by this module.
       await commitBatchIfNeeded(force: true);
 
       if (imported > 0) {
@@ -601,8 +632,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Validates and saves product data to the application data store.
             Future<void> saveProduct() async {
               if (!formKey.currentState!.validate()) return;
 
@@ -630,6 +663,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     if (!dialogContext.mounted) return;
 
                     ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      // Handles the snack bar logic used by this module.
                       const SnackBar(
                         content: Text(
                           'This barcode is already assigned to another product.',
@@ -782,6 +816,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
               }
             }
 
+            // Handles the alert dialog logic used by this module.
             return AlertDialog(
               title: Text(
                 document == null ? 'Add Actual Product' : 'Edit Product',
@@ -864,9 +899,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                                       initialDate:
                                           expirationDate ?? DateTime.now(),
                                       firstDate: DateTime.now().subtract(
+                                        // Handles the duration logic used by this module.
                                         const Duration(days: 365),
                                       ),
                                       lastDate: DateTime.now().add(
+                                        // Handles the duration logic used by this module.
                                         const Duration(days: 3650),
                                       ),
                                     );
@@ -942,6 +979,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('Delete Product'),
                   ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: saving
@@ -968,6 +1006,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     );
 
     if (result == true && mounted) {
+      // Loads active product records into local caches used by fast POS search and barcode lookup.
       await _loadProducts();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -991,8 +1030,10 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     required String label,
     required double width,
     TextInputType? keyboardType,
+    // Handles the function logic used by this module.
     String? Function(String?)? validator,
   }) {
+    // Handles the sized box logic used by this module.
     return SizedBox(
       width: width,
       child: TextFormField(
@@ -1019,6 +1060,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     return null;
   }
 
+  // Handles the number validator logic used by this module.
   String? _numberValidator(String? value) {
     final parsed = double.tryParse(value?.trim() ?? '');
 
@@ -1029,6 +1071,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     return null;
   }
 
+  // Handles the integer validator logic used by this module.
   String? _integerValidator(String? value) {
     final parsed = int.tryParse(value?.trim() ?? '');
 
@@ -1052,6 +1095,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Delete Product'),
           content: Text(
@@ -1088,11 +1132,13 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         productName: productName,
       );
 
+      // Loads active product records into local caches used by fast POS search and barcode lookup.
       await _loadProducts();
 
       if (!mounted) return true;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Product deleted successfully.'),
           backgroundColor: Colors.green,
@@ -1132,6 +1178,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     _loadProducts();
   }
 
+  // Loads active product records into local caches used by fast POS search and barcode lookup.
   Future<void> _loadProducts() async {
     if (mounted) {
       setState(() {
@@ -1155,6 +1202,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
           .length;
 
       final lowStockCount = documents.where((document) {
+        // Reads and normalizes int from stored data.
         return _readInt(document.data()['stock']) <= 10;
       }).length;
 
@@ -1191,6 +1239,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     }
   }
 
+  // Checks whether the current value satisfies the matches search rule used by this module.
   bool _matchesSearch(Map<String, dynamic> data) {
     if (_searchQuery.isEmpty) return true;
 
@@ -1221,10 +1270,12 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   @override
   Widget build(BuildContext context) {
     if (_productsLoading) {
+      // Handles the center logic used by this module.
       return const Center(child: CircularProgressIndicator());
     }
 
     if (_productsError != null) {
+      // Handles the center logic used by this module.
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1234,6 +1285,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.red),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: _loadProducts,
@@ -1264,6 +1316,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         ? <QueryDocumentSnapshot<Map<String, dynamic>>>[]
         : filtered.sublist(pageStart, pageEnd);
 
+    // Handles the container logic used by this module.
     return Container(
       color: const Color(0xFFF2F6FC),
       child: Padding(
@@ -1295,6 +1348,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                   final title = Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Handles the row logic used by this module.
                       const Row(
                         children: [
                           Icon(
@@ -1313,6 +1367,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           ),
                         ],
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 7),
                       Text(
                         'Manage products, stock, pricing, '
@@ -1331,7 +1386,9 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     children: [
                       OutlinedButton.icon(
                         onPressed: () async {
+                          // Handles the import products from csv logic used by this module.
                           await _importProductsFromCsv();
+                          // Loads active product records into local caches used by fast POS search and barcode lookup.
                           await _loadProducts();
                         },
                         style: OutlinedButton.styleFrom(
@@ -1346,7 +1403,9 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                       ),
                       ElevatedButton.icon(
                         onPressed: () async {
+                          // Opens the product dialog interface using the current record or screen state.
                           await _showProductDialog();
+                          // Loads active product records into local caches used by fast POS search and barcode lookup.
                           await _loadProducts();
                         },
                         style: ElevatedButton.styleFrom(
@@ -1365,12 +1424,14 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                   );
 
                   if (compact) {
+                    // Handles the column logic used by this module.
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [title, const SizedBox(height: 18), actions],
                     );
                   }
 
+                  // Handles the row logic used by this module.
                   return Row(
                     children: [
                       Expanded(child: title),
@@ -1380,6 +1441,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 },
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 18),
             LayoutBuilder(
               builder: (context, constraints) {
@@ -1429,6 +1491,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 );
               },
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1475,6 +1538,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 ),
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 16),
             Expanded(
               child: filtered.isEmpty
@@ -1485,13 +1549,16 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           child: LayoutBuilder(
                             builder: (context, constraints) {
                               if (constraints.maxWidth >= 980) {
+                                // Builds the product table UI from the current data and screen state.
                                 return _buildProductTable(visibleProducts);
                               }
 
+                              // Builds the product cards UI from the current data and screen state.
                               return _buildProductCards(visibleProducts);
                             },
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -1517,6 +1584,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                                     : null,
                                 icon: const Icon(Icons.chevron_left_rounded),
                               ),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(width: 8),
                               Text(
                                 'Page ${safeCurrentPage + 1} of $totalPages'
@@ -1526,6 +1594,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(width: 8),
                               IconButton(
                                 tooltip: 'Next page',
@@ -1594,6 +1663,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
               ),
               child: Icon(icon, color: color, size: 23),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1608,6 +1678,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 3),
                   Text(
                     value,
@@ -1633,6 +1704,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   Widget _buildProductTable(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
   ) {
+    // Handles the container logic used by this module.
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1682,9 +1754,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 final name = (data['productName'] ?? 'Unknown Product')
                     .toString();
 
+                // Handles the data row logic used by this module.
                 return DataRow(
                   color: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.hovered)) {
+                      // Handles the color logic used by this module.
                       return const Color(0xFFF5F9FF);
                     }
 
@@ -1707,6 +1781,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                               size: 20,
                             ),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
@@ -1834,6 +1909,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
         final active = data['isActive'] != false;
 
+        // Handles the inventory product card logic used by this module.
         return _InventoryProductCard(
           productName: (data['productName'] ?? 'Unknown Product').toString(),
           category: (data['category'] ?? '').toString(),

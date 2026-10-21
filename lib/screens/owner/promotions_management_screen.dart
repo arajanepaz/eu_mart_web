@@ -1,20 +1,29 @@
+// -----------------------------------------------------------------------------
+// Module overview: Creates and manages product promotions such as discounts and Buy 1 Take 1 offers.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _PromoHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the promo hover card logic used by this module.
   const _PromoHoverCard({required this.child});
 
   @override
   State<_PromoHoverCard> createState() => _PromoHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromoHoverCardState extends State<_PromoHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -39,6 +48,7 @@ class _PromoHoverCardState extends State<_PromoHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PromoProductCard extends StatefulWidget {
   final String productName;
   final double regularPrice;
@@ -51,6 +61,7 @@ class _PromoProductCard extends StatefulWidget {
   final VoidCallback onEdit;
   final VoidCallback? onDisable;
 
+  // Handles the promo product card logic used by this module.
   const _PromoProductCard({
     required this.productName,
     required this.regularPrice,
@@ -68,11 +79,13 @@ class _PromoProductCard extends StatefulWidget {
   State<_PromoProductCard> createState() => _PromoProductCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromoProductCardState extends State<_PromoProductCard> {
   bool _hovered = false;
 
   Color get _accent {
     if (!widget.active) {
+      // Handles the color logic used by this module.
       return const Color(0xFF8A95A4);
     }
 
@@ -95,6 +108,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
   Widget build(BuildContext context) {
     final accent = _accent;
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -138,6 +152,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                   ),
                   child: Icon(_icon, color: accent, size: 25),
                 ),
+                // Handles the spacer logic used by this module.
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -159,6 +174,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                 ),
               ],
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 14),
             Text(
               widget.productName,
@@ -171,6 +187,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                 height: 1.25,
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 6),
             Text(
               widget.active ? widget.promoLabel : 'No active promotion',
@@ -181,6 +198,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                 fontWeight: FontWeight.w700,
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 12),
             if (widget.active &&
                 widget.promoType != 'Buy 1 Take 1' &&
@@ -194,6 +212,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                       decoration: TextDecoration.lineThrough,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 10),
                   Text(
                     '₱${widget.promoPrice!.toStringAsFixed(2)}',
@@ -222,6 +241,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 10),
             Container(
               width: double.infinity,
@@ -232,11 +252,13 @@ class _PromoProductCardState extends State<_PromoProductCard> {
               ),
               child: Row(
                 children: [
+                  // Handles the icon logic used by this module.
                   const Icon(
                     Icons.date_range_outlined,
                     size: 16,
                     color: Color(0xFF7A8494),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
@@ -253,6 +275,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                 ],
               ),
             ),
+            // Handles the spacer logic used by this module.
             const Spacer(),
             Row(
               children: [
@@ -264,6 +287,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                   ),
                 ),
                 if (widget.onDisable != null) ...[
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 8),
                   IconButton(
                     tooltip: 'Disable promo',
@@ -280,11 +304,14 @@ class _PromoProductCardState extends State<_PromoProductCard> {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromoEmptyState extends StatelessWidget {
+  // Handles the promo empty state logic used by this module.
   const _PromoEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -322,7 +349,9 @@ class _PromoEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for creates and manages product promotions such as discounts and Buy 1 Take 1 offers.
 class PromotionsManagementScreen extends StatefulWidget {
+  // Handles the promotions management screen logic used by this module.
   const PromotionsManagementScreen({super.key});
 
   @override
@@ -330,6 +359,7 @@ class PromotionsManagementScreen extends StatefulWidget {
       _PromotionsManagementScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromotionsManagementScreenState
     extends State<PromotionsManagementScreen> {
   final TextEditingController _searchController = TextEditingController();
@@ -337,6 +367,7 @@ class _PromotionsManagementScreenState
   String _searchQuery = '';
   String _selectedFilter = 'All';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -344,6 +375,7 @@ class _PromotionsManagementScreenState
     return null;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Not set';
 
@@ -352,6 +384,7 @@ class _PromotionsManagementScreenState
         '${date.day.toString().padLeft(2, '0')}';
   }
 
+  // Checks whether the current value satisfies the is promo active rule used by this module.
   bool _isPromoActive(Map<String, dynamic> data) {
     if (data['promoActive'] != true) return false;
 
@@ -366,6 +399,7 @@ class _PromotionsManagementScreenState
     return !normalizedEnd.isBefore(today);
   }
 
+  // Checks whether the current value satisfies the matches search rule used by this module.
   bool _matchesSearch(Map<String, dynamic> data) {
     if (_searchQuery.isEmpty) return true;
 
@@ -380,6 +414,7 @@ class _PromotionsManagementScreenState
     return searchable.contains(_searchQuery);
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(Map<String, dynamic> data) {
     if (_selectedFilter == 'All') return true;
 
@@ -391,6 +426,7 @@ class _PromotionsManagementScreenState
     return (data['promoType'] ?? '').toString() == _selectedFilter;
   }
 
+  // Opens the promo dialog interface using the current record or screen state.
   Future<void> _showPromoDialog(
     DocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -418,8 +454,10 @@ class _PromotionsManagementScreenState
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Handles the pick start date logic used by this module.
             Future<void> pickStartDate() async {
               final picked = await showDatePicker(
                 context: dialogContext,
@@ -433,6 +471,7 @@ class _PromotionsManagementScreenState
               }
             }
 
+            // Handles the pick end date logic used by this module.
             Future<void> pickEndDate() async {
               final picked = await showDatePicker(
                 context: dialogContext,
@@ -449,6 +488,7 @@ class _PromotionsManagementScreenState
               }
             }
 
+            // Validates and saves promo data to the application data store.
             Future<void> savePromo() async {
               double? promoPrice;
 
@@ -462,6 +502,7 @@ class _PromotionsManagementScreenState
                     promoPrice <= 0 ||
                     promoPrice >= regularPrice) {
                   ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    // Handles the snack bar logic used by this module.
                     const SnackBar(
                       content: Text(
                         'Promo price must be greater than zero '
@@ -478,6 +519,7 @@ class _PromotionsManagementScreenState
                   endDate != null &&
                   endDate!.isBefore(startDate!)) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  // Handles the snack bar logic used by this module.
                   const SnackBar(
                     content: Text(
                       'Promo end date cannot be earlier '
@@ -524,6 +566,7 @@ class _PromotionsManagementScreenState
               }
             }
 
+            // Handles the alert dialog logic used by this module.
             return AlertDialog(
               title: Text(
                 'Set Promo — '
@@ -564,6 +607,7 @@ class _PromotionsManagementScreenState
                               });
                             },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     if (promoType != 'Buy 1 Take 1')
                       TextField(
@@ -590,6 +634,7 @@ class _PromotionsManagementScreenState
                         border: OutlineInputBorder(),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -600,6 +645,7 @@ class _PromotionsManagementScreenState
                             label: Text('Start: ${_formatDate(startDate)}'),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 12),
                         Expanded(
                           child: OutlinedButton.icon(
@@ -638,6 +684,7 @@ class _PromotionsManagementScreenState
 
     if (saved == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Product promotion saved.'),
           backgroundColor: Colors.green,
@@ -646,6 +693,7 @@ class _PromotionsManagementScreenState
     }
   }
 
+  // Handles the disable promo logic used by this module.
   Future<void> _disablePromo(
     DocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -658,6 +706,7 @@ class _PromotionsManagementScreenState
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Product promotion disabled.'),
           backgroundColor: Colors.green,
@@ -675,9 +724,11 @@ class _PromotionsManagementScreenState
     }
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -699,10 +750,12 @@ class _PromotionsManagementScreenState
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load promotions.\n${snapshot.error}',
@@ -729,32 +782,38 @@ class _PromotionsManagementScreenState
         });
 
         final activeCount = products.where((document) {
+          // Checks whether the current value satisfies the is promo active rule used by this module.
           return _isPromoActive(document.data());
         }).length;
 
         final discountCount = products.where((document) {
           final data = document.data();
+          // Checks whether the current value satisfies the is promo active rule used by this module.
           return _isPromoActive(data) &&
               (data['promoType'] ?? '').toString() == 'Discount';
         }).length;
 
         final b1t1Count = products.where((document) {
           final data = document.data();
+          // Checks whether the current value satisfies the is promo active rule used by this module.
           return _isPromoActive(data) &&
               (data['promoType'] ?? '').toString() == 'Buy 1 Take 1';
         }).length;
 
         final nearExpiryCount = products.where((document) {
           final data = document.data();
+          // Checks whether the current value satisfies the is promo active rule used by this module.
           return _isPromoActive(data) &&
               (data['promoType'] ?? '').toString() == 'Near-Expiry';
         }).length;
 
         final filtered = products.where((document) {
           final data = document.data();
+          // Checks whether the current value satisfies the matches search rule used by this module.
           return _matchesSearch(data) && _matchesFilter(data);
         }).toList();
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
@@ -816,6 +875,7 @@ class _PromotionsManagementScreenState
                   ],
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -859,6 +919,7 @@ class _PromotionsManagementScreenState
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -913,14 +974,19 @@ class _PromotionsManagementScreenState
                     child: Row(
                       children: [
                         _filterChip('All'),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         _filterChip('Active'),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         _filterChip('Inactive'),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         _filterChip('Discount'),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         _filterChip('Buy 1 Take 1'),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         _filterChip('Near-Expiry'),
                       ],
@@ -928,20 +994,24 @@ class _PromotionsManagementScreenState
                   );
 
                   if (compact) {
+                    // Handles the column logic used by this module.
                     return Column(
                       children: [search, const SizedBox(height: 12), filters],
                     );
                   }
 
+                  // Handles the row logic used by this module.
                   return Row(
                     children: [
                       Expanded(child: search),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 14),
                       filters,
                     ],
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               Expanded(
                 child: filtered.isEmpty
@@ -949,6 +1019,7 @@ class _PromotionsManagementScreenState
                     : GridView.builder(
                         itemCount: filtered.length,
                         gridDelegate:
+                            // Handles the sliver grid delegate with max cross axis extent logic used by this module.
                             const SliverGridDelegateWithMaxCrossAxisExtent(
                               maxCrossAxisExtent: 380,
                               mainAxisExtent: 300,
@@ -975,6 +1046,7 @@ class _PromotionsManagementScreenState
 
                           final active = _isPromoActive(data);
 
+                          // Handles the promo product card logic used by this module.
                           return _PromoProductCard(
                             productName: name,
                             regularPrice: regularPrice,
@@ -1003,6 +1075,7 @@ class _PromotionsManagementScreenState
     );
   }
 
+  // Handles the promo summary card logic used by this module.
   Widget _promoSummaryCard({
     required String title,
     required String value,
@@ -1046,6 +1119,7 @@ class _PromotionsManagementScreenState
                 ),
                 child: Icon(icon, color: Colors.white, size: 24),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -1059,6 +1133,7 @@ class _PromotionsManagementScreenState
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 4),
                     Text(
                       value,

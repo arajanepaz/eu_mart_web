@@ -1,21 +1,30 @@
+// -----------------------------------------------------------------------------
+// Module overview: Records service issues and their resolution details for service monitoring and reporting.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _ServiceIssueHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the service issue hover card logic used by this module.
   const _ServiceIssueHoverCard({required this.child});
 
   @override
   State<_ServiceIssueHoverCard> createState() => _ServiceIssueHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceIssueHoverCardState extends State<_ServiceIssueHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -40,12 +49,14 @@ class _ServiceIssueHoverCardState extends State<_ServiceIssueHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ServiceIssueSummaryCard extends StatelessWidget {
   final String title;
   final String value;
   final IconData icon;
   final Color color;
 
+  // Handles the service issue summary card logic used by this module.
   const _ServiceIssueSummaryCard({
     required this.title,
     required this.value,
@@ -55,6 +66,7 @@ class _ServiceIssueSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the service issue hover card logic used by this module.
     return _ServiceIssueHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -85,6 +97,7 @@ class _ServiceIssueSummaryCard extends StatelessWidget {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -98,6 +111,7 @@ class _ServiceIssueSummaryCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     value,
@@ -117,6 +131,7 @@ class _ServiceIssueSummaryCard extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ServiceIssueCard extends StatefulWidget {
   final String type;
   final String severity;
@@ -130,6 +145,7 @@ class _ServiceIssueCard extends StatefulWidget {
   final bool isResolved;
   final VoidCallback? onResolve;
 
+  // Handles the service issue card logic used by this module.
   const _ServiceIssueCard({
     required this.type,
     required this.severity,
@@ -148,6 +164,7 @@ class _ServiceIssueCard extends StatefulWidget {
   State<_ServiceIssueCard> createState() => _ServiceIssueCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceIssueCardState extends State<_ServiceIssueCard> {
   bool _hovered = false;
   bool _expanded = false;
@@ -158,6 +175,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
         ? const Color(0xFF159447)
         : const Color(0xFFF59E0B);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -214,6 +232,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                         size: 26,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(width: 14),
                     Expanded(
                       child: Column(
@@ -233,6 +252,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                                   ),
                                 ),
                               ),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -254,6 +274,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                               ),
                             ],
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 8),
                           Wrap(
                             spacing: 8,
@@ -276,6 +297,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                               ),
                             ],
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 9),
                           Text(
                             widget.description,
@@ -291,6 +313,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                         ],
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(width: 8),
                     Icon(
                       _expanded
@@ -303,6 +326,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
               ),
             ),
             if (_expanded) ...[
+              // Handles the divider logic used by this module.
               const Divider(height: 1),
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
@@ -319,10 +343,12 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Handles the icon logic used by this module.
                             const Icon(
                               Icons.check_circle_outline,
                               color: Color(0xFF159447),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 9),
                             Expanded(
                               child: Text(
@@ -342,6 +368,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                         !widget.isResolved &&
                         widget.onResolve != null) ...[
                       if (widget.resolution.isNotEmpty)
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 12),
                       Align(
                         alignment: Alignment.centerRight,
@@ -374,11 +401,13 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ServiceIssuePill extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
 
+  // Handles the service issue pill logic used by this module.
   const _ServiceIssuePill({
     required this.icon,
     required this.label,
@@ -387,6 +416,7 @@ class _ServiceIssuePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -397,6 +427,7 @@ class _ServiceIssuePill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 15, color: color),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 5),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 180),
@@ -417,11 +448,14 @@ class _ServiceIssuePill extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceIssueEmptyState extends StatelessWidget {
+  // Handles the service issue empty state logic used by this module.
   const _ServiceIssueEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -459,9 +493,11 @@ class _ServiceIssueEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for records service issues and their resolution details for service monitoring and reporting.
 class ServiceIssueLoggingScreen extends StatefulWidget {
   final bool ownerView;
 
+  // Handles the service issue logging screen logic used by this module.
   const ServiceIssueLoggingScreen({super.key, this.ownerView = false});
 
   @override
@@ -469,6 +505,7 @@ class ServiceIssueLoggingScreen extends StatefulWidget {
       _ServiceIssueLoggingScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
   final _descriptionController = TextEditingController();
 
@@ -488,6 +525,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
 
   static const _severityLevels = ['Minor', 'Moderate', 'Major'];
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -495,6 +533,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
     return null;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Unavailable';
 
@@ -511,6 +550,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
         '$hour:$minute $period';
   }
 
+  // Handles the severity color logic used by this module.
   Color _severityColor(String severity) {
     switch (severity) {
       case 'Major':
@@ -522,6 +562,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
     }
   }
 
+  // Validates and saves issue data to the application data store.
   Future<void> _saveIssue() async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -577,6 +618,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
     }
   }
 
+  // Handles the resolve issue logic used by this module.
   Future<void> _resolveIssue(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -585,6 +627,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
     final resolution = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Resolve Service Issue'),
           content: SizedBox(
@@ -649,13 +692,16 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
     }
   }
 
+  // Opens the message interface using the current record or screen state.
   void _showMessage(String text, Color color) {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(text), backgroundColor: color));
   }
 
+  // Builds the issue form UI from the current data and screen state.
   Widget _buildIssueForm() {
+    // Handles the service issue hover card logic used by this module.
     return _ServiceIssueHoverCard(
       child: Container(
         padding: const EdgeInsets.all(22),
@@ -688,7 +734,9 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                     size: 25,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 13),
+                // Handles the expanded logic used by this module.
                 const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -714,6 +762,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                 ),
               ],
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
               initialValue: _issueType,
@@ -735,6 +784,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                       });
                     },
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
               initialValue: _severity,
@@ -757,6 +807,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                       });
                     },
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 14),
             TextField(
               controller: _descriptionController,
@@ -770,6 +821,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                     'Describe what happened and how it affected the transaction.',
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 16),
             Container(
               width: double.infinity,
@@ -785,6 +837,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                     color: _severityColor(_severity),
                     size: 19,
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 9),
                   Expanded(
                     child: Text(
@@ -799,6 +852,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                 ],
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -836,11 +890,13 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
     );
   }
 
+  // Checks whether the current value satisfies the issue input decoration rule used by this module.
   InputDecoration _issueInputDecoration({
     required String label,
     required IconData icon,
     String? hint,
   }) {
+    // Handles the input decoration logic used by this module.
     return InputDecoration(
       labelText: label,
       hintText: hint,
@@ -868,6 +924,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
+      // Handles the center logic used by this module.
       return const Center(
         child: Text(
           'No authenticated user.',
@@ -882,6 +939,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
               .collection('service_issues')
               .where('reportedById', isEqualTo: user.uid);
 
+    // Handles the container logic used by this module.
     return Container(
       color: const Color(0xFFF2F6FC),
       padding: const EdgeInsets.all(22),
@@ -907,11 +965,13 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
             ),
             child: Row(
               children: [
+                // Handles the icon logic used by this module.
                 const Icon(
                   Icons.support_agent_outlined,
                   color: Colors.white,
                   size: 29,
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -927,6 +987,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 4),
                       Text(
                         widget.ownerView
@@ -943,6 +1004,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
               ],
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 16),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -950,10 +1012,12 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
+                  // Handles the center logic used by this module.
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 if (snapshot.hasError) {
+                  // Handles the center logic used by this module.
                   return Center(
                     child: Text(
                       'Unable to load service issues.\n'
@@ -1047,6 +1111,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     Expanded(
                       child: issues.isEmpty
@@ -1054,6 +1119,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                           : ListView.separated(
                               itemCount: issues.length,
                               separatorBuilder: (_, _) =>
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 final document = issues[index];
@@ -1086,6 +1152,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
 
                                 final isResolved = status == 'resolved';
 
+                                // Handles the service issue card logic used by this module.
                                 return _ServiceIssueCard(
                                   type: type,
                                   severity: severity,
@@ -1111,11 +1178,13 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                   return content;
                 }
 
+                // Handles the layout builder logic used by this module.
                 return LayoutBuilder(
                   builder: (context, constraints) {
                     final wide = constraints.maxWidth >= 930;
 
                     if (wide) {
+                      // Handles the row logic used by this module.
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -1130,18 +1199,21 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                               child: _buildIssueForm(),
                             ),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 18),
                           Expanded(child: content),
                         ],
                       );
                     }
 
+                    // Handles the single child scroll view logic used by this module.
                     return SingleChildScrollView(
                       physics: const ClampingScrollPhysics(),
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Column(
                         children: [
                           _buildIssueForm(),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 16),
                           SizedBox(height: 520, child: content),
                         ],

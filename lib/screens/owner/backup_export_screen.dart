@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Exports selected EÜ MART Firestore data for backup, recovery preparation, and administrative record keeping.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'dart:convert';
 import 'dart:html' as html;
 
@@ -6,20 +11,24 @@ import 'package:flutter/material.dart';
 
 import '../../services/audit_log_service.dart';
 
+// Private UI/data helper used only inside this module.
 class _BackupHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the backup hover card logic used by this module.
   const _BackupHoverCard({required this.child});
 
   @override
   State<_BackupHoverCard> createState() => _BackupHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _BackupHoverCardState extends State<_BackupHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -44,14 +53,17 @@ class _BackupHoverCardState extends State<_BackupHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _BackupVisualIcon extends StatelessWidget {
   final IconData icon;
   final Color color;
 
+  // Handles the backup visual icon logic used by this module.
   const _BackupVisualIcon({required this.icon, required this.color});
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       width: 48,
       height: 48,
@@ -73,11 +85,13 @@ class _BackupVisualIcon extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _BackupInfoLine extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
 
+  // Handles the backup info line logic used by this module.
   const _BackupInfoLine({
     required this.icon,
     required this.title,
@@ -86,6 +100,7 @@ class _BackupInfoLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the row logic used by this module.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -98,6 +113,7 @@ class _BackupInfoLine extends StatelessWidget {
           ),
           child: Icon(icon, color: const Color(0xFF1565C0), size: 18),
         ),
+        // Handles the sized box logic used by this module.
         const SizedBox(width: 10),
         Expanded(
           child: Column(
@@ -110,6 +126,7 @@ class _BackupInfoLine extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 2),
               Text(
                 subtitle,
@@ -126,6 +143,7 @@ class _BackupInfoLine extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _BackupCollectionCard extends StatefulWidget {
   final String title;
   final IconData icon;
@@ -133,6 +151,7 @@ class _BackupCollectionCard extends StatefulWidget {
   final bool loading;
   final VoidCallback? onPressed;
 
+  // Handles the backup collection card logic used by this module.
   const _BackupCollectionCard({
     required this.title,
     required this.icon,
@@ -145,6 +164,7 @@ class _BackupCollectionCard extends StatefulWidget {
   State<_BackupCollectionCard> createState() => _BackupCollectionCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _BackupCollectionCardState extends State<_BackupCollectionCard> {
   bool _hovered = false;
 
@@ -152,6 +172,7 @@ class _BackupCollectionCardState extends State<_BackupCollectionCard> {
   Widget build(BuildContext context) {
     const color = Color(0xFF1565C0);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -183,6 +204,7 @@ class _BackupCollectionCardState extends State<_BackupCollectionCard> {
             Row(
               children: [
                 _BackupVisualIcon(icon: widget.icon, color: color),
+                // Handles the spacer logic used by this module.
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -204,6 +226,7 @@ class _BackupCollectionCardState extends State<_BackupCollectionCard> {
                 ),
               ],
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 15),
             Text(
               widget.title,
@@ -215,11 +238,13 @@ class _BackupCollectionCardState extends State<_BackupCollectionCard> {
                 fontWeight: FontWeight.w900,
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 5),
             Text(
               widget.recordCount,
               style: const TextStyle(color: Color(0xFF7D8998), fontSize: 11.5),
             ),
+            // Handles the spacer logic used by this module.
             const Spacer(),
             SizedBox(
               width: double.infinity,
@@ -256,13 +281,16 @@ class _BackupCollectionCardState extends State<_BackupCollectionCard> {
   }
 }
 
+// Screen widget for exports selected EÜ MART Firestore data for backup, recovery preparation, and administrative record keeping.
 class BackupExportScreen extends StatefulWidget {
+  // Handles the backup export screen logic used by this module.
   const BackupExportScreen({super.key});
 
   @override
   State<BackupExportScreen> createState() => _BackupExportScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _BackupExportScreenState extends State<BackupExportScreen> {
   bool _exporting = false;
   bool _restoring = false;
@@ -335,6 +363,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     ),
   ];
 
+  // Handles the serialize value logic used by this module.
   Map<String, dynamic> _serializeValue(dynamic value) {
     if (value is Timestamp) {
       return <String, dynamic>{
@@ -377,6 +406,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     return <String, dynamic>{'__type': 'value', 'value': value};
   }
 
+  // Handles the serialize any logic used by this module.
   dynamic _serializeAny(dynamic value) {
     if (value is Timestamp) {
       return value.toDate().toIso8601String();
@@ -406,6 +436,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     return value;
   }
 
+  // Reads and normalizes collection from stored data.
   Future<Map<String, dynamic>> _readCollection(String collectionName) async {
     final snapshot = await FirebaseFirestore.instance
         .collection(collectionName)
@@ -429,6 +460,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     };
   }
 
+  // Handles the timestamp for file name logic used by this module.
   String _timestampForFileName() {
     final now = DateTime.now();
 
@@ -440,6 +472,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
         '${now.second.toString().padLeft(2, '0')}';
   }
 
+  // Handles the download text file logic used by this module.
   void _downloadTextFile({
     required String fileName,
     required String content,
@@ -460,6 +493,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     html.Url.revokeObjectUrl(url);
   }
 
+  // Handles the export full backup logic used by this module.
   Future<void> _exportFullBackup() async {
     setState(() {
       _exporting = true;
@@ -499,6 +533,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Full JSON backup downloaded.'),
           backgroundColor: Colors.green,
@@ -524,6 +559,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     }
   }
 
+  // Handles the csv escape logic used by this module.
   String _csvEscape(dynamic value) {
     if (value == null) return '';
 
@@ -536,6 +572,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     return '"$escaped"';
   }
 
+  // Handles the export collection csv logic used by this module.
   Future<void> _exportCollectionCsv(_BackupCollection collection) async {
     setState(() {
       _exporting = true;
@@ -611,12 +648,14 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     }
   }
 
+  // Handles the collection card logic used by this module.
   Widget _collectionCard(_BackupCollection collection) {
     return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
       future: FirebaseFirestore.instance.collection(collection.name).get(),
       builder: (context, snapshot) {
         final count = snapshot.data?.docs.length;
 
+        // Handles the container logic used by this module.
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -647,6 +686,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                       color: const Color(0xFF1565C0),
                     ),
                   ),
+                  // Handles the spacer logic used by this module.
                   const Spacer(),
                   Text(
                     count == null ? '...' : '$count records',
@@ -657,6 +697,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                   ),
                 ],
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 18),
               Text(
                 collection.title,
@@ -665,6 +706,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              // Handles the spacer logic used by this module.
               const Spacer(),
               SizedBox(
                 width: double.infinity,
@@ -691,6 +733,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     'permit_reminders',
   };
 
+  // Handles the restore value logic used by this module.
   dynamic _restoreValue(dynamic value) {
     if (value is List) {
       return value.map(_restoreValue).toList();
@@ -712,6 +755,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
         final longitude = (converted['longitude'] as num?)?.toDouble();
 
         if (latitude != null && longitude != null) {
+          // Handles the geo point logic used by this module.
           return GeoPoint(latitude, longitude);
         }
       }
@@ -734,6 +778,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     return value;
   }
 
+  // Handles the select backup file logic used by this module.
   Future<void> _selectBackupFile() async {
     final input = html.FileUploadInputElement()
       ..accept = '.json,application/json';
@@ -760,12 +805,14 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
       final decoded = jsonDecode(rawText);
 
       if (decoded is! Map) {
+        // Formats exception into a user-friendly display value.
         throw const FormatException('Invalid backup structure.');
       }
 
       final backup = Map<String, dynamic>.from(decoded);
 
       if (backup['system'] != 'EÜ MART Web' || backup['collections'] is! Map) {
+        // Formats exception into a user-friendly display value.
         throw const FormatException('This is not a valid EÜ MART backup file.');
       }
 
@@ -778,6 +825,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
           .toSet();
 
       if (available.isEmpty) {
+        // Formats exception into a user-friendly display value.
         throw const FormatException(
           'The backup contains no restorable collections.',
         );
@@ -816,6 +864,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     }
   }
 
+  // Handles the restore document count logic used by this module.
   int _restoreDocumentCount(String collectionName) {
     final backup = _restoreBackup;
 
@@ -834,11 +883,13 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     return documents is List ? documents.length : 0;
   }
 
+  // Handles the restore selected collections logic used by this module.
   Future<void> _restoreSelectedCollections() async {
     final backup = _restoreBackup;
 
     if (backup == null || _selectedRestoreCollections.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Select at least one collection to restore.'),
           backgroundColor: Colors.orange,
@@ -850,6 +901,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Confirm Backup Restore'),
           content: SizedBox(
@@ -999,6 +1051,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     }
   }
 
+  // Handles the restore section logic used by this module.
   Widget _restoreSection() {
     final backup = _restoreBackup;
 
@@ -1010,6 +1063,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
         collections.keys.where(_restorableCollections.contains).toList()
           ..sort();
 
+    // Handles the container logic used by this module.
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(22),
@@ -1030,6 +1084,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
         children: [
           Row(
             children: [
+              // Handles the expanded logic used by this module.
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1059,6 +1114,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
             ],
           ),
           if (backup != null) ...[
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 18),
             Container(
               width: double.infinity,
@@ -1077,12 +1133,14 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                 ),
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 14),
             ...availableCollections.map((collectionName) {
               final selected = _selectedRestoreCollections.contains(
                 collectionName,
               );
 
+              // Handles the checkbox list tile logic used by this module.
               return CheckboxListTile(
                 value: selected,
                 contentPadding: EdgeInsets.zero,
@@ -1104,6 +1162,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                       },
               );
             }),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,
@@ -1127,6 +1186,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       color: const Color(0xFFF2F6FC),
       child: SingleChildScrollView(
@@ -1174,11 +1234,13 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                               size: 29,
                             ),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 14),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                // Handles the text logic used by this module.
                                 const Text(
                                   'Backup & Export',
                                   style: TextStyle(
@@ -1187,7 +1249,9 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                                     fontWeight: FontWeight.w900,
                                   ),
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 4),
+                                // Handles the text logic used by this module.
                                 const Text(
                                   'Download a complete JSON backup or export '
                                   'individual Firestore collections as CSV.',
@@ -1198,6 +1262,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                                   ),
                                 ),
                                 if (_statusMessage.isNotEmpty) ...[
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 9),
                                   Container(
                                     padding: const EdgeInsets.symmetric(
@@ -1258,19 +1323,23 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                       );
 
                       if (compact) {
+                        // Handles the column logic used by this module.
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             information,
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 16),
                             button,
                           ],
                         );
                       }
 
+                      // Handles the row logic used by this module.
                       return Row(
                         children: [
                           Expanded(child: information),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 18),
                           button,
                         ],
@@ -1278,6 +1347,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                     },
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 18),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -1398,26 +1468,32 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                     );
 
                     if (compact) {
+                      // Handles the column logic used by this module.
                       return Column(
                         children: [
                           securityCard,
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 14),
                           reminderCard,
                         ],
                       );
                     }
 
+                    // Handles the row logic used by this module.
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(flex: 3, child: securityCard),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 14),
                         Expanded(flex: 2, child: reminderCard),
                       ],
                     );
                   },
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 22),
+                // Handles the text logic used by this module.
                 const Text(
                   'Collection Exports',
                   style: TextStyle(
@@ -1426,12 +1502,15 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 5),
+                // Handles the text logic used by this module.
                 const Text(
                   'Export individual collections as CSV for reports, '
                   'review, or spreadsheet analysis.',
                   style: TextStyle(color: Color(0xFF7D8998), fontSize: 12),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 16),
                 GridView.builder(
                   shrinkWrap: true,
@@ -1453,6 +1532,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                       builder: (context, snapshot) {
                         final count = snapshot.data?.docs.length;
 
+                        // Handles the backup collection card logic used by this module.
                         return _BackupCollectionCard(
                           title: collection.title,
                           icon: collection.icon,
@@ -1468,8 +1548,10 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                     );
                   },
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 22),
                 _BackupHoverCard(child: _restoreSection()),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 18),
                 _BackupHoverCard(
                   child: Container(
@@ -1519,11 +1601,13 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _BackupCollection {
   final String name;
   final String title;
   final IconData icon;
 
+  // Handles the backup collection logic used by this module.
   const _BackupCollection({
     required this.name,
     required this.title,

@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Builds owner sales reports and aggregates transaction data into totals and business indicators.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import 'dart:html' as html;
@@ -7,16 +12,20 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+// Screen widget for builds owner sales reports and aggregates transaction data into totals and business indicators.
 class SalesReportsScreen extends StatefulWidget {
+  // Handles the sales reports screen logic used by this module.
   const SalesReportsScreen({super.key});
 
   @override
   State<SalesReportsScreen> createState() => _SalesReportsScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SalesReportsScreenState extends State<SalesReportsScreen> {
   String _selectedFilter = 'This Month';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -24,6 +33,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
     return null;
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(DateTime? date) {
     if (date == null) return false;
 
@@ -51,9 +61,11 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
     return true;
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -70,6 +82,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
@@ -115,6 +128,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                 ),
                 child: Icon(icon, color: Colors.white, size: 26),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -128,6 +142,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 5),
                     Text(
                       value,
@@ -149,6 +164,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
     );
   }
 
+  // Handles the file timestamp logic used by this module.
   String _fileTimestamp() {
     final now = DateTime.now();
 
@@ -159,11 +175,13 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
         '${now.minute.toString().padLeft(2, '0')}';
   }
 
+  // Handles the csv escape logic used by this module.
   String _csvEscape(dynamic value) {
     final text = value?.toString() ?? '';
     return '"${text.replaceAll('"', '""')}"';
   }
 
+  // Handles the download csv logic used by this module.
   void _downloadCsv({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions,
   }) {
@@ -225,6 +243,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
     html.Url.revokeObjectUrl(url);
 
     ScaffoldMessenger.of(context).showSnackBar(
+      // Handles the snack bar logic used by this module.
       const SnackBar(
         content: Text('Sales CSV downloaded successfully.'),
         backgroundColor: Colors.green,
@@ -232,6 +251,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
     );
   }
 
+  // Handles the print sales report logic used by this module.
   Future<void> _printSalesReport({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> transactions,
     required double totalSales,
@@ -357,6 +377,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
     );
   }
 
+  // Handles the pdf summary cell logic used by this module.
   pw.Widget _pdfSummaryCell(String label, String value) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(10),
@@ -384,10 +405,12 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load sales reports.\n${snapshot.error}',
@@ -411,6 +434,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
 
           if (status == 'voided') return false;
 
+          // Checks whether the current value satisfies the matches filter rule used by this module.
           return _matchesFilter(_readDate(data['createdAt']));
         }).toList();
 
@@ -482,6 +506,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
           }
         }
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           child: SingleChildScrollView(
@@ -514,6 +539,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                       final title = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Handles the row logic used by this module.
                           const Row(
                             children: [
                               Icon(
@@ -532,6 +558,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                               ),
                             ],
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 7),
                           Text(
                             'Review sales performance, '
@@ -590,16 +617,19 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                       );
 
                       if (compact) {
+                        // Handles the column logic used by this module.
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             title,
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 18),
                             actions,
                           ],
                         );
                       }
 
+                      // Handles the row logic used by this module.
                       return Row(
                         children: [
                           Expanded(child: title),
@@ -609,6 +639,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                     },
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 16),
                 Container(
                   width: double.infinity,
@@ -636,6 +667,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                     ],
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 16),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -683,6 +715,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                     );
                   },
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 18),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -714,6 +747,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                                         ? 0.0
                                         : entry.value / maxDailySales;
 
+                                    // Handles the container logic used by this module.
                                     return Container(
                                       width: 82,
                                       margin: const EdgeInsets.only(right: 14),
@@ -728,6 +762,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                                               fontWeight: FontWeight.w800,
                                             ),
                                           ),
+                                          // Handles the sized box logic used by this module.
                                           const SizedBox(height: 6),
                                           TweenAnimationBuilder<double>(
                                             duration: const Duration(
@@ -736,11 +771,13 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                                             curve: Curves.easeOutCubic,
                                             tween: Tween(begin: 0, end: ratio),
                                             builder: (context, value, child) {
+                                              // Handles the container logic used by this module.
                                               return Container(
                                                 height: 180 * value,
                                                 width: 42,
                                                 decoration: BoxDecoration(
                                                   gradient:
+                                                      // Handles the linear gradient logic used by this module.
                                                       const LinearGradient(
                                                         begin:
                                                             Alignment.topCenter,
@@ -764,6 +801,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                                               );
                                             },
                                           ),
+                                          // Handles the sized box logic used by this module.
                                           const SizedBox(height: 8),
                                           Text(
                                             entry.key.substring(5),
@@ -805,6 +843,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                                     final rank = entry.key + 1;
                                     final product = entry.value;
 
+                                    // Handles the container logic used by this module.
                                     return Container(
                                       margin: const EdgeInsets.only(bottom: 9),
                                       padding: const EdgeInsets.all(11),
@@ -830,6 +869,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                                               ),
                                             ),
                                           ),
+                                          // Handles the sized box logic used by this module.
                                           const SizedBox(width: 11),
                                           Expanded(
                                             child: Column(
@@ -871,25 +911,30 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                     );
 
                     if (isWide) {
+                      // Handles the row logic used by this module.
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(flex: 3, child: chartCard),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 18),
                           Expanded(flex: 2, child: topProductsCard),
                         ],
                       );
                     }
 
+                    // Handles the column logic used by this module.
                     return Column(
                       children: [
                         chartCard,
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 18),
                         topProductsCard,
                       ],
                     );
                   },
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 18),
                 Container(
                   width: double.infinity,
@@ -906,11 +951,14 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                   ),
                   child: Row(
                     children: [
+                      // Handles the icon logic used by this module.
                       const Icon(
                         Icons.account_balance_wallet_outlined,
                         color: Color(0xFF1565C0),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 10),
+                      // Handles the expanded logic used by this module.
                       const Expanded(
                         child: Text(
                           'TOTAL CASH RECEIVED',
@@ -940,20 +988,24 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _SalesHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the sales hover card logic used by this module.
   const _SalesHoverCard({required this.child});
 
   @override
   State<_SalesHoverCard> createState() => _SalesHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SalesHoverCardState extends State<_SalesHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -978,12 +1030,14 @@ class _SalesHoverCardState extends State<_SalesHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _SalesSectionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final IconData icon;
   final Widget child;
 
+  // Handles the sales section card logic used by this module.
   const _SalesSectionCard({
     required this.title,
     required this.subtitle,
@@ -993,6 +1047,7 @@ class _SalesSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1025,6 +1080,7 @@ class _SalesSectionCard extends StatelessWidget {
                 ),
                 child: Icon(icon, color: const Color(0xFF1565C0), size: 22),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 11),
               Expanded(
                 child: Column(
@@ -1050,6 +1106,7 @@ class _SalesSectionCard extends StatelessWidget {
               ),
             ],
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 18),
           child,
         ],
@@ -1058,6 +1115,7 @@ class _SalesSectionCard extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ProductSales {
   final String productName;
   int quantity;

@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Generates printable barcodes for products that do not have manufacturer barcodes.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -8,20 +13,24 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+// Private UI/data helper used only inside this module.
 class _BarcodeHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the barcode hover card logic used by this module.
   const _BarcodeHoverCard({required this.child});
 
   @override
   State<_BarcodeHoverCard> createState() => _BarcodeHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _BarcodeHoverCardState extends State<_BarcodeHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -46,13 +55,16 @@ class _BarcodeHoverCardState extends State<_BarcodeHoverCard> {
   }
 }
 
+// Screen widget for generates printable barcodes for products that do not have manufacturer barcodes.
 class BarcodeGeneratorScreen extends StatefulWidget {
+  // Handles the barcode generator screen logic used by this module.
   const BarcodeGeneratorScreen({super.key});
 
   @override
   State<BarcodeGeneratorScreen> createState() => _BarcodeGeneratorScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
   String? _selectedProductId;
   String _selectedProductName = '';
@@ -63,6 +75,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
   bool _generating = false;
   bool _saving = false;
 
+  // Handles the slug logic used by this module.
   String _slug(String value) {
     final cleaned = value
         .toUpperCase()
@@ -82,6 +95,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
     return short.isEmpty ? 'PRODUCT' : short;
   }
 
+  // Handles the barcode exists logic used by this module.
   Future<bool> _barcodeExists(String barcode) async {
     final snapshot = await FirebaseFirestore.instance
         .collection('products')
@@ -92,9 +106,11 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
     return snapshot.docs.isNotEmpty;
   }
 
+  // Handles the generate barcode logic used by this module.
   Future<void> _generateBarcode() async {
     if (_selectedProductId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Select an actual product first.'),
           backgroundColor: Colors.orange,
@@ -121,6 +137,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
       }
 
       if (exists) {
+        // Handles the exception logic used by this module.
         throw Exception(
           'Unable to generate a unique barcode. Please try again.',
         );
@@ -145,6 +162,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
     }
   }
 
+  // Validates and saves barcode to product data to the application data store.
   Future<void> _saveBarcodeToProduct() async {
     if (_selectedProductId == null || _generatedBarcode == null) return;
 
@@ -154,6 +172,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
       final duplicate = await _barcodeExists(_generatedBarcode!);
 
       if (duplicate) {
+        // Handles the exception logic used by this module.
         throw Exception('This barcode already exists. Generate a new barcode.');
       }
 
@@ -171,6 +190,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Internal barcode saved to the product.'),
           backgroundColor: Colors.green,
@@ -198,8 +218,10 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
     }
   }
 
+  // Handles the generate label pdf logic used by this module.
   Future<Uint8List> _generateLabelPdf() async {
     if (_generatedBarcode == null) {
+      // Handles the exception logic used by this module.
       throw Exception('Generate a barcode first.');
     }
 
@@ -267,9 +289,11 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
     return document.save();
   }
 
+  // Handles the print or save label logic used by this module.
   Future<void> _printOrSaveLabel() async {
     if (_generatedBarcode == null) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(content: Text('Generate a barcode first.')),
       );
       return;
@@ -281,6 +305,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
     );
   }
 
+  // Builds the product selector UI from the current data and screen state.
   Widget _buildProductSelector(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) {
@@ -344,8 +369,10 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
     );
   }
 
+  // Builds the preview UI from the current data and screen state.
   Widget _buildPreview() {
     if (_generatedBarcode == null) {
+      // Handles the barcode hover card logic used by this module.
       return _BarcodeHoverCard(
         child: Container(
           width: double.infinity,
@@ -398,6 +425,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
       );
     }
 
+    // Handles the barcode hover card logic used by this module.
     return _BarcodeHoverCard(
       child: Container(
         width: double.infinity,
@@ -426,7 +454,9 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                   ),
                   child: const Icon(Icons.qr_code_rounded, color: Colors.white),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 12),
+                // Handles the expanded logic used by this module.
                 const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -470,6 +500,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                 ),
               ],
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 22),
             Container(
               width: double.infinity,
@@ -488,6 +519,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
               ),
               child: Column(
                 children: [
+                  // Handles the text logic used by this module.
                   const Text(
                     'EÜ MART',
                     style: TextStyle(
@@ -496,6 +528,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                       color: Color(0xFF1565C0),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 8),
                   Text(
                     _selectedProductName,
@@ -507,12 +540,14 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                     ),
                   ),
                   if (_selectedUnit.isNotEmpty) ...[
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 3),
                     Text(
                       _selectedUnit,
                       style: const TextStyle(color: Color(0xFF8A95A4)),
                     ),
                   ],
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 22),
                   BarcodeWidget(
                     barcode: Barcode.code128(),
@@ -521,6 +556,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                     height: 110,
                     drawText: true,
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
                   Text(
                     '₱${_selectedPrice.toStringAsFixed(2)}',
@@ -530,7 +566,9 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                       color: Color(0xFF0F8A4B),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 7),
+                  // Handles the text logic used by this module.
                   const Text(
                     'Internal EÜ MART barcode • Code 128',
                     style: TextStyle(color: Color(0xFF8A95A4)),
@@ -551,10 +589,12 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load products.\n${snapshot.error}',
@@ -586,6 +626,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                 return first.compareTo(second);
               });
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           child: SingleChildScrollView(
@@ -653,6 +694,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                         ],
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 18),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -687,7 +729,9 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                                         color: Color(0xFF1565C0),
                                       ),
                                     ),
+                                    // Handles the sized box logic used by this module.
                                     const SizedBox(width: 12),
+                                    // Handles the expanded logic used by this module.
                                     const Expanded(
                                       child: Column(
                                         crossAxisAlignment:
@@ -715,6 +759,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                                     ),
                                   ],
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 18),
                                 if (products.isEmpty)
                                   Container(
@@ -746,6 +791,7 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                                   )
                                 else
                                   _buildProductSelector(products),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 16),
                                 SizedBox(
                                   width: double.infinity,
@@ -840,28 +886,34 @@ class _BarcodeGeneratorScreenState extends State<BarcodeGeneratorScreen> {
                         );
 
                         if (isWide) {
+                          // Handles the row logic used by this module.
                           return Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(flex: 3, child: setupCard),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(width: 16),
                               Expanded(flex: 2, child: infoCard),
                             ],
                           );
                         }
 
+                        // Handles the column logic used by this module.
                         return Column(
                           children: [
                             setupCard,
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 16),
                             infoCard,
                           ],
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 18),
                     _buildPreview(),
                     if (_generatedBarcode != null) ...[
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 18),
                       _BarcodeHoverCard(
                         child: Container(

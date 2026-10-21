@@ -1,20 +1,29 @@
+// -----------------------------------------------------------------------------
+// Module overview: Compares sales performance across selected periods for basic business monitoring.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _SalesCompareHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the sales compare hover card logic used by this module.
   const _SalesCompareHoverCard({required this.child});
 
   @override
   State<_SalesCompareHoverCard> createState() => _SalesCompareHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SalesCompareHoverCardState extends State<_SalesCompareHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -39,11 +48,13 @@ class _SalesCompareHoverCardState extends State<_SalesCompareHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _SalesMetricPill extends StatelessWidget {
   final String title;
   final String value;
   final Color color;
 
+  // Handles the sales metric pill logic used by this module.
   const _SalesMetricPill({
     required this.title,
     required this.value,
@@ -52,6 +63,7 @@ class _SalesMetricPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -69,6 +81,7 @@ class _SalesMetricPill extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 2),
           Text(
             value,
@@ -84,14 +97,17 @@ class _SalesMetricPill extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _SalesSectionIcon extends StatelessWidget {
   final IconData icon;
   final Color color;
 
+  // Handles the sales section icon logic used by this module.
   const _SalesSectionIcon({required this.icon, required this.color});
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       width: 48,
       height: 48,
@@ -106,9 +122,12 @@ class _SalesSectionIcon extends StatelessWidget {
   }
 }
 
+// Screen widget for compares sales performance across selected periods for basic business monitoring.
 class SalesComparisonScreen extends StatelessWidget {
+  // Handles the sales comparison screen logic used by this module.
   const SalesComparisonScreen({super.key});
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -116,12 +135,14 @@ class SalesComparisonScreen extends StatelessWidget {
     return null;
   }
 
+  // Checks whether the current value satisfies the is same day rule used by this module.
   bool _isSameDay(DateTime date, DateTime target) {
     return date.year == target.year &&
         date.month == target.month &&
         date.day == target.day;
   }
 
+  // Handles the percent change logic used by this module.
   double _percentChange(double current, double previous) {
     if (previous == 0) {
       return current == 0 ? 0 : 100;
@@ -130,6 +151,7 @@ class SalesComparisonScreen extends StatelessWidget {
     return ((current - previous) / previous) * 100;
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
@@ -137,6 +159,7 @@ class SalesComparisonScreen extends StatelessWidget {
     required IconData icon,
     required Color color,
   }) {
+    // Handles the sales compare hover card logic used by this module.
     return _SalesCompareHoverCard(
       child: Container(
         padding: const EdgeInsets.all(18),
@@ -169,6 +192,7 @@ class SalesComparisonScreen extends StatelessWidget {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -182,6 +206,7 @@ class SalesComparisonScreen extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -195,6 +220,7 @@ class SalesComparisonScreen extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 3),
                   Text(
                     subtitle,
@@ -215,6 +241,7 @@ class SalesComparisonScreen extends StatelessWidget {
     );
   }
 
+  // Handles the comparison row logic used by this module.
   Widget _comparisonRow({
     required String label,
     required String today,
@@ -222,6 +249,7 @@ class SalesComparisonScreen extends StatelessWidget {
     required String difference,
     required Color differenceColor,
   }) {
+    // Handles the sales compare hover card logic used by this module.
     return _SalesCompareHoverCard(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -237,6 +265,7 @@ class SalesComparisonScreen extends StatelessWidget {
             final compact = constraints.maxWidth < 900;
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -247,6 +276,7 @@ class SalesComparisonScreen extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 9,
@@ -273,6 +303,7 @@ class SalesComparisonScreen extends StatelessWidget {
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(
@@ -334,10 +365,12 @@ class SalesComparisonScreen extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load sales comparison.\n'
@@ -447,12 +480,14 @@ class SalesComparisonScreen extends StatelessWidget {
         final durationDifference =
             todayAverageDuration - yesterdayAverageDuration;
 
+        // Handles the change color logic used by this module.
         Color changeColor(double value) {
           if (value > 0) return Colors.green;
           if (value < 0) return Colors.red;
           return Colors.grey;
         }
 
+        // Handles the change label logic used by this module.
         String changeLabel(double value) {
           final sign = value > 0
               ? '+'
@@ -463,6 +498,7 @@ class SalesComparisonScreen extends StatelessWidget {
           return '$sign${value.toStringAsFixed(1)}%';
         }
 
+        // Handles the duration label logic used by this module.
         String durationLabel(double seconds) {
           if (seconds == 0) return 'No change';
 
@@ -495,6 +531,7 @@ class SalesComparisonScreen extends StatelessWidget {
                   '${salesChange.abs().toStringAsFixed(1)}%.'
             : 'Today’s sales are equal to yesterday.';
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           child: SingleChildScrollView(
@@ -561,6 +598,7 @@ class SalesComparisonScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     _SalesCompareHoverCard(
                       child: Container(
@@ -599,6 +637,7 @@ class SalesComparisonScreen extends StatelessWidget {
                                     size: 29,
                                   ),
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 14),
                                 Expanded(
                                   child: Column(
@@ -613,6 +652,7 @@ class SalesComparisonScreen extends StatelessWidget {
                                           fontWeight: FontWeight.w900,
                                         ),
                                       ),
+                                      // Handles the sized box logic used by this module.
                                       const SizedBox(height: 4),
                                       Text(
                                         trendMessage,
@@ -647,10 +687,12 @@ class SalesComparisonScreen extends StatelessWidget {
                             );
 
                             if (compact) {
+                              // Handles the column logic used by this module.
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   info,
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 12),
                                   Align(
                                     alignment: Alignment.centerLeft,
@@ -660,9 +702,11 @@ class SalesComparisonScreen extends StatelessWidget {
                               );
                             }
 
+                            // Handles the row logic used by this module.
                             return Row(
                               children: [
                                 Expanded(child: info),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 14),
                                 badge,
                               ],
@@ -671,6 +715,7 @@ class SalesComparisonScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -728,6 +773,7 @@ class SalesComparisonScreen extends StatelessWidget {
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 20),
                     _SalesCompareHoverCard(
                       child: Container(
@@ -743,6 +789,7 @@ class SalesComparisonScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // Handles the row logic used by this module.
                             const Row(
                               children: [
                                 _SalesSectionIcon(
@@ -776,8 +823,10 @@ class SalesComparisonScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 18),
                             if (MediaQuery.sizeOf(context).width >= 760) ...[
+                              // Handles the padding logic used by this module.
                               const Padding(
                                 padding: EdgeInsets.symmetric(horizontal: 16),
                                 child: Row(
@@ -829,6 +878,7 @@ class SalesComparisonScreen extends StatelessWidget {
                                   ],
                                 ),
                               ),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 10),
                             ],
                             _comparisonRow(
@@ -839,6 +889,7 @@ class SalesComparisonScreen extends StatelessWidget {
                               difference: changeLabel(salesChange),
                               differenceColor: changeColor(salesChange),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             _comparisonRow(
                               label: 'Transactions',
@@ -847,6 +898,7 @@ class SalesComparisonScreen extends StatelessWidget {
                               difference: changeLabel(transactionChange),
                               differenceColor: changeColor(transactionChange),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             _comparisonRow(
                               label: 'Items Sold',
@@ -855,6 +907,7 @@ class SalesComparisonScreen extends StatelessWidget {
                               difference: changeLabel(itemChange),
                               differenceColor: changeColor(itemChange),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             _comparisonRow(
                               label: 'Average Transaction',
@@ -864,6 +917,7 @@ class SalesComparisonScreen extends StatelessWidget {
                               difference: changeLabel(averageChange),
                               differenceColor: changeColor(averageChange),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             _comparisonRow(
                               label: 'Average Service Time',

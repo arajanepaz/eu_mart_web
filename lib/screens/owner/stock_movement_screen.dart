@@ -1,21 +1,30 @@
+// -----------------------------------------------------------------------------
+// Module overview: Displays inventory stock movement records to support traceability of stock changes.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _MovementHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the movement hover card logic used by this module.
   const _MovementHoverCard({required this.child});
 
   @override
   State<_MovementHoverCard> createState() => _MovementHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _MovementHoverCardState extends State<_MovementHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -40,6 +49,7 @@ class _MovementHoverCardState extends State<_MovementHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _StockMovementCard extends StatefulWidget {
   final String productName;
   final String type;
@@ -55,6 +65,7 @@ class _StockMovementCard extends StatefulWidget {
   final String date;
   final String performedBy;
 
+  // Handles the stock movement card logic used by this module.
   const _StockMovementCard({
     required this.productName,
     required this.type,
@@ -75,6 +86,7 @@ class _StockMovementCard extends StatefulWidget {
   State<_StockMovementCard> createState() => _StockMovementCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _StockMovementCardState extends State<_StockMovementCard> {
   bool _hovered = false;
 
@@ -82,6 +94,7 @@ class _StockMovementCardState extends State<_StockMovementCard> {
   Widget build(BuildContext context) {
     final sign = widget.direction == 'increase' ? '+' : '-';
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -125,6 +138,7 @@ class _StockMovementCardState extends State<_StockMovementCard> {
                   ),
                   child: Icon(widget.icon, color: widget.color, size: 27),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -164,6 +178,7 @@ class _StockMovementCardState extends State<_StockMovementCard> {
                           ),
                         ],
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 9),
                       Wrap(
                         spacing: 9,
@@ -195,6 +210,7 @@ class _StockMovementCardState extends State<_StockMovementCard> {
                         ],
                       ),
                       if (widget.reason.isNotEmpty) ...[
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 10),
                         Text(
                           widget.reason,
@@ -218,11 +234,13 @@ class _StockMovementCardState extends State<_StockMovementCard> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Handles the icon logic used by this module.
                     const Icon(
                       Icons.schedule_outlined,
                       size: 15,
                       color: Color(0xFF8A95A4),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(width: 5),
                     Text(
                       widget.date,
@@ -234,15 +252,18 @@ class _StockMovementCardState extends State<_StockMovementCard> {
                   ],
                 ),
                 if (widget.performedBy.isNotEmpty) ...[
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 6),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Handles the icon logic used by this module.
                       const Icon(
                         Icons.person_outline,
                         size: 15,
                         color: Color(0xFF8A95A4),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 5),
                       Text(
                         widget.performedBy,
@@ -258,16 +279,19 @@ class _StockMovementCardState extends State<_StockMovementCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [mainInfo, const SizedBox(height: 14), meta],
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: mainInfo),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 16),
                 meta,
               ],
@@ -279,11 +303,13 @@ class _StockMovementCardState extends State<_StockMovementCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _MovementInfoPill extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
 
+  // Handles the movement info pill logic used by this module.
   const _MovementInfoPill({
     required this.icon,
     required this.label,
@@ -292,6 +318,7 @@ class _MovementInfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -302,6 +329,7 @@ class _MovementInfoPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 15, color: color),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 5),
           Text(
             label,
@@ -317,11 +345,14 @@ class _MovementInfoPill extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _StockMovementEmptyState extends StatelessWidget {
+  // Handles the stock movement empty state logic used by this module.
   const _StockMovementEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -359,16 +390,20 @@ class _StockMovementEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for displays inventory stock movement records to support traceability of stock changes.
 class StockMovementScreen extends StatefulWidget {
+  // Handles the stock movement screen logic used by this module.
   const StockMovementScreen({super.key});
 
   @override
   State<StockMovementScreen> createState() => _StockMovementScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _StockMovementScreenState extends State<StockMovementScreen> {
   String _selectedFilter = 'All';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -376,6 +411,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     return null;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Pending';
 
@@ -389,11 +425,13 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
         '$hour:$minute $period';
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(String type) {
     if (_selectedFilter == 'All') return true;
     return type == _selectedFilter;
   }
 
+  // Handles the movement color logic used by this module.
   Color _movementColor(String type) {
     switch (type) {
       case 'Restock':
@@ -411,6 +449,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     }
   }
 
+  // Handles the movement icon logic used by this module.
   IconData _movementIcon(String type) {
     switch (type) {
       case 'Restock':
@@ -428,6 +467,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     }
   }
 
+  // Opens the stock movement dialog interface using the current record or screen state.
   Future<void> _showStockMovementDialog() async {
     final results = await Future.wait([
       FirebaseFirestore.instance.collection('products').get(),
@@ -444,6 +484,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
 
     if (productsSnapshot.docs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('No products available. Add a product first.'),
           backgroundColor: Colors.orange,
@@ -486,11 +527,14 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Validates and saves movement data to the application data store.
             Future<void> saveMovement() async {
               if (selectedProductId == null) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  // Handles the snack bar logic used by this module.
                   const SnackBar(
                     content: Text('Select a product.'),
                     backgroundColor: Colors.red,
@@ -503,6 +547,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
 
               if (quantity == null || quantity <= 0) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  // Handles the snack bar logic used by this module.
                   const SnackBar(
                     content: Text('Quantity must be greater than zero.'),
                     backgroundColor: Colors.red,
@@ -513,6 +558,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
 
               if (movementType == 'Restock' && selectedSupplierId == null) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  // Handles the snack bar logic used by this module.
                   const SnackBar(
                     content: Text('Select an active supplier for restocking.'),
                     backgroundColor: Colors.red,
@@ -554,6 +600,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                       : previousStock - quantity;
 
                   if (newStock < 0) {
+                    // Handles the exception logic used by this module.
                     throw Exception(
                       'Not enough stock. Current stock: $previousStock.',
                     );
@@ -645,6 +692,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                 ? 0
                 : (selectedProduct.data()['stock'] as num?)?.toInt() ?? 0;
 
+            // Handles the alert dialog logic used by this module.
             return AlertDialog(
               title: const Text('Record Stock Movement'),
               content: SizedBox(
@@ -666,6 +714,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                                   .toString();
                           final stock = (data['stock'] as num?)?.toInt() ?? 0;
 
+                          // Handles the dropdown menu item logic used by this module.
                           return DropdownMenuItem(
                             value: document.id,
                             child: Text(
@@ -683,6 +732,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                               },
                       ),
                       if (selectedProductId != null) ...[
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 10),
                         Align(
                           alignment: Alignment.centerLeft,
@@ -695,6 +745,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                           ),
                         ),
                       ],
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         initialValue: movementType,
@@ -733,6 +784,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                                 });
                               },
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       TextField(
                         controller: quantityController,
@@ -744,6 +796,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                         ),
                       ),
                       if (movementType == 'Restock') ...[
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
                           initialValue: selectedSupplierId,
@@ -760,6 +813,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                             final contact = (data['contactPerson'] ?? '')
                                 .toString();
 
+                            // Handles the dropdown menu item logic used by this module.
                             return DropdownMenuItem(
                               value: supplier.id,
                               child: Text(
@@ -777,7 +831,9 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                                 },
                         ),
                         if (suppliers.isEmpty) ...[
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 8),
+                          // Handles the align logic used by this module.
                           const Align(
                             alignment: Alignment.centerLeft,
                             child: Text(
@@ -790,6 +846,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                             ),
                           ),
                         ],
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         TextField(
                           controller: costController,
@@ -804,6 +861,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                           ),
                         ),
                       ],
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       TextField(
                         controller: reasonController,
@@ -848,9 +906,11 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     reasonController.dispose();
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -869,6 +929,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       color: const Color(0xFFF2F6FC),
       padding: const EdgeInsets.all(22),
@@ -953,15 +1014,18 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                 );
 
                 if (compact) {
+                  // Handles the column logic used by this module.
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [title, const SizedBox(height: 14), button],
                   );
                 }
 
+                // Handles the row logic used by this module.
                 return Row(
                   children: [
                     Expanded(child: title),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(width: 16),
                     button,
                   ],
@@ -969,6 +1033,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
               },
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 16),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -979,10 +1044,12 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
+                  // Handles the center logic used by this module.
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 if (snapshot.hasError) {
+                  // Handles the center logic used by this module.
                   return Center(
                     child: Text(
                       'Unable to load stock movements.\n'
@@ -1022,9 +1089,11 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                 final movements = allMovements.where((document) {
                   final type = (document.data()['movementType'] ?? '')
                       .toString();
+                  // Checks whether the current value satisfies the matches filter rule used by this module.
                   return _matchesFilter(type);
                 }).toList();
 
+                // Handles the column logic used by this module.
                 return Column(
                   children: [
                     LayoutBuilder(
@@ -1073,6 +1142,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     Container(
                       width: double.infinity,
@@ -1090,20 +1160,26 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                         child: Row(
                           children: [
                             _filterChip('All'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Restock'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Stock Increase'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Stock Decrease'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Damaged'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Expired'),
                           ],
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     Expanded(
                       child: movements.isEmpty
@@ -1111,6 +1187,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                           : ListView.separated(
                               itemCount: movements.length,
                               separatorBuilder: (_, _) =>
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 final data = movements[index].data();
@@ -1135,6 +1212,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                                     (data['buyingCost'] as num?)?.toDouble() ??
                                     0;
 
+                                // Handles the stock movement card logic used by this module.
                                 return _StockMovementCard(
                                   productName:
                                       (data['productName'] ?? 'Unknown Product')
@@ -1168,12 +1246,14 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     );
   }
 
+  // Handles the movement summary card logic used by this module.
   Widget _movementSummaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the movement hover card logic used by this module.
     return _MovementHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -1204,6 +1284,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -1217,6 +1298,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     value,

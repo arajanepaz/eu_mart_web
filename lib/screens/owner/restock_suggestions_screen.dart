@@ -1,20 +1,29 @@
+// -----------------------------------------------------------------------------
+// Module overview: Uses current stock and product movement information to support rule-based restocking decisions.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _RestockHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the restock hover card logic used by this module.
   const _RestockHoverCard({required this.child});
 
   @override
   State<_RestockHoverCard> createState() => _RestockHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _RestockHoverCardState extends State<_RestockHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -39,6 +48,7 @@ class _RestockHoverCardState extends State<_RestockHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _RestockSuggestionCard extends StatefulWidget {
   final String productName;
   final String category;
@@ -50,6 +60,7 @@ class _RestockSuggestionCard extends StatefulWidget {
   final Color color;
   final IconData icon;
 
+  // Handles the restock suggestion card logic used by this module.
   const _RestockSuggestionCard({
     required this.productName,
     required this.category,
@@ -66,11 +77,13 @@ class _RestockSuggestionCard extends StatefulWidget {
   State<_RestockSuggestionCard> createState() => _RestockSuggestionCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -114,6 +127,7 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
                   ),
                   child: Icon(widget.icon, color: widget.color, size: 27),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -155,6 +169,7 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
                       ),
                       if (widget.category.isNotEmpty ||
                           widget.supplier.isNotEmpty) ...[
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 8,
@@ -206,15 +221,18 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [productInfo, const SizedBox(height: 14), metrics],
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(flex: 4, child: productInfo),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 16),
                 Expanded(
                   flex: 3,
@@ -232,11 +250,13 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _RestockInfoPill extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color color;
 
+  // Handles the restock info pill logic used by this module.
   const _RestockInfoPill({
     required this.icon,
     required this.label,
@@ -245,6 +265,7 @@ class _RestockInfoPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
@@ -255,6 +276,7 @@ class _RestockInfoPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 15, color: color),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 5),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 170),
@@ -275,11 +297,13 @@ class _RestockInfoPill extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _RestockMetricBox extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
+  // Handles the restock metric box logic used by this module.
   const _RestockMetricBox({
     required this.label,
     required this.value,
@@ -288,6 +312,7 @@ class _RestockMetricBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       constraints: const BoxConstraints(minWidth: 118),
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
@@ -306,6 +331,7 @@ class _RestockMetricBox extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 3),
           Text(
             value,
@@ -321,15 +347,19 @@ class _RestockMetricBox extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _RestockEmptyState extends StatelessWidget {
+  // Handles the restock empty state logic used by this module.
   const _RestockEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the layout builder logic used by this module.
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 180;
 
+        // Handles the single child scroll view logic used by this module.
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           padding: EdgeInsets.symmetric(
@@ -378,7 +408,9 @@ class _RestockEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for uses current stock and product movement information to support rule-based restocking decisions.
 class RestockSuggestionsScreen extends StatefulWidget {
+  // Handles the restock suggestions screen logic used by this module.
   const RestockSuggestionsScreen({super.key});
 
   @override
@@ -386,9 +418,11 @@ class RestockSuggestionsScreen extends StatefulWidget {
       _RestockSuggestionsScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
   String _selectedFilter = 'All';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -396,6 +430,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
     return null;
   }
 
+  // Handles the priority logic used by this module.
   String _priority({
     required int stock,
     required int threshold,
@@ -408,6 +443,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
     return 'Normal';
   }
 
+  // Handles the suggested quantity logic used by this module.
   int _suggestedQuantity({
     required int stock,
     required int threshold,
@@ -422,6 +458,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
     return suggestion > 0 ? suggestion : 0;
   }
 
+  // Handles the priority color logic used by this module.
   Color _priorityColor(String priority) {
     switch (priority) {
       case 'Critical':
@@ -437,6 +474,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
     }
   }
 
+  // Handles the priority icon logic used by this module.
   IconData _priorityIcon(String priority) {
     switch (priority) {
       case 'Critical':
@@ -452,6 +490,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
     }
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(String priority) {
     if (_selectedFilter == 'All') {
       return priority != 'Normal';
@@ -460,9 +499,11 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
     return priority == _selectedFilter;
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -497,10 +538,12 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
           builder: (context, productSnapshot) {
             if (productSnapshot.connectionState == ConnectionState.waiting &&
                 !productSnapshot.hasData) {
+              // Handles the center logic used by this module.
               return const Center(child: CircularProgressIndicator());
             }
 
             if (productSnapshot.hasError) {
+              // Handles the center logic used by this module.
               return Center(
                 child: Text(
                   'Unable to load products.\n'
@@ -525,6 +568,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                 if (transactionSnapshot.connectionState ==
                         ConnectionState.waiting &&
                     !transactionSnapshot.hasData) {
+                  // Handles the center logic used by this module.
                   return const Center(child: CircularProgressIndicator());
                 }
 
@@ -602,6 +646,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                         soldLast30Days: soldLast30Days,
                       );
 
+                      // Handles the restock suggestion logic used by this module.
                       return _RestockSuggestion(
                         documentId: document.id,
                         productName: name,
@@ -618,6 +663,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                       );
                     })
                     .where((suggestion) {
+                      // Checks whether the current value satisfies the matches filter rule used by this module.
                       return _matchesFilter(suggestion.priority);
                     })
                     .toList();
@@ -657,6 +703,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                     .where((item) => item.priority == 'Monitor')
                     .length;
 
+                // Handles the container logic used by this module.
                 return Container(
                   color: const Color(0xFFF2F6FC),
                   child: SingleChildScrollView(
@@ -724,6 +771,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               ],
                             ),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 16),
                           LayoutBuilder(
                             builder: (context, constraints) {
@@ -773,6 +821,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               );
                             },
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 16),
                           _RestockHoverCard(
                             child: Container(
@@ -796,6 +845,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
 
                                   final information = Row(
                                     children: [
+                                      // Handles the circle avatar logic used by this module.
                                       const CircleAvatar(
                                         radius: 22,
                                         backgroundColor: Color(0x1F1565C0),
@@ -804,6 +854,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                           color: Color(0xFF1565C0),
                                         ),
                                       ),
+                                      // Handles the sized box logic used by this module.
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Text(
@@ -852,11 +903,13 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                   );
 
                                   if (compact) {
+                                    // Handles the column logic used by this module.
                                     return Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.stretch,
                                       children: [
                                         information,
+                                        // Handles the sized box logic used by this module.
                                         const SizedBox(height: 12),
                                         Align(
                                           alignment: Alignment.centerLeft,
@@ -866,9 +919,11 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                     );
                                   }
 
+                                  // Handles the row logic used by this module.
                                   return Row(
                                     children: [
                                       Expanded(child: information),
+                                      // Handles the sized box logic used by this module.
                                       const SizedBox(width: 14),
                                       badge,
                                     ],
@@ -877,6 +932,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               ),
                             ),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 16),
                           Container(
                             width: double.infinity,
@@ -896,21 +952,27 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               child: Row(
                                 children: [
                                   _filterChip('All'),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(width: 8),
                                   _filterChip('Critical'),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(width: 8),
                                   _filterChip('High'),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(width: 8),
                                   _filterChip('Medium'),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(width: 8),
                                   _filterChip('Monitor'),
                                 ],
                               ),
                             ),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 18),
                           Row(
                             children: [
+                              // Handles the expanded logic used by this module.
                               const Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -954,8 +1016,10 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               ),
                             ],
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 12),
                           if (suggestions.isEmpty)
+                            // Handles the sized box logic used by this module.
                             const SizedBox(
                               height: 240,
                               child: _RestockEmptyState(),
@@ -966,10 +1030,12 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               physics: const NeverScrollableScrollPhysics(),
                               itemCount: suggestions.length,
                               separatorBuilder: (_, _) =>
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 12),
                               itemBuilder: (context, index) {
                                 final suggestion = suggestions[index];
 
+                                // Handles the constrained box logic used by this module.
                                 return ConstrainedBox(
                                   constraints: const BoxConstraints(
                                     minHeight: 128,
@@ -1002,12 +1068,14 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the restock hover card logic used by this module.
     return _RestockHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -1038,6 +1106,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -1051,6 +1120,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     value,
@@ -1070,6 +1140,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _RestockSuggestion {
   final String documentId;
   final String productName;
@@ -1080,6 +1151,7 @@ class _RestockSuggestion {
   final int suggestedQuantity;
   final String priority;
 
+  // Handles the restock suggestion logic used by this module.
   const _RestockSuggestion({
     required this.documentId,
     required this.productName,

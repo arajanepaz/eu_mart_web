@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Central responsive-layout helper used to decide when screens should switch to mobile-oriented layouts.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:flutter/foundation.dart';
 
 /// Device-aware responsive helpers.
@@ -18,6 +23,7 @@ class ResponsiveDevice {
         defaultTargetPlatform == TargetPlatform.iOS;
   }
 
+  // Handles the use mobile layout logic used by this module.
   static bool useMobileLayout(double width, {double breakpoint = 900}) {
     return isMobilePlatform || width < breakpoint;
   }

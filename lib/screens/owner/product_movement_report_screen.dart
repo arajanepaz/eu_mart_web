@@ -1,9 +1,16 @@
+// -----------------------------------------------------------------------------
+// Module overview: Analyzes transaction item quantities to identify product movement and sales activity.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _ProductMovementHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the product movement hover card logic used by this module.
   const _ProductMovementHoverCard({required this.child});
 
   @override
@@ -11,11 +18,13 @@ class _ProductMovementHoverCard extends StatefulWidget {
       _ProductMovementHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProductMovementHoverCardState extends State<_ProductMovementHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -40,6 +49,7 @@ class _ProductMovementHoverCardState extends State<_ProductMovementHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ProductMovementCard extends StatefulWidget {
   final int rank;
   final String productName;
@@ -51,6 +61,7 @@ class _ProductMovementCard extends StatefulWidget {
   final Color color;
   final IconData icon;
 
+  // Handles the product movement card logic used by this module.
   const _ProductMovementCard({
     required this.rank,
     required this.productName,
@@ -67,11 +78,13 @@ class _ProductMovementCard extends StatefulWidget {
   State<_ProductMovementCard> createState() => _ProductMovementCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProductMovementCardState extends State<_ProductMovementCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -141,6 +154,7 @@ class _ProductMovementCardState extends State<_ProductMovementCard> {
                     ],
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -156,6 +170,7 @@ class _ProductMovementCardState extends State<_ProductMovementCard> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 5),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -222,21 +237,26 @@ class _ProductMovementCardState extends State<_ProductMovementCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   product,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
                   metrics,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 12),
                   Align(alignment: Alignment.centerRight, child: badge),
                 ],
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(flex: 4, child: product),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 16),
                 Expanded(
                   flex: 4,
@@ -245,6 +265,7 @@ class _ProductMovementCardState extends State<_ProductMovementCard> {
                     child: metrics,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 badge,
               ],
@@ -256,11 +277,13 @@ class _ProductMovementCardState extends State<_ProductMovementCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _MovementMetricBox extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
+  // Handles the movement metric box logic used by this module.
   const _MovementMetricBox({
     required this.label,
     required this.value,
@@ -269,6 +292,7 @@ class _MovementMetricBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       constraints: const BoxConstraints(minWidth: 110),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -287,6 +311,7 @@ class _MovementMetricBox extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 3),
           Text(
             value,
@@ -302,11 +327,14 @@ class _MovementMetricBox extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProductMovementEmptyState extends StatelessWidget {
+  // Handles the product movement empty state logic used by this module.
   const _ProductMovementEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -334,7 +362,9 @@ class _ProductMovementEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for analyzes transaction item quantities to identify product movement and sales activity.
 class ProductMovementReportScreen extends StatefulWidget {
+  // Handles the product movement report screen logic used by this module.
   const ProductMovementReportScreen({super.key});
 
   @override
@@ -342,11 +372,13 @@ class ProductMovementReportScreen extends StatefulWidget {
       _ProductMovementReportScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProductMovementReportScreenState
     extends State<ProductMovementReportScreen> {
   String _selectedPeriod = 'Last 30 Days';
   String _selectedCategory = 'All';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -354,6 +386,7 @@ class _ProductMovementReportScreenState
     return null;
   }
 
+  // Handles the cutoff date logic used by this module.
   DateTime _cutoffDate() {
     final now = DateTime.now();
 
@@ -363,12 +396,14 @@ class _ProductMovementReportScreenState
       case 'Last 90 Days':
         return now.subtract(const Duration(days: 90));
       case 'All Time':
+        // Handles the date time logic used by this module.
         return DateTime(2000);
       default:
         return now.subtract(const Duration(days: 30));
     }
   }
 
+  // Handles the classification logic used by this module.
   String _classification(int quantitySold) {
     if (quantitySold >= 20) return 'Fast-Moving';
     if (quantitySold >= 5) return 'Regular';
@@ -376,11 +411,13 @@ class _ProductMovementReportScreenState
     return 'No Sales';
   }
 
+  // Handles the classification color logic used by this module.
   Color _classificationColor(String classification) {
     switch (classification) {
       case 'Fast-Moving':
         return Colors.green;
       case 'Regular':
+        // Handles the color logic used by this module.
         return const Color(0xFF1565C0);
       case 'Slow-Moving':
         return Colors.orange;
@@ -389,6 +426,7 @@ class _ProductMovementReportScreenState
     }
   }
 
+  // Handles the classification icon logic used by this module.
   IconData _classificationIcon(String classification) {
     switch (classification) {
       case 'Fast-Moving':
@@ -402,12 +440,14 @@ class _ProductMovementReportScreenState
     }
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the product movement hover card logic used by this module.
     return _ProductMovementHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -438,6 +478,7 @@ class _ProductMovementReportScreenState
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -451,6 +492,7 @@ class _ProductMovementReportScreenState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     value,
@@ -476,10 +518,12 @@ class _ProductMovementReportScreenState
       builder: (context, productSnapshot) {
         if (productSnapshot.connectionState == ConnectionState.waiting &&
             !productSnapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (productSnapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load products.\n${productSnapshot.error}',
@@ -521,10 +565,12 @@ class _ProductMovementReportScreenState
             if (transactionSnapshot.connectionState ==
                     ConnectionState.waiting &&
                 !transactionSnapshot.hasData) {
+              // Handles the center logic used by this module.
               return const Center(child: CircularProgressIndicator());
             }
 
             if (transactionSnapshot.hasError) {
+              // Handles the center logic used by this module.
               return Center(
                 child: Text(
                   'Unable to load transactions.\n${transactionSnapshot.error}',
@@ -612,6 +658,7 @@ class _ProductMovementReportScreenState
 
                   final stock = (data['stock'] as num?)?.toInt() ?? 0;
 
+                  // Handles the product movement logic used by this module.
                   return _ProductMovement(
                     productName: productName,
                     category: category,
@@ -660,6 +707,7 @@ class _ProductMovementReportScreenState
                 .where((row) => row.classification == 'No Sales')
                 .length;
 
+            // Handles the container logic used by this module.
             return Container(
               color: const Color(0xFFF2F6FC),
               child: SingleChildScrollView(
@@ -726,6 +774,7 @@ class _ProductMovementReportScreenState
                             ],
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         LayoutBuilder(
                           builder: (context, constraints) {
@@ -775,6 +824,7 @@ class _ProductMovementReportScreenState
                                     icon: Icons.category_outlined,
                                   ),
                                   items: [
+                                    // Handles the dropdown menu item logic used by this module.
                                     const DropdownMenuItem(
                                       value: 'All',
                                       child: Text('All Categories'),
@@ -795,24 +845,29 @@ class _ProductMovementReportScreenState
                                 );
 
                             if (compact) {
+                              // Handles the column logic used by this module.
                               return Column(
                                 children: [
                                   periodFilter,
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 12),
                                   categoryFilter,
                                 ],
                               );
                             }
 
+                            // Handles the row logic used by this module.
                             return Row(
                               children: [
                                 Expanded(child: periodFilter),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 14),
                                 Expanded(child: categoryFilter),
                               ],
                             );
                           },
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         LayoutBuilder(
                           builder: (context, constraints) {
@@ -862,6 +917,7 @@ class _ProductMovementReportScreenState
                             );
                           },
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 16),
                         _ProductMovementHoverCard(
                           child: Container(
@@ -905,9 +961,11 @@ class _ProductMovementReportScreenState
                             ),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 20),
                         Row(
                           children: [
+                            // Handles the expanded logic used by this module.
                             const Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -951,8 +1009,10 @@ class _ProductMovementReportScreenState
                             ),
                           ],
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 12),
                         if (rows.isEmpty)
+                          // Handles the sized box logic used by this module.
                           const SizedBox(
                             height: 230,
                             child: _ProductMovementEmptyState(),
@@ -963,6 +1023,7 @@ class _ProductMovementReportScreenState
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: rows.length,
                             separatorBuilder: (_, _) =>
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(height: 12),
                             itemBuilder: (context, index) {
                               final row = rows[index];
@@ -970,6 +1031,7 @@ class _ProductMovementReportScreenState
                                 row.classification,
                               );
 
+                              // Handles the product movement card logic used by this module.
                               return _ProductMovementCard(
                                 rank: index + 1,
                                 productName: row.productName,
@@ -995,10 +1057,12 @@ class _ProductMovementReportScreenState
     );
   }
 
+  // Handles the movement input decoration logic used by this module.
   InputDecoration _movementInputDecoration({
     required String label,
     required IconData icon,
   }) {
+    // Handles the input decoration logic used by this module.
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon, color: const Color(0xFF1565C0)),
@@ -1020,6 +1084,7 @@ class _ProductMovementReportScreenState
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ProductMovement {
   final String productName;
   final String category;
@@ -1028,6 +1093,7 @@ class _ProductMovement {
   final int stock;
   final String classification;
 
+  // Handles the product movement logic used by this module.
   const _ProductMovement({
     required this.productName,
     required this.category,

@@ -1,9 +1,16 @@
+// -----------------------------------------------------------------------------
+// Module overview: Reusable service for writing structured audit-trail records to Firestore.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+// Defines a reusable component or data structure used by this module.
 class AuditLogService {
   AuditLogService._();
 
+  // Records log information for monitoring or traceability.
   static Future<void> log({
     required String action,
     required String module,
@@ -34,10 +41,12 @@ class AuditLogService {
     }
   }
 
+  // Handles the product created logic used by this module.
   static Future<void> productCreated({
     required String productId,
     required String productName,
   }) {
+    // Records log information for monitoring or traceability.
     return log(
       action: 'Create Product',
       module: 'Products',
@@ -47,10 +56,12 @@ class AuditLogService {
     );
   }
 
+  // Handles the product updated logic used by this module.
   static Future<void> productUpdated({
     required String productId,
     required String productName,
   }) {
+    // Records log information for monitoring or traceability.
     return log(
       action: 'Update Product',
       module: 'Products',
@@ -60,10 +71,12 @@ class AuditLogService {
     );
   }
 
+  // Handles the product deleted logic used by this module.
   static Future<void> productDeleted({
     required String productId,
     required String productName,
   }) {
+    // Records log information for monitoring or traceability.
     return log(
       action: 'Delete Product',
       module: 'Products',
@@ -73,12 +86,14 @@ class AuditLogService {
     );
   }
 
+  // Handles the stock adjusted logic used by this module.
   static Future<void> stockAdjusted({
     required String productId,
     required String productName,
     required int oldStock,
     required int newStock,
   }) {
+    // Records log information for monitoring or traceability.
     return log(
       action: 'Update Stock',
       module: 'Inventory',
@@ -89,11 +104,13 @@ class AuditLogService {
     );
   }
 
+  // Handles the transaction voided logic used by this module.
   static Future<void> transactionVoided({
     required String transactionId,
     required String receiptNumber,
     String reason = '',
   }) {
+    // Records log information for monitoring or traceability.
     return log(
       action: 'Void Transaction',
       module: 'Transactions',
@@ -105,11 +122,13 @@ class AuditLogService {
     );
   }
 
+  // Handles the cashier status changed logic used by this module.
   static Future<void> cashierStatusChanged({
     required String cashierId,
     required String cashierName,
     required bool enabled,
   }) {
+    // Records log information for monitoring or traceability.
     return log(
       action: enabled ? 'Enable Cashier' : 'Disable Cashier',
       module: 'Cashiers',
@@ -121,7 +140,9 @@ class AuditLogService {
     );
   }
 
+  // Handles the settings updated logic used by this module.
   static Future<void> settingsUpdated({required String description}) {
+    // Records log information for monitoring or traceability.
     return log(
       action: 'Update Settings',
       module: 'Settings',
@@ -130,11 +151,13 @@ class AuditLogService {
     );
   }
 
+  // Handles the permit changed logic used by this module.
   static Future<void> permitChanged({
     required String action,
     required String permitId,
     required String permitName,
   }) {
+    // Records log information for monitoring or traceability.
     return log(
       action: action,
       module: 'Permit Reminders',
@@ -144,10 +167,12 @@ class AuditLogService {
     );
   }
 
+  // Handles the backup restored logic used by this module.
   static Future<void> backupRestored({
     required int documentCount,
     required List<String> collections,
   }) {
+    // Records log information for monitoring or traceability.
     return log(
       action: 'Restore Backup',
       module: 'Backup',

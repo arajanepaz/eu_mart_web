@@ -1,20 +1,29 @@
+// -----------------------------------------------------------------------------
+// Module overview: Maintains supplier information used by EÜ MART product and inventory operations.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _SupplierHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the supplier hover card logic used by this module.
   const _SupplierHoverCard({required this.child});
 
   @override
   State<_SupplierHoverCard> createState() => _SupplierHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SupplierHoverCardState extends State<_SupplierHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -39,6 +48,7 @@ class _SupplierHoverCardState extends State<_SupplierHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _SupplierCard extends StatefulWidget {
   final String supplierName;
   final String contactPerson;
@@ -49,6 +59,7 @@ class _SupplierCard extends StatefulWidget {
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
+  // Handles the supplier card logic used by this module.
   const _SupplierCard({
     required this.supplierName,
     required this.contactPerson,
@@ -64,15 +75,19 @@ class _SupplierCard extends StatefulWidget {
   State<_SupplierCard> createState() => _SupplierCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SupplierCardState extends State<_SupplierCard> {
   bool _hovered = false;
 
+  // Handles the detail logic used by this module.
   Widget _detail(IconData icon, String value) {
+    // Handles the padding logic used by this module.
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
           Icon(icon, size: 17, color: const Color(0xFF7A8494)),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -93,6 +108,7 @@ class _SupplierCardState extends State<_SupplierCard> {
         ? const Color(0xFF159447)
         : const Color(0xFF8A95A4);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -140,6 +156,7 @@ class _SupplierCardState extends State<_SupplierCard> {
                     size: 25,
                   ),
                 ),
+                // Handles the spacer logic used by this module.
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -161,6 +178,7 @@ class _SupplierCardState extends State<_SupplierCard> {
                 ),
               ],
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 14),
             Text(
               widget.supplierName,
@@ -172,6 +190,7 @@ class _SupplierCardState extends State<_SupplierCard> {
                 fontWeight: FontWeight.w900,
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 13),
             _detail(
               Icons.person_outline,
@@ -191,6 +210,7 @@ class _SupplierCardState extends State<_SupplierCard> {
               Icons.location_on_outlined,
               widget.address.isEmpty ? 'No address' : widget.address,
             ),
+            // Handles the spacer logic used by this module.
             const Spacer(),
             Row(
               children: [
@@ -201,6 +221,7 @@ class _SupplierCardState extends State<_SupplierCard> {
                     label: const Text('EDIT'),
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 8),
                 IconButton(
                   tooltip: 'Delete supplier',
@@ -216,11 +237,14 @@ class _SupplierCardState extends State<_SupplierCard> {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SupplierEmptyState extends StatelessWidget {
+  // Handles the supplier empty state logic used by this module.
   const _SupplierEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -258,7 +282,9 @@ class _SupplierEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for maintains supplier information used by EÜ MART product and inventory operations.
 class SupplierManagementScreen extends StatefulWidget {
+  // Handles the supplier management screen logic used by this module.
   const SupplierManagementScreen({super.key});
 
   @override
@@ -266,11 +292,13 @@ class SupplierManagementScreen extends StatefulWidget {
       _SupplierManagementScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
 
+  // Opens the supplier dialog interface using the current record or screen state.
   Future<void> _showSupplierDialog({
     DocumentSnapshot<Map<String, dynamic>>? document,
   }) async {
@@ -302,13 +330,16 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Validates and saves supplier data to the application data store.
             Future<void> saveSupplier() async {
               final supplierName = nameController.text.trim();
 
               if (supplierName.isEmpty) {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  // Handles the snack bar logic used by this module.
                   const SnackBar(
                     content: Text('Supplier name is required.'),
                     backgroundColor: Colors.red,
@@ -337,6 +368,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                   if (!dialogContext.mounted) return;
 
                   ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    // Handles the snack bar logic used by this module.
                     const SnackBar(
                       content: Text(
                         'A supplier with this name already exists.',
@@ -399,6 +431,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
               }
             }
 
+            // Handles the alert dialog logic used by this module.
             return AlertDialog(
               title: Text(document == null ? 'Add Supplier' : 'Edit Supplier'),
               content: SizedBox(
@@ -414,6 +447,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       TextField(
                         controller: contactPersonController,
@@ -423,6 +457,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       Row(
                         children: [
@@ -436,6 +471,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                               ),
                             ),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 12),
                           Expanded(
                             child: TextField(
@@ -450,6 +486,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                           ),
                         ],
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       TextField(
                         controller: addressController,
@@ -460,6 +497,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       TextField(
                         controller: notesController,
@@ -470,6 +508,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                           border: OutlineInputBorder(),
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 8),
                       SwitchListTile(
                         value: isActive,
@@ -515,6 +554,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
     );
   }
 
+  // Deletes the selected supplier record after the required checks.
   Future<void> _deleteSupplier(
     DocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -524,6 +564,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Delete Supplier'),
           content: Text(
@@ -556,6 +597,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Supplier deleted.'),
           backgroundColor: Colors.green,
@@ -573,6 +615,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
     }
   }
 
+  // Checks whether the current value satisfies the matches search rule used by this module.
   bool _matchesSearch(Map<String, dynamic> data) {
     if (_searchQuery.isEmpty) return true;
 
@@ -589,6 +632,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       color: const Color(0xFFF2F6FC),
       padding: const EdgeInsets.all(22),
@@ -644,6 +688,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
               ],
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 16),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -653,10 +698,12 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
+                  // Handles the center logic used by this module.
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 if (snapshot.hasError) {
+                  // Handles the center logic used by this module.
                   return Center(
                     child: Text(
                       'Unable to load suppliers.\n'
@@ -680,6 +727,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                 final inactiveCount = allSuppliers.length - activeCount;
 
                 final suppliers = allSuppliers.where((document) {
+                  // Checks whether the current value satisfies the matches search rule used by this module.
                   return _matchesSearch(document.data());
                 }).toList();
 
@@ -693,6 +741,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                   return first.compareTo(second);
                 });
 
+                // Handles the column logic used by this module.
                 return Column(
                   children: [
                     LayoutBuilder(
@@ -735,6 +784,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -813,25 +863,30 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                         );
 
                         if (compact) {
+                          // Handles the column logic used by this module.
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               search,
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 12),
                               addButton,
                             ],
                           );
                         }
 
+                        // Handles the row logic used by this module.
                         return Row(
                           children: [
                             Expanded(child: search),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 14),
                             addButton,
                           ],
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     Expanded(
                       child: suppliers.isEmpty
@@ -839,6 +894,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                           : GridView.builder(
                               itemCount: suppliers.length,
                               gridDelegate:
+                                  // Handles the sliver grid delegate with max cross axis extent logic used by this module.
                                   const SliverGridDelegateWithMaxCrossAxisExtent(
                                     maxCrossAxisExtent: 410,
                                     mainAxisExtent: 310,
@@ -849,6 +905,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                                 final document = suppliers[index];
                                 final data = document.data();
 
+                                // Handles the supplier card logic used by this module.
                                 return _SupplierCard(
                                   supplierName:
                                       (data['supplierName'] ??
@@ -877,12 +934,14 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
     );
   }
 
+  // Handles the supplier summary card logic used by this module.
   Widget _supplierSummaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the supplier hover card logic used by this module.
     return _SupplierHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -913,6 +972,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -926,6 +986,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     value,
@@ -944,12 +1005,15 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
     );
   }
 
+  // Handles the detail logic used by this module.
   Widget _detail(IconData icon, String value) {
+    // Handles the padding logic used by this module.
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
       child: Row(
         children: [
           Icon(icon, size: 17, color: Colors.grey),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 8),
           Expanded(
             child: Text(

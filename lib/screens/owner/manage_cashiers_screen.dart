@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Owner-only cashier account management for creating, viewing, enabling, and maintaining cashier access.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -6,20 +11,24 @@ import 'package:flutter/material.dart';
 import '../../firebase_options.dart';
 import '../../services/audit_log_service.dart';
 
+// Private UI/data helper used only inside this module.
 class _CashierSummaryCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the cashier summary card logic used by this module.
   const _CashierSummaryCard({required this.child});
 
   @override
   State<_CashierSummaryCard> createState() => _CashierSummaryCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierSummaryCardState extends State<_CashierSummaryCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -44,6 +53,7 @@ class _CashierSummaryCardState extends State<_CashierSummaryCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _CashierAccountCard extends StatefulWidget {
   final String name;
   final String email;
@@ -52,6 +62,7 @@ class _CashierAccountCard extends StatefulWidget {
   final VoidCallback onReset;
   final VoidCallback onStatus;
 
+  // Handles the cashier account card logic used by this module.
   const _CashierAccountCard({
     required this.name,
     required this.email,
@@ -65,6 +76,7 @@ class _CashierAccountCard extends StatefulWidget {
   State<_CashierAccountCard> createState() => _CashierAccountCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierAccountCardState extends State<_CashierAccountCard> {
   bool _hovered = false;
 
@@ -74,6 +86,7 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
         ? const Color(0xFF1565C0)
         : const Color(0xFFD32F2F);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -118,6 +131,7 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
                 size: 27,
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -133,14 +147,17 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Row(
                     children: [
+                      // Handles the icon logic used by this module.
                       const Icon(
                         Icons.email_outlined,
                         size: 15,
                         color: Color(0xFF8A95A4),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
@@ -158,6 +175,7 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
                 ],
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -174,6 +192,7 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
                 ),
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 8),
             PopupMenuButton<String>(
               tooltip: 'Cashier actions',
@@ -187,6 +206,7 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
                 }
               },
               itemBuilder: (_) => [
+                // Handles the popup menu item logic used by this module.
                 const PopupMenuItem(
                   value: 'edit',
                   child: ListTile(
@@ -194,6 +214,7 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
                     title: Text('Edit Name'),
                   ),
                 ),
+                // Handles the popup menu item logic used by this module.
                 const PopupMenuItem(
                   value: 'reset',
                   child: ListTile(
@@ -223,11 +244,14 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierEmptyState extends StatelessWidget {
+  // Handles the cashier empty state logic used by this module.
   const _CashierEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -265,17 +289,21 @@ class _CashierEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for owner-only cashier account management for creating, viewing, enabling, and maintaining cashier access.
 class ManageCashiersScreen extends StatefulWidget {
+  // Handles the manage cashiers screen logic used by this module.
   const ManageCashiersScreen({super.key});
 
   @override
   State<ManageCashiersScreen> createState() => _ManageCashiersScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Opens the create cashier dialog interface using the current record or screen state.
   Future<void> _showCreateCashierDialog() async {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
@@ -289,8 +317,10 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Creates the cashier record used by this module.
             Future<void> createCashier() async {
               if (!formKey.currentState!.validate()) return;
 
@@ -320,6 +350,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                 final createdUser = credential.user;
 
                 if (createdUser == null) {
+                  // Handles the exception logic used by this module.
                   throw Exception('Unable to create cashier account.');
                 }
 
@@ -394,6 +425,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
               }
             }
 
+            // Handles the alert dialog logic used by this module.
             return AlertDialog(
               title: const Text('Create Cashier Account'),
               content: SizedBox(
@@ -418,6 +450,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                           return null;
                         },
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: emailController,
@@ -436,6 +469,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                           return null;
                         },
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: passwordController,
@@ -498,6 +532,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
 
     if (created == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Cashier account created successfully.'),
           backgroundColor: Colors.green,
@@ -506,6 +541,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
     }
   }
 
+  // Handles the set cashier status logic used by this module.
   Future<void> _setCashierStatus({
     required DocumentSnapshot<Map<String, dynamic>> document,
     required bool isActive,
@@ -550,6 +586,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
     }
   }
 
+  // Handles the send password reset logic used by this module.
   Future<void> _sendPasswordReset(String email) async {
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
@@ -574,6 +611,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
     }
   }
 
+  // Handles the edit cashier logic used by this module.
   Future<void> _editCashier(
     DocumentSnapshot<Map<String, dynamic>> document,
   ) async {
@@ -589,8 +627,10 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Validates and saves save data to the application data store.
             Future<void> save() async {
               if (!formKey.currentState!.validate()) return;
 
@@ -626,6 +666,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
               }
             }
 
+            // Handles the alert dialog logic used by this module.
             return AlertDialog(
               title: const Text('Edit Cashier'),
               content: SizedBox(
@@ -666,6 +707,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
 
     if (saved == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Cashier information updated.'),
           backgroundColor: Colors.green,
@@ -674,6 +716,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
     }
   }
 
+  // Checks whether the current value satisfies the matches search rule used by this module.
   bool _matchesSearch(Map<String, dynamic> data) {
     if (_searchQuery.isEmpty) return true;
 
@@ -693,10 +736,12 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load cashier accounts.\n${snapshot.error}',
@@ -728,6 +773,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
 
         final disabledCount = cashiers.length - activeCount;
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
@@ -809,15 +855,18 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                     );
 
                     if (compact) {
+                      // Handles the column logic used by this module.
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [heading, const SizedBox(height: 16), action],
                       );
                     }
 
+                    // Handles the row logic used by this module.
                     return Row(
                       children: [
                         Expanded(child: heading),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 16),
                         action,
                       ],
@@ -825,6 +874,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                   },
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -864,6 +914,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               TextField(
                 controller: _searchController,
@@ -906,6 +957,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                   ),
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               Expanded(
                 child: filtered.isEmpty
@@ -922,6 +974,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                           final email = (data['email'] ?? '').toString();
                           final isActive = data['isActive'] == true;
 
+                          // Handles the cashier account card logic used by this module.
                           return _CashierAccountCard(
                             name: name,
                             email: email,
@@ -943,6 +996,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
@@ -986,6 +1040,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                 ),
                 child: Icon(icon, color: Colors.white, size: 24),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
@@ -999,6 +1054,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 4),
                     Text(
                       value,

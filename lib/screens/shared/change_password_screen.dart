@@ -1,20 +1,29 @@
+// -----------------------------------------------------------------------------
+// Module overview: Allows an authenticated user to securely update the Firebase Authentication password.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _PasswordHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the password hover card logic used by this module.
   const _PasswordHoverCard({required this.child});
 
   @override
   State<_PasswordHoverCard> createState() => _PasswordHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PasswordHoverCardState extends State<_PasswordHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -39,11 +48,13 @@ class _PasswordHoverCardState extends State<_PasswordHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PasswordTip extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
 
+  // Handles the password tip logic used by this module.
   const _PasswordTip({
     required this.icon,
     required this.title,
@@ -52,6 +63,7 @@ class _PasswordTip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the row logic used by this module.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -64,6 +76,7 @@ class _PasswordTip extends StatelessWidget {
           ),
           child: Icon(icon, color: const Color(0xFF1565C0), size: 19),
         ),
+        // Handles the sized box logic used by this module.
         const SizedBox(width: 11),
         Expanded(
           child: Column(
@@ -76,6 +89,7 @@ class _PasswordTip extends StatelessWidget {
                   fontWeight: FontWeight.w800,
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 2),
               Text(
                 subtitle,
@@ -93,14 +107,17 @@ class _PasswordTip extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PasswordSectionIcon extends StatelessWidget {
   final IconData icon;
   final Color color;
 
+  // Handles the password section icon logic used by this module.
   const _PasswordSectionIcon({required this.icon, required this.color});
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       width: 48,
       height: 48,
@@ -115,11 +132,13 @@ class _PasswordSectionIcon extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PasswordStrengthMeter extends StatelessWidget {
   final int score;
   final String label;
   final Color color;
 
+  // Handles the password strength meter logic used by this module.
   const _PasswordStrengthMeter({
     required this.score,
     required this.label,
@@ -128,6 +147,7 @@ class _PasswordStrengthMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
@@ -140,6 +160,7 @@ class _PasswordStrengthMeter extends StatelessWidget {
         children: [
           Row(
             children: [
+              // Handles the text logic used by this module.
               const Text(
                 'Password strength',
                 style: TextStyle(
@@ -148,6 +169,7 @@ class _PasswordStrengthMeter extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              // Handles the spacer logic used by this module.
               const Spacer(),
               Text(
                 label,
@@ -159,6 +181,7 @@ class _PasswordStrengthMeter extends StatelessWidget {
               ),
             ],
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 9),
           Row(
             children: List.generate(
@@ -181,13 +204,16 @@ class _PasswordStrengthMeter extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _RequirementChip extends StatelessWidget {
   final String label;
 
+  // Handles the requirement chip logic used by this module.
   const _RequirementChip({required this.label});
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -197,11 +223,13 @@ class _RequirementChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Handles the icon logic used by this module.
           const Icon(
             Icons.check_circle_outline,
             size: 15,
             color: Color(0xFF1565C0),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 5),
           Text(
             label,
@@ -217,13 +245,16 @@ class _RequirementChip extends StatelessWidget {
   }
 }
 
+// Screen widget for allows an authenticated user to securely update the Firebase Authentication password.
 class ChangePasswordScreen extends StatefulWidget {
+  // Handles the change password screen logic used by this module.
   const ChangePasswordScreen({super.key});
 
   @override
   State<ChangePasswordScreen> createState() => _ChangePasswordScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final _currentPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
@@ -240,6 +271,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   String? _message;
   bool _messageIsError = false;
 
+  // Validates validate against the rules required by this workflow.
   bool _validate() {
     final current = _currentPasswordController.text;
     final next = _newPasswordController.text;
@@ -277,6 +309,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     return currentError == null && newError == null && confirmError == null;
   }
 
+  // Handles the change password logic used by this module.
   Future<void> _changePassword() async {
     FocusScope.of(context).unfocus();
 
@@ -369,6 +402,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     }
   }
 
+  // Handles the decoration logic used by this module.
   InputDecoration _decoration({
     required String label,
     required IconData icon,
@@ -376,13 +410,16 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     required VoidCallback toggle,
     required String? errorText,
   }) {
+    // Handles the border logic used by this module.
     OutlineInputBorder border(Color color, {double width = 1}) {
+      // Handles the outline input border logic used by this module.
       return OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide(color: color, width: width),
       );
     }
 
+    // Handles the input decoration logic used by this module.
     return InputDecoration(
       labelText: label,
       prefixIcon: Icon(icon, color: const Color(0xFF1565C0)),
@@ -456,6 +493,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     };
   }
 
+  // Handles the clear errors logic used by this module.
   void _clearErrors() {
     if (_currentError != null ||
         _newError != null ||
@@ -474,6 +512,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
+    // Handles the container logic used by this module.
     return Container(
       color: const Color(0xFFF2F6FC),
       child: SingleChildScrollView(
@@ -539,6 +578,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     ],
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 18),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -577,7 +617,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 size: 28,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 16),
+                            // Handles the text logic used by this module.
                             const Text(
                               'Account Security',
                               style: TextStyle(
@@ -586,6 +628,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 6),
                             Text(
                               user?.email ?? 'Current account',
@@ -594,21 +637,27 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 18),
+                            // Handles the password tip logic used by this module.
                             const _PasswordTip(
                               icon: Icons.lock_outline,
                               title: 'Verify current password',
                               subtitle:
                                   'Firebase requires reauthentication before the password can be updated.',
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 13),
+                            // Handles the password tip logic used by this module.
                             const _PasswordTip(
                               icon: Icons.password_outlined,
                               title: 'Use a new password',
                               subtitle:
                                   'The replacement password must be different from the current password.',
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 13),
+                            // Handles the password tip logic used by this module.
                             const _PasswordTip(
                               icon: Icons.verified_user_outlined,
                               title: 'Keep account access private',
@@ -633,6 +682,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            // Handles the row logic used by this module.
                             const Row(
                               children: [
                                 _PasswordSectionIcon(
@@ -666,6 +716,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 ),
                               ],
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 22),
                             TextField(
                               controller: _currentPasswordController,
@@ -685,6 +736,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 errorText: _currentError,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 15),
                             TextField(
                               controller: _newPasswordController,
@@ -707,12 +759,14 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 errorText: _newError,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 12),
                             _PasswordStrengthMeter(
                               score: _passwordStrength,
                               label: _strengthLabel,
                               color: _strengthColor,
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 15),
                             TextField(
                               controller: _confirmPasswordController,
@@ -737,7 +791,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 errorText: _confirmError,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 15),
+                            // Handles the wrap logic used by this module.
                             const Wrap(
                               spacing: 8,
                               runSpacing: 8,
@@ -754,6 +810,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                               ],
                             ),
                             if (_message != null) ...[
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 16),
                               AnimatedContainer(
                                 duration: const Duration(milliseconds: 220),
@@ -779,6 +836,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                           ? const Color(0xFFD32F2F)
                                           : const Color(0xFF159447),
                                     ),
+                                    // Handles the sized box logic used by this module.
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Text(
@@ -795,6 +853,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                                 ),
                               ),
                             ],
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 20),
                             SizedBox(
                               height: 52,
@@ -837,19 +896,23 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     );
 
                     if (wide) {
+                      // Handles the row logic used by this module.
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(flex: 2, child: securityPanel),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 18),
                           Expanded(flex: 3, child: form),
                         ],
                       );
                     }
 
+                    // Handles the column logic used by this module.
                     return Column(
                       children: [
                         securityPanel,
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 18),
                         form,
                       ],

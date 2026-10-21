@@ -1,7 +1,14 @@
+// -----------------------------------------------------------------------------
+// Module overview: Summarizes recorded service issues by period, type, severity, and resolution status.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Screen widget for summarizes recorded service issues by period, type, severity, and resolution status.
 class ServiceIssueSummaryScreen extends StatefulWidget {
+  // Handles the service issue summary screen logic used by this module.
   const ServiceIssueSummaryScreen({super.key});
 
   @override
@@ -9,9 +16,11 @@ class ServiceIssueSummaryScreen extends StatefulWidget {
       _ServiceIssueSummaryScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
   String _selectedFilter = 'This Month';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -19,6 +28,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
     return null;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'Unavailable';
 
@@ -35,6 +45,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
         '$hour:$minute $period';
   }
 
+  // Handles the severity color logic used by this module.
   Color _severityColor(String severity) {
     switch (severity) {
       case 'Major':
@@ -46,9 +57,11 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
     }
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -65,12 +78,14 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Checks whether the current value satisfies the issue summary hover card rule used by this module.
     return _IssueSummaryHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -101,6 +116,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -114,6 +130,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -177,10 +194,12 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load service issue summary.\n'
@@ -256,6 +275,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
             ? 0.0
             : (resolvedCount / issues.length) * 100;
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
@@ -317,6 +337,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                   ],
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               Container(
                 width: double.infinity,
@@ -334,16 +355,20 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                   child: Row(
                     children: [
                       _filterChip('Today'),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 8),
                       _filterChip('This Week'),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 8),
                       _filterChip('This Month'),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 8),
                       _filterChip('All Time'),
                     ],
                   ),
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -393,6 +418,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               _IssueSummaryHoverCard(
                 child: Container(
@@ -437,11 +463,13 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                   ),
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 18),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     if (constraints.maxWidth < 900) {
+                      // Handles the list view logic used by this module.
                       return ListView(
                         padding: const EdgeInsets.only(bottom: 8),
                         children: [
@@ -449,11 +477,13 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                             height: 300,
                             child: _IssueTypePanel(entries: sortedIssueTypes),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 16),
                           SizedBox(
                             height: 280,
                             child: _ReporterPanel(entries: sortedReporters),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(height: 16),
                           SizedBox(
                             height: 390,
@@ -467,6 +497,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                       );
                     }
 
+                    // Handles the row logic used by this module.
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -474,11 +505,13 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                           flex: 3,
                           child: _IssueTypePanel(entries: sortedIssueTypes),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 16),
                         Expanded(
                           flex: 2,
                           child: _ReporterPanel(entries: sortedReporters),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 16),
                         Expanded(
                           flex: 4,
@@ -501,20 +534,24 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _IssueSummaryHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Checks whether the current value satisfies the issue summary hover card rule used by this module.
   const _IssueSummaryHoverCard({required this.child});
 
   @override
   State<_IssueSummaryHoverCard> createState() => _IssueSummaryHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _IssueSummaryHoverCardState extends State<_IssueSummaryHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -539,12 +576,14 @@ class _IssueSummaryHoverCardState extends State<_IssueSummaryHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _IssueCountPill extends StatelessWidget {
   final String label;
   final int value;
   final IconData icon;
   final Color color;
 
+  // Checks whether the current value satisfies the issue count pill rule used by this module.
   const _IssueCountPill({
     required this.label,
     required this.value,
@@ -554,6 +593,7 @@ class _IssueCountPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -564,6 +604,7 @@ class _IssueCountPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 18),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Text(
             '$label: $value',
@@ -579,15 +620,18 @@ class _IssueCountPill extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _IssueTypePanel extends StatelessWidget {
   final List<MapEntry<String, int>> entries;
 
+  // Checks whether the current value satisfies the issue type panel rule used by this module.
   const _IssueTypePanel({required this.entries});
 
   @override
   Widget build(BuildContext context) {
     final maximum = entries.isEmpty ? 1 : entries.first.value;
 
+    // Checks whether the current value satisfies the issue panel container rule used by this module.
     return _IssuePanelContainer(
       title: 'Issues by Type',
       subtitle: 'Recurring service concerns in the selected period.',
@@ -602,6 +646,7 @@ class _IssueTypePanel extends StatelessWidget {
                 final entry = entries[index];
                 final progress = entry.value / maximum;
 
+                // Handles the column logic used by this module.
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -635,6 +680,7 @@ class _IssueTypePanel extends StatelessWidget {
                         ),
                       ],
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 8),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
@@ -655,13 +701,16 @@ class _IssueTypePanel extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ReporterPanel extends StatelessWidget {
   final List<MapEntry<String, int>> entries;
 
+  // Handles the reporter panel logic used by this module.
   const _ReporterPanel({required this.entries});
 
   @override
   Widget build(BuildContext context) {
+    // Checks whether the current value satisfies the issue panel container rule used by this module.
     return _IssuePanelContainer(
       title: 'Reported by Cashier',
       subtitle: 'Cashiers who logged service issues.',
@@ -675,6 +724,7 @@ class _ReporterPanel extends StatelessWidget {
               itemBuilder: (context, index) {
                 final entry = entries[index];
 
+                // Handles the container logic used by this module.
                 return Container(
                   padding: const EdgeInsets.all(11),
                   decoration: BoxDecoration(
@@ -683,6 +733,7 @@ class _ReporterPanel extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
+                      // Handles the circle avatar logic used by this module.
                       const CircleAvatar(
                         radius: 19,
                         backgroundColor: Color(0xFFEDE7F6),
@@ -692,6 +743,7 @@ class _ReporterPanel extends StatelessWidget {
                           color: Color(0xFF7B1FA2),
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -730,17 +782,22 @@ class _ReporterPanel extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _RecentIssuesPanel extends StatelessWidget {
   final List<QueryDocumentSnapshot<Map<String, dynamic>>> issues;
+  // Handles the function logic used by this module.
   final String Function(DateTime?) formatDate;
+  // Handles the function logic used by this module.
   final Color Function(String) severityColor;
 
+  // Handles the recent issues panel logic used by this module.
   const _RecentIssuesPanel({
     required this.issues,
     required this.formatDate,
     required this.severityColor,
   });
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -750,6 +807,7 @@ class _RecentIssuesPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Checks whether the current value satisfies the issue panel container rule used by this module.
     return _IssuePanelContainer(
       title: 'Recent Service Issues',
       subtitle: 'Latest issues recorded in the selected period.',
@@ -781,6 +839,7 @@ class _RecentIssuesPanel extends StatelessWidget {
                     ? const Color(0xFF159447)
                     : const Color(0xFFF59E0B);
 
+                // Checks whether the current value satisfies the issue summary hover card rule used by this module.
                 return _IssueSummaryHoverCard(
                   child: Container(
                     padding: const EdgeInsets.all(13),
@@ -809,6 +868,7 @@ class _RecentIssuesPanel extends StatelessWidget {
                             size: 21,
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 11),
                         Expanded(
                           child: Column(
@@ -823,6 +883,7 @@ class _RecentIssuesPanel extends StatelessWidget {
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 3),
                               Text(
                                 '$reporter • '
@@ -837,6 +898,7 @@ class _RecentIssuesPanel extends StatelessWidget {
                             ],
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -866,6 +928,7 @@ class _RecentIssuesPanel extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _IssuePanelContainer extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -873,6 +936,7 @@ class _IssuePanelContainer extends StatelessWidget {
   final Color accent;
   final Widget child;
 
+  // Checks whether the current value satisfies the issue panel container rule used by this module.
   const _IssuePanelContainer({
     required this.title,
     required this.subtitle,
@@ -883,6 +947,7 @@ class _IssuePanelContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Checks whether the current value satisfies the issue summary hover card rule used by this module.
     return _IssueSummaryHoverCard(
       child: Container(
         constraints: const BoxConstraints(minHeight: 210),
@@ -911,6 +976,7 @@ class _IssuePanelContainer extends StatelessWidget {
                   ),
                   child: Icon(icon, color: Colors.white, size: 22),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 11),
                 Expanded(
                   child: Column(
@@ -927,6 +993,7 @@ class _IssuePanelContainer extends StatelessWidget {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 3),
                       Text(
                         subtitle,
@@ -943,6 +1010,7 @@ class _IssuePanelContainer extends StatelessWidget {
                 ),
               ],
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 12),
             Expanded(child: ClipRect(child: child)),
           ],
@@ -952,17 +1020,21 @@ class _IssuePanelContainer extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _IssuePanelEmpty extends StatelessWidget {
   final String message;
 
+  // Checks whether the current value satisfies the issue panel empty rule used by this module.
   const _IssuePanelEmpty({required this.message});
 
   @override
   Widget build(BuildContext context) {
+    // Handles the layout builder logic used by this module.
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 120;
 
+        // Handles the single child scroll view logic used by this module.
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           padding: EdgeInsets.symmetric(

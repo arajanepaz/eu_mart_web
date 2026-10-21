@@ -1,20 +1,29 @@
+// -----------------------------------------------------------------------------
+// Module overview: Reports transaction results associated with promotional products and promotional pricing.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _PromoHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the promo hover card logic used by this module.
   const _PromoHoverCard({required this.child});
 
   @override
   State<_PromoHoverCard> createState() => _PromoHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromoHoverCardState extends State<_PromoHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -39,6 +48,7 @@ class _PromoHoverCardState extends State<_PromoHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PromoProductCard extends StatefulWidget {
   final int rank;
   final String productName;
@@ -47,6 +57,7 @@ class _PromoProductCard extends StatefulWidget {
   final double revenue;
   final double savings;
 
+  // Handles the promo product card logic used by this module.
   const _PromoProductCard({
     required this.rank,
     required this.productName,
@@ -60,6 +71,7 @@ class _PromoProductCard extends StatefulWidget {
   State<_PromoProductCard> createState() => _PromoProductCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromoProductCardState extends State<_PromoProductCard> {
   bool _hovered = false;
 
@@ -67,6 +79,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
   Widget build(BuildContext context) {
     const accent = Color(0xFF7B1FA2);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -117,6 +130,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                     ),
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 14),
                 Expanded(
                   child: Column(
@@ -132,6 +146,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                           fontWeight: FontWeight.w900,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -182,15 +197,18 @@ class _PromoProductCardState extends State<_PromoProductCard> {
             );
 
             if (compact) {
+              // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [promoInfo, const SizedBox(height: 14), metrics],
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(flex: 4, child: promoInfo),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 16),
                 Expanded(
                   flex: 3,
@@ -208,11 +226,13 @@ class _PromoProductCardState extends State<_PromoProductCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PromoMetricBox extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
+  // Handles the promo metric box logic used by this module.
   const _PromoMetricBox({
     required this.label,
     required this.value,
@@ -221,6 +241,7 @@ class _PromoMetricBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       constraints: const BoxConstraints(minWidth: 110),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -239,6 +260,7 @@ class _PromoMetricBox extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 3),
           Text(
             value,
@@ -254,11 +276,14 @@ class _PromoMetricBox extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromoSalesEmptyState extends StatelessWidget {
+  // Handles the promo sales empty state logic used by this module.
   const _PromoSalesEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return const Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -286,16 +311,20 @@ class _PromoSalesEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for reports transaction results associated with promotional products and promotional pricing.
 class PromoSalesReportScreen extends StatefulWidget {
+  // Handles the promo sales report screen logic used by this module.
   const PromoSalesReportScreen({super.key});
 
   @override
   State<PromoSalesReportScreen> createState() => _PromoSalesReportScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
   String _selectedFilter = 'This Month';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -303,6 +332,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
     return null;
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(DateTime? date) {
     if (date == null) return false;
 
@@ -327,9 +357,11 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
     }
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -346,12 +378,14 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the promo hover card logic used by this module.
     return _PromoHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -382,6 +416,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -395,6 +430,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -425,10 +461,12 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load promo sales.\n${snapshot.error}',
@@ -568,6 +606,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
             ? 0.0
             : promoRevenue / promoTransactionCount;
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           child: SingleChildScrollView(
@@ -634,6 +673,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                         ],
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     Container(
                       width: double.infinity,
@@ -651,16 +691,20 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                         child: Row(
                           children: [
                             _filterChip('Today'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('This Week'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('This Month'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('All Time'),
                           ],
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -708,6 +752,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                         );
                       },
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
                     _PromoHoverCard(
                       child: Container(
@@ -726,6 +771,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
 
                             final info = Row(
                               children: [
+                                // Handles the circle avatar logic used by this module.
                                 const CircleAvatar(
                                   radius: 22,
                                   backgroundColor: Color(0x1F1565C0),
@@ -734,12 +780,14 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                                     color: Color(0xFF1565C0),
                                   ),
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
+                                      // Handles the text logic used by this module.
                                       const Text(
                                         'AVERAGE PROMO TRANSACTION',
                                         style: TextStyle(
@@ -749,6 +797,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                                           letterSpacing: 0.5,
                                         ),
                                       ),
+                                      // Handles the sized box logic used by this module.
                                       const SizedBox(height: 3),
                                       Text(
                                         '₱${averagePromoSale.toStringAsFixed(2)}',
@@ -784,10 +833,12 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                             );
 
                             if (compact) {
+                              // Handles the column logic used by this module.
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
                                   info,
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 12),
                                   Align(
                                     alignment: Alignment.centerLeft,
@@ -797,9 +848,11 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                               );
                             }
 
+                            // Handles the row logic used by this module.
                             return Row(
                               children: [
                                 Expanded(child: info),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 14),
                                 badge,
                               ],
@@ -808,9 +861,11 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 20),
                     Row(
                       children: [
+                        // Handles the expanded logic used by this module.
                         const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -854,8 +909,10 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                         ),
                       ],
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 12),
                     if (topPromos.isEmpty)
+                      // Handles the sized box logic used by this module.
                       const SizedBox(
                         height: 230,
                         child: _PromoSalesEmptyState(),
@@ -869,6 +926,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                         itemBuilder: (context, index) {
                           final promo = topPromos[index];
 
+                          // Handles the promo product card logic used by this module.
                           return _PromoProductCard(
                             rank: index + 1,
                             productName: promo.productName,
@@ -892,6 +950,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PromoProductSales {
   final String productName;
   final String promoType;

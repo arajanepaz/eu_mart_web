@@ -1,15 +1,23 @@
+// -----------------------------------------------------------------------------
+// Module overview: Handles password-reset requests for registered EÜ MART users through Firebase Authentication.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// Screen widget for handles password-reset requests for registered EÜ MART users through Firebase Authentication.
 class ForgotPasswordScreen extends StatefulWidget {
   final String initialEmail;
 
+  // Handles the forgot password screen logic used by this module.
   const ForgotPasswordScreen({super.key, this.initialEmail = ''});
 
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   late final TextEditingController _emailController;
 
@@ -25,10 +33,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     _emailController = TextEditingController(text: widget.initialEmail);
   }
 
+  // Checks whether the current value satisfies the is valid email rule used by this module.
   bool _isValidEmail(String email) {
+    // Handles the reg exp logic used by this module.
     return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
   }
 
+  // Handles the send reset link logic used by this module.
   Future<void> _sendResetLink() async {
     FocusScope.of(context).unfocus();
 
@@ -112,7 +123,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
   }
 
+  // Handles the border logic used by this module.
   InputBorder _border(Color color, {double width = 1}) {
+    // Handles the outline input border logic used by this module.
     return OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
       borderSide: BorderSide(color: color, width: width),
@@ -121,6 +134,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the scaffold logic used by this module.
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
@@ -133,6 +147,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           builder: (context, constraints) {
             final mobile = constraints.maxWidth < 900;
 
+            // Handles the center logic used by this module.
             return Center(
               child: SingleChildScrollView(
                 padding: EdgeInsets.all(mobile ? 14 : 28),
@@ -148,6 +163,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Handles the circle avatar logic used by this module.
                     const CircleAvatar(
                       radius: 34,
                       backgroundColor: Color(0xFFEAF2FF),
@@ -157,7 +173,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         size: 36,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 20),
+                    // Handles the text logic used by this module.
                     const Text(
                       'Forgot Password',
                       textAlign: TextAlign.center,
@@ -167,13 +185,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         color: Color(0xFF1565C0),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 8),
+                    // Handles the text logic used by this module.
                     const Text(
                       'Enter the registered email address. '
                       'Firebase will send a secure password reset link.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey, height: 1.4),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 28),
                     TextField(
                       controller: _emailController,
@@ -217,6 +238,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       ),
                     ),
                     if (_message != null) ...[
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
                       Container(
                         padding: const EdgeInsets.all(14),
@@ -242,6 +264,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                   ? Colors.red
                                   : Colors.green,
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
@@ -257,6 +280,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         ),
                       ),
                     ],
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 22),
                     SizedBox(
                       height: 52,
@@ -289,6 +313,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 14),
                     TextButton.icon(
                       onPressed: _loading ? null : () => Navigator.pop(context),

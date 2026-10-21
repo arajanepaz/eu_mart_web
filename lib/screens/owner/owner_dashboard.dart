@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Main owner navigation shell and operational overview, including realtime notification badge behavior.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -65,13 +70,16 @@ import 'customer_feedback_screen.dart';
 
 import 'backup_export_screen.dart';
 
+// Defines a reusable component or data structure used by this module.
 class OwnerDashboard extends StatefulWidget {
+  // Handles the owner dashboard logic used by this module.
   const OwnerDashboard({super.key});
 
   @override
   State<OwnerDashboard> createState() => _OwnerDashboardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _OwnerDashboardState extends State<OwnerDashboard> {
   int _selectedIndex = 0;
 
@@ -145,6 +153,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     _MenuItem('Settings', Icons.settings_outlined),
   ];
 
+  // Finalizes the current login-activity record with logout time and session duration.
   Future<void> _closeLoginSession() async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -194,7 +203,9 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     }
   }
 
+  // Closes the active login session, signs the user out, and returns to the login screen.
   Future<void> _logout() async {
+    // Finalizes the current login-activity record with logout time and session duration.
     await _closeLoginSession();
 
     await FirebaseAuth.instance.signOut();
@@ -210,6 +221,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Handles the notification read date logic used by this module.
   DateTime? _notificationReadDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
 
@@ -220,6 +232,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return null;
   }
 
+  // Applies owner notification priority rules to product stock and expiration data.
   String _notificationType(
     Map<String, dynamic> data, {
 
@@ -266,6 +279,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return 'Normal';
   }
 
+  // Applies permit reminder rules for the owner notification badge.
   String _notificationPermitType(Map<String, dynamic> data) {
     if (data['renewed'] == true) return 'Normal';
 
@@ -289,6 +303,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return 'Normal';
   }
 
+  // Creates the same deterministic notification-read identifier used across the badge and Notifications screen.
   String _notificationReadId({
     required String userId,
     required String source,
@@ -481,6 +496,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
                             if (unreadCount <= 0) return child;
 
+                            // Handles the stack logic used by this module.
                             return Stack(
                               clipBehavior: Clip.none,
                               children: [
@@ -532,7 +548,9 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Builds the sidebar UI from the current data and screen state.
   Widget _buildSidebar({required bool compact, bool drawerMode = false}) {
+    // Handles the animated container logic used by this module.
     return AnimatedContainer(
       duration: const Duration(milliseconds: 280),
 
@@ -606,6 +624,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     ),
 
                     if (!compact) ...[
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 10),
 
                       Expanded(
@@ -627,6 +646,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               ),
                             ),
 
+                            // Handles the text logic used by this module.
                             const Text(
                               'Owner Portal',
 
@@ -724,6 +744,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                   ),
 
                                   if (!compact) ...[
+                                    // Handles the sized box logic used by this module.
                                     const SizedBox(width: 12),
 
                                     Expanded(
@@ -760,6 +781,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                   }
 
                   if (item.label == 'Notifications') {
+                    // Calculates and displays the owner sidebar unread badge while matching the same notification ID rules used by the Notifications screen.
                     return _buildNotificationBadge(
                       compact: compact,
 
@@ -798,6 +820,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                       children: [
                         SizedBox(width: compact ? 0 : 14),
 
+                        // Handles the icon logic used by this module.
                         const Icon(
                           Icons.logout_rounded,
 
@@ -807,8 +830,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                         ),
 
                         if (!compact) ...[
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 12),
 
+                          // Handles the text logic used by this module.
                           const Text(
                             'Logout',
 
@@ -831,11 +856,13 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Builds the top bar UI from the current data and screen state.
   Widget _buildTopBar({bool mobile = false, VoidCallback? onMenuPressed}) {
     final user = FirebaseAuth.instance.currentUser;
 
     final pageTitle = _menuItems[_selectedIndex].label;
 
+    // Handles the container logic used by this module.
     return Container(
       height: 68,
 
@@ -873,6 +900,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
               ),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 10),
           ],
           if (_selectedIndex != 0) ...[
@@ -904,6 +932,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               ),
             ),
 
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 14),
           ],
 
@@ -956,6 +985,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           ),
 
           if (mobile)
+            // Handles the circle avatar logic used by this module.
             const CircleAvatar(
               radius: 18,
               backgroundColor: Color(0xFF1565C0),
@@ -977,6 +1007,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
               child: Row(
                 children: [
+                  // Handles the circle avatar logic used by this module.
                   const CircleAvatar(
                     radius: 17,
 
@@ -991,6 +1022,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     ),
                   ),
 
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 9),
 
                   Column(
@@ -999,6 +1031,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
 
                     children: [
+                      // Handles the text logic used by this module.
                       const Text(
                         'Owner',
 
@@ -1030,6 +1063,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
 
@@ -1041,6 +1075,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
     required VoidCallback onTap,
   }) {
+    // Handles the material logic used by this module.
     return Material(
       color: Colors.white,
 
@@ -1088,6 +1123,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 child: Icon(icon, color: color, size: 28),
               ),
 
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 16),
 
               Expanded(
@@ -1101,6 +1137,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                       style: const TextStyle(color: Colors.grey, fontSize: 13),
                     ),
 
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 5),
 
                     Text(
@@ -1116,6 +1153,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
               ),
 
+              // Handles the icon logic used by this module.
               const Icon(
                 Icons.arrow_forward_ios_rounded,
 
@@ -1130,6 +1168,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
 
@@ -1140,6 +1179,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return null;
   }
 
+  // Formats date/time values used in the owner dashboard overview.
   String _formatDashboardDate(DateTime? date) {
     if (date == null) return 'Date unavailable';
 
@@ -1160,6 +1200,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return '${date.year}-$month-$day • $hour:$minute $period';
   }
 
+  // Handles the dashboard panel logic used by this module.
   Widget _dashboardPanel({
     required String title,
 
@@ -1167,6 +1208,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
     VoidCallback? onViewAll,
   }) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(22),
 
@@ -1209,6 +1251,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             ],
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 14),
 
           child,
@@ -1217,6 +1260,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Builds the promo carousel UI from the current data and screen state.
   Widget _buildPromoCarousel(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) {
@@ -1261,6 +1305,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     }).toList();
 
     if (activePromos.isEmpty) {
+      // Handles the container logic used by this module.
       return Container(
         width: double.infinity,
 
@@ -1296,8 +1341,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               ),
             ),
 
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 16),
 
+            // Handles the expanded logic used by this module.
             const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1336,12 +1383,14 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       );
     }
 
+    // Handles the column logic used by this module.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
 
       children: [
         Row(
           children: [
+            // Handles the expanded logic used by this module.
             const Expanded(
               child: Text(
                 'Featured Promotions',
@@ -1364,6 +1413,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           ],
         ),
 
+        // Handles the sized box logic used by this module.
         const SizedBox(height: 12),
 
         SizedBox(
@@ -1404,6 +1454,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 priceText = promoType.toUpperCase();
               }
 
+              // Handles the material logic used by this module.
               return Material(
                 color: Colors.transparent,
 
@@ -1493,6 +1544,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               ),
                             ),
 
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 15),
 
                             Text(
@@ -1511,6 +1563,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               ),
                             ),
 
+                            // Handles the spacer logic used by this module.
                             const Spacer(),
 
                             if (promoType != 'Buy 1 Take 1' &&
@@ -1537,6 +1590,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               ),
                             ),
 
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 7),
 
                             Row(
@@ -1582,6 +1636,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Builds the dashboard overview UI from the current data and screen state.
   Widget _buildDashboardOverview() {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _settingsStream,
@@ -1740,6 +1795,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 final topProducts = productQuantities.entries.toList()
                   ..sort((a, b) => b.value.compareTo(a.value));
 
+                // Handles the single child scroll view logic used by this module.
                 return SingleChildScrollView(
                   padding: const EdgeInsets.all(28),
 
@@ -1759,18 +1815,22 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                         ),
                       ),
 
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 8),
 
+                      // Handles the text logic used by this module.
                       const Text(
                         'Here is the latest overview of EÜ MART operations.',
 
                         style: TextStyle(color: Colors.grey),
                       ),
 
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 24),
 
                       _buildPromoCarousel(productDocs),
 
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 26),
 
                       LayoutBuilder(
@@ -1868,6 +1928,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                         },
                       ),
 
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 26),
 
                       LayoutBuilder(
@@ -1917,6 +1978,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                           (data['total'] as num?)?.toDouble() ??
                                           0;
 
+                                      // Handles the list tile logic used by this module.
                                       return ListTile(
                                         contentPadding: EdgeInsets.zero,
 
@@ -2075,12 +2137,14 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                           );
 
                           if (isWide) {
+                            // Handles the row logic used by this module.
                             return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
 
                               children: [
                                 Expanded(flex: 3, child: recentTransactions),
 
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 20),
 
                                 Expanded(flex: 2, child: alerts),
@@ -2088,10 +2152,12 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                             );
                           }
 
+                          // Handles the column logic used by this module.
                           return Column(
                             children: [
                               recentTransactions,
 
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 20),
 
                               alerts,
@@ -2100,6 +2166,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                         },
                       ),
 
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 20),
 
                       _dashboardPanel(
@@ -2129,6 +2196,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                       .take(5)
                                       .toList();
 
+                                  // Handles the wrap logic used by this module.
                                   return Wrap(
                                     spacing: 14,
 
@@ -2143,6 +2211,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                           ? (constraints.maxWidth - 14) / 2
                                           : constraints.maxWidth;
 
+                                      // Handles the sized box logic used by this module.
                                       return SizedBox(
                                         width: width,
 
@@ -2172,6 +2241,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                                 ),
                                               ),
 
+                                              // Handles the sized box logic used by this module.
                                               const SizedBox(height: 8),
 
                                               Text(
@@ -2186,6 +2256,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                                 ),
                                               ),
 
+                                              // Handles the sized box logic used by this module.
                                               const SizedBox(height: 8),
 
                                               Text(
@@ -2215,9 +2286,11 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Builds the placeholder page UI from the current data and screen state.
   Widget _buildPlaceholderPage() {
     final item = _menuItems[_selectedIndex];
 
+    // Handles the center logic used by this module.
     return Center(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 520),
@@ -2248,6 +2321,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           children: [
             Icon(item.icon, size: 72, color: const Color(0xFF1565C0)),
 
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 18),
 
             Text(
@@ -2258,8 +2332,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               style: const TextStyle(fontSize: 27, fontWeight: FontWeight.bold),
             ),
 
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 10),
 
+            // Handles the text logic used by this module.
             const Text(
               'This module will be developed next.',
 
@@ -2273,7 +2349,9 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Handles the selected page logic used by this module.
   Widget _selectedPage() {
+    // Handles the keyed subtree logic used by this module.
     return KeyedSubtree(
       key: ValueKey<int>(_selectedIndex),
       child: switch (_selectedIndex) {
@@ -2364,6 +2442,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the layout builder logic used by this module.
     return LayoutBuilder(
       builder: (context, constraints) {
         final isPhone = ResponsiveDevice.useMobileLayout(
@@ -2372,6 +2451,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         );
 
         if (isPhone) {
+          // Handles the scaffold logic used by this module.
           return Scaffold(
             backgroundColor: const Color(0xFFF2F6FC),
             drawer: Drawer(
@@ -2381,6 +2461,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             body: SafeArea(
               child: Builder(
                 builder: (scaffoldContext) {
+                  // Handles the column logic used by this module.
                   return Column(
                     children: [
                       _buildTopBar(
@@ -2408,6 +2489,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
         final compactSidebar = constraints.maxWidth < 1100;
 
+        // Handles the scaffold logic used by this module.
         return Scaffold(
           backgroundColor: const Color(0xFFF2F6FC),
           body: Row(
@@ -2438,10 +2520,12 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _MenuItem {
   final String label;
 
   final IconData icon;
 
+  // Handles the menu item logic used by this module.
   const _MenuItem(this.label, this.icon);
 }

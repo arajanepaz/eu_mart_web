@@ -1,14 +1,22 @@
+// -----------------------------------------------------------------------------
+// Module overview: Public customer feedback form reached from the receipt QR code and stored for owner review.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+// Screen widget for public customer feedback form reached from the receipt QR code and stored for owner review.
 class PublicFeedbackScreen extends StatefulWidget {
+  // Handles the public feedback screen logic used by this module.
   const PublicFeedbackScreen({super.key});
 
   @override
   State<PublicFeedbackScreen> createState() => _PublicFeedbackScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _commentController = TextEditingController();
@@ -24,6 +32,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
     super.dispose();
   }
 
+  // Handles the get sentiment logic used by this module.
   String _getSentiment(int rating) {
     if (rating >= 4) {
       return 'Satisfied';
@@ -36,9 +45,11 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
     return 'Not Satisfied';
   }
 
+  // Handles the submit feedback logic used by this module.
   Future<void> _submitFeedback() async {
     if (_rating == 0) {
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(content: Text('Please select a rating first.')),
       );
       return;
@@ -82,12 +93,14 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the scaffold logic used by this module.
     return Scaffold(
       backgroundColor: const Color(0xFFF3F7FC),
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final mobile = constraints.maxWidth < 900;
+            // Handles the center logic used by this module.
             return Center(
               child: SingleChildScrollView(
                 padding: EdgeInsets.all(mobile ? 12 : 24),
@@ -105,7 +118,9 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
     );
   }
 
+  // Builds the feedback card UI from the current data and screen state.
   Widget _buildFeedbackCard({bool mobile = false}) {
+    // Handles the container logic used by this module.
     return Container(
       padding: EdgeInsets.all(mobile ? 18 : 30),
       decoration: BoxDecoration(
@@ -135,6 +150,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
               color: Color(0xFF1565C0),
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 18),
 
           Text(
@@ -155,8 +171,10 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 6),
 
+          // Handles the text logic used by this module.
           const Text(
             'We value your experience. Please tell us how we did today.',
             textAlign: TextAlign.center,
@@ -167,8 +185,10 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 28),
 
+          // Handles the text logic used by this module.
           const Text(
             'How satisfied are you with your experience?',
             textAlign: TextAlign.center,
@@ -179,6 +199,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 14),
 
           Wrap(
@@ -186,6 +207,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             children: List.generate(5, (index) {
               final star = index + 1;
 
+              // Handles the icon button logic used by this module.
               return IconButton(
                 tooltip: '$star star${star == 1 ? '' : 's'}',
                 onPressed: () {
@@ -205,6 +227,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
           ),
 
           if (_rating > 0) ...[
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 4),
             Text(
               _getSentiment(_rating),
@@ -219,6 +242,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ],
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 26),
 
           TextField(
@@ -234,6 +258,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 16),
 
           TextField(
@@ -254,6 +279,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 24),
 
           SizedBox(
@@ -287,8 +313,10 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 15),
 
+          // Handles the text logic used by this module.
           const Text(
             'Thank you for helping EÜ MART improve its service.',
             textAlign: TextAlign.center,
@@ -299,7 +327,9 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
     );
   }
 
+  // Builds the thank you card UI from the current data and screen state.
   Widget _buildThankYouCard() {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 45),
       decoration: BoxDecoration(
@@ -329,6 +359,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 22),
 
           Text(
@@ -340,16 +371,20 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
             ),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 8),
 
+          // Handles the text logic used by this module.
           const Text(
             'Your feedback has been submitted successfully.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 15, color: Color(0xFF6B7280)),
           ),
 
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 8),
 
+          // Handles the text logic used by this module.
           const Text(
             'We appreciate you taking the time to help us improve our service.',
             textAlign: TextAlign.center,

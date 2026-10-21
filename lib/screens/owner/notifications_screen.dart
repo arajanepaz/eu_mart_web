@@ -1,13 +1,20 @@
+// -----------------------------------------------------------------------------
+// Module overview: Builds unified operational alerts from stock, expiration, permit, and price-update data and tracks per-user read status.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// Screen widget for builds unified operational alerts from stock, expiration, permit, and price-update data and tracks per-user read status.
 class NotificationsScreen extends StatefulWidget {
   final VoidCallback? onOpenProducts;
   final VoidCallback? onOpenRestockSuggestions;
   final VoidCallback? onOpenStockMovements;
   final VoidCallback? onOpenPermitReminders;
 
+  // Handles the notifications screen logic used by this module.
   const NotificationsScreen({
     super.key,
     this.onOpenProducts,
@@ -20,6 +27,7 @@ class NotificationsScreen extends StatefulWidget {
   State<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _NotificationsScreenState extends State<NotificationsScreen> {
   String _selectedFilter = 'All';
 
@@ -119,6 +127,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -126,6 +135,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return null;
   }
 
+  // Reads and normalizes double from stored data.
   double _readDouble(dynamic value) {
     if (value is num) return value.toDouble();
 
@@ -136,6 +146,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return 0;
   }
 
+  // Formats a date into a consistent display value for the interface.
   String _formatDate(DateTime? date) {
     if (date == null) return 'No date';
 
@@ -145,10 +156,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return '${date.year}-$month-$day';
   }
 
+  // Formats price into a user-friendly display value.
   String _formatPrice(double value) {
     return '₱${value.toStringAsFixed(2)}';
   }
 
+  // Handles the days until logic used by this module.
   int _daysUntil(DateTime? date) {
     if (date == null) return 999999;
 
@@ -161,6 +174,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return target.difference(today).inDays;
   }
 
+  // Classifies a product alert using stock and expiration rules, with only one final alert type per product.
   String _productType(Map<String, dynamic> data) {
     final stock = (data['stock'] as num?)?.toInt() ?? 0;
 
@@ -189,6 +203,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return 'Normal';
   }
 
+  // Classifies a permit as expired, due soon, or normal based on its configured reminder window.
   String _permitType(Map<String, dynamic> data) {
     if (data['renewed'] == true) {
       return 'Normal';
@@ -211,6 +226,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return 'Normal';
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(String type) {
     if (_selectedFilter == 'All') {
       return type != 'Normal';
@@ -219,6 +235,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return type == _selectedFilter;
   }
 
+  // Handles the type color logic used by this module.
   Color _typeColor(String type) {
     switch (type) {
       case 'Out of Stock':
@@ -236,6 +253,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Colors.amber.shade800;
 
       case 'Price Update':
+        // Handles the color logic used by this module.
         return const Color(0xFF7B1FA2);
 
       default:
@@ -243,6 +261,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // Handles the type icon logic used by this module.
   IconData _typeIcon(String type) {
     switch (type) {
       case 'Out of Stock':
@@ -271,6 +290,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // Builds the deterministic per-user alert ID used to match notifications with notification_reads records.
   String _readDocumentId(_UnifiedAlert alert) {
     final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
 
@@ -282,6 +302,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return '${userId}_${alert.source}_${alert.documentId}_$safeType';
   }
 
+  // Stores one user-specific notification read record and updates local UI state optimistically.
   Future<void> _markAsRead(_UnifiedAlert alert) async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -317,6 +338,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // Marks the current alert set as read in safe Firestore write batches and updates the UI immediately.
   Future<void> _markAllAsRead(List<_UnifiedAlert> alerts) async {
     final user = FirebaseAuth.instance.currentUser;
 
@@ -364,6 +386,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('All current alerts marked as read.'),
           backgroundColor: Colors.green,
@@ -379,6 +402,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
+        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Unable to mark all alerts as read. Please try again.'),
           backgroundColor: Colors.red,
@@ -393,12 +417,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // Marks an alert as read, then routes the owner to the relevant management or comparison view.
   Future<void> _openAlert(_UnifiedAlert alert) async {
+    // Stores one user-specific notification read record and updates local UI state optimistically.
     await _markAsRead(alert);
 
     if (!mounted) return;
 
     if (alert.type == 'Price Update') {
+      // Shows the old and new buying price so the owner can review a price-update reminder.
       await _showPriceComparison(alert);
       return;
     }
@@ -424,6 +451,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // Shows the old and new buying price so the owner can review a price-update reminder.
   Future<void> _showPriceComparison(_UnifiedAlert alert) async {
     if (!mounted) return;
 
@@ -451,9 +479,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ? Icons.arrow_downward_rounded
         : Icons.remove_rounded;
 
+    // Opens the dialog interface using the current record or screen state.
     await showDialog(
       context: context,
       builder: (dialogContext) {
+        // Handles the dialog logic used by this module.
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24),
@@ -484,7 +514,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           size: 27,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 14),
+                      // Handles the expanded logic used by this module.
                       const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -515,6 +547,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ],
                   ),
 
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 22),
 
                   Container(
@@ -528,6 +561,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Handles the text logic used by this module.
                         const Text(
                           'PRODUCT',
                           style: TextStyle(
@@ -537,6 +571,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             letterSpacing: 0.7,
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 5),
                         Text(
                           alert.title,
@@ -550,6 +585,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                   ),
 
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
 
                   Row(
@@ -562,6 +598,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           icon: Icons.history_rounded,
                         ),
                       ),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 12),
                       Expanded(
                         child: _PriceComparisonBox(
@@ -574,6 +611,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ],
                   ),
 
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
 
                   Container(
@@ -600,11 +638,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           ),
                           child: Icon(changeIcon, color: changeColor, size: 20),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Handles the text logic used by this module.
                               const Text(
                                 'PRICE CHANGE',
                                 style: TextStyle(
@@ -614,6 +654,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   letterSpacing: 0.6,
                                 ),
                               ),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 3),
                               Text(
                                 difference == 0
@@ -644,6 +685,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ),
                   ),
 
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
 
                   _ComparisonDetailRow(
@@ -652,6 +694,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     value: _formatPrice(sellingPrice),
                   ),
 
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 9),
 
                   _ComparisonDetailRow(
@@ -660,6 +703,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     value: alert.status ?? 'Pending Review',
                   ),
 
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 9),
 
                   _ComparisonDetailRow(
@@ -668,6 +712,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     value: _formatDate(alert.relevantDate),
                   ),
 
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 22),
 
                   SizedBox(
@@ -701,9 +746,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -720,6 +767,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required int value,
@@ -763,6 +811,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 child: Icon(icon, color: Colors.white, size: 23),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -779,6 +828,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 3),
                     Text(
                       '$value',
@@ -798,6 +848,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
+  // Combines product, permit, and price-update records into one prioritized notification model for the dashboard.
   List<_UnifiedAlert> _buildAlerts({
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
     required List<QueryDocumentSnapshot<Map<String, dynamic>>> permits,
@@ -1010,10 +1061,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       builder: (context, alertDataSnapshot) {
         if (alertDataSnapshot.connectionState == ConnectionState.waiting &&
             !alertDataSnapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (alertDataSnapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load notifications.\n${alertDataSnapshot.error}',
@@ -1025,6 +1078,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
         final data = alertDataSnapshot.data;
         if (data == null) {
+          // Handles the center logic used by this module.
           return const Center(child: Text('No notification data available.'));
         }
 
@@ -1072,6 +1126,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 .where((alert) => alert.type == 'Price Update')
                 .length;
 
+            // Handles the container logic used by this module.
             return Container(
               color: const Color(0xFFF2F6FC),
               child: CustomScrollView(
@@ -1106,17 +1161,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
                             final heading = Row(
                               children: [
+                                // Handles the icon logic used by this module.
                                 const Icon(
                                   Icons.notifications_active_outlined,
                                   color: Colors.white,
                                   size: 28,
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
+                                      // Handles the text logic used by this module.
                                       const Text(
                                         'Notification Dashboard',
                                         style: TextStyle(
@@ -1125,6 +1183,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                           fontWeight: FontWeight.w900,
                                         ),
                                       ),
+                                      // Handles the sized box logic used by this module.
                                       const SizedBox(height: 4),
                                       Text(
                                         '$unreadCount unread alert(s) requiring attention.',
@@ -1170,19 +1229,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             );
 
                             if (compact) {
+                              // Handles the column logic used by this module.
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   heading,
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 16),
                                   action,
                                 ],
                               );
                             }
 
+                            // Handles the row logic used by this module.
                             return Row(
                               children: [
                                 Expanded(child: heading),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 16),
                                 action,
                               ],
@@ -1259,18 +1322,25 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         child: Row(
                           children: [
                             _filterChip('All'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Price Update'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Out of Stock'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Low Stock'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Expired'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Expiring Soon'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Permit Expired'),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
                             _filterChip('Permit Due Soon'),
                           ],
@@ -1280,6 +1350,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   ),
 
                   if (filteredAlerts.isEmpty)
+                    // Handles the sliver padding logic used by this module.
                     const SliverPadding(
                       padding: EdgeInsets.fromLTRB(22, 18, 22, 22),
                       sliver: SliverToBoxAdapter(
@@ -1305,6 +1376,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           final color = _typeColor(alert.type);
                           final isPriceUpdate = alert.type == 'Price Update';
 
+                          // Handles the notification alert card logic used by this module.
                           return _NotificationAlertCard(
                             color: color,
                             unread: !isRead,
@@ -1336,6 +1408,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         ),
                                       ),
                                     ),
+                                    // Handles the sized box logic used by this module.
                                     const SizedBox(width: 8),
                                     Container(
                                       padding: const EdgeInsets.symmetric(
@@ -1396,6 +1469,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                               ),
                                             ),
                                           ),
+                                          // Handles the sized box logic used by this module.
                                           const SizedBox(width: 8),
                                           isRead
                                               ? const Icon(
@@ -1445,6 +1519,7 @@ class _PriceComparisonBox extends StatelessWidget {
   final Color color;
   final IconData icon;
 
+  // Handles the price comparison box logic used by this module.
   const _PriceComparisonBox({
     required this.label,
     required this.value,
@@ -1454,6 +1529,7 @@ class _PriceComparisonBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1472,6 +1548,7 @@ class _PriceComparisonBox extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: color, size: 21),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 9),
           Text(
             label,
@@ -1483,6 +1560,7 @@ class _PriceComparisonBox extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 5),
           Text(
             value,
@@ -1507,6 +1585,7 @@ class _ComparisonDetailRow extends StatelessWidget {
   final String label;
   final String value;
 
+  // Handles the comparison detail row logic used by this module.
   const _ComparisonDetailRow({
     required this.icon,
     required this.label,
@@ -1515,6 +1594,7 @@ class _ComparisonDetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
       decoration: BoxDecoration(
@@ -1524,6 +1604,7 @@ class _ComparisonDetailRow extends StatelessWidget {
       child: Row(
         children: [
           Icon(icon, size: 19, color: const Color(0xFF6F7C8E)),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 11),
           Expanded(
             child: Text(
@@ -1559,6 +1640,7 @@ class _ComparisonDetailRow extends StatelessWidget {
 class _NotificationSummaryCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the notification summary card logic used by this module.
   const _NotificationSummaryCard({required this.child});
 
   @override
@@ -1566,11 +1648,13 @@ class _NotificationSummaryCard extends StatefulWidget {
       _NotificationSummaryCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _NotificationSummaryCardState extends State<_NotificationSummaryCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) {
         setState(() {
@@ -1612,6 +1696,7 @@ class _NotificationAlertCard extends StatefulWidget {
   final bool unread;
   final Widget child;
 
+  // Handles the notification alert card logic used by this module.
   const _NotificationAlertCard({
     required this.color,
     required this.unread,
@@ -1622,11 +1707,13 @@ class _NotificationAlertCard extends StatefulWidget {
   State<_NotificationAlertCard> createState() => _NotificationAlertCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _NotificationAlertCardState extends State<_NotificationAlertCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) {
@@ -1646,6 +1733,7 @@ class _NotificationAlertCardState extends State<_NotificationAlertCard> {
           gradient: LinearGradient(
             colors: widget.unread
                 ? [
+                    // Handles the color logic used by this module.
                     const Color(0xFFF4F9FF),
                     widget.color.withValues(alpha: 0.035),
                   ]
@@ -1683,10 +1771,12 @@ class _NotificationAlertCardState extends State<_NotificationAlertCard> {
 // ================================================================
 
 class _NotificationEmptyState extends StatelessWidget {
+  // Handles the notification empty state logic used by this module.
   const _NotificationEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the center logic used by this module.
     return Center(
       child: TweenAnimationBuilder<double>(
         duration: const Duration(milliseconds: 500),
@@ -1742,6 +1832,7 @@ class _UnifiedAlert {
   final double? currentSellingPrice;
   final String? status;
 
+  // Handles the unified alert logic used by this module.
   const _UnifiedAlert({
     required this.documentId,
     required this.source,

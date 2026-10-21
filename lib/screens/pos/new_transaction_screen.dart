@@ -1,3 +1,8 @@
+// -----------------------------------------------------------------------------
+// Module overview: Core POS workflow: product search, AI assistance, barcode scanning, cart handling, payment, stock deduction, receipt generation, held transactions, and service timing.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -11,13 +16,16 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+// Screen widget for core POS workflow: product search, AI assistance, barcode scanning, cart handling, payment, stock deduction, receipt generation, held transactions, and service timing.
 class NewTransactionScreen extends StatefulWidget {
+  // Handles the new transaction screen logic used by this module.
   const NewTransactionScreen({super.key});
 
   @override
   State<NewTransactionScreen> createState() => _NewTransactionScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _NewTransactionScreenState extends State<NewTransactionScreen> {
   static const String _feedbackUrl =
       'https://eu-mart-mobile.web.app/#/feedback';
@@ -80,12 +88,14 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         '${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
+  // Converts transaction duration into the system service-speed classification used for monitoring.
   String _serviceSpeedLabel(int durationSeconds) {
     if (durationSeconds <= 120) return 'Normal Service';
     if (durationSeconds <= 300) return 'Minor Delay';
     return 'Long Delay';
   }
 
+  // Starts service-time tracking the first time the cashier begins an active transaction.
   void _ensureTransactionStarted() {
     if (_transactionStartedAt != null) return;
 
@@ -93,6 +103,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     _startDurationTimer();
   }
 
+  // Handles the start duration timer logic used by this module.
   void _startDurationTimer() {
     _durationTimer?.cancel();
 
@@ -105,15 +116,18 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     });
   }
 
+  // Resets transaction tracking state after the current workflow is completed or cancelled.
   void _resetTransactionTracking() {
     _durationTimer?.cancel();
     _durationTimer = null;
     _transactionStartedAt = null;
   }
 
+  // Checks whether a promotion is enabled and currently inside its configured start/end dates.
   bool _isPromoCurrentlyActive(Map<String, dynamic> data) {
     if (data['promoActive'] != true) return false;
 
+    // Reads and normalizes date from stored data.
     DateTime? readDate(dynamic value) {
       if (value is Timestamp) return value.toDate();
       if (value is DateTime) return value;
@@ -145,6 +159,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return true;
   }
 
+  // Adds a validated active product to the cart while enforcing available-stock and promo rules.
   void _addProduct(QueryDocumentSnapshot<Map<String, dynamic>> document) {
     final data = document.data();
 
@@ -224,6 +239,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     }
   }
 
+  // Adjusts increase while enforcing the current business limits.
   void _increase(_CartItem item) {
     if (item.quantity >= item.availableStock) {
       _message('Only ${item.availableStock} stock available.', Colors.orange);
@@ -233,6 +249,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     setState(() => item.quantity++);
   }
 
+  // Adjusts decrease while enforcing the current business limits.
   void _decrease(_CartItem item) {
     setState(() {
       if (item.quantity <= 1) {
@@ -247,6 +264,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     });
   }
 
+  // Processes cashier search input, prioritizing exact barcode matches before local text-search scoring.
   Future<void> _handleSearchInput(
     String value,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
@@ -318,12 +336,14 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     });
   }
 
+  // Shows a short color-coded status message to the current user.
   void _message(String text, Color color) {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(text), backgroundColor: color));
   }
 
+  // Writes automatically detected POS/service problems to the service_issues collection for owner monitoring.
   Future<void> _logAutomaticServiceIssue({
     required String issueType,
     required String description,
@@ -357,6 +377,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     }
   }
 
+  // Checks whether the current value satisfies the matches rule used by this module.
   bool _matches(QueryDocumentSnapshot<Map<String, dynamic>> document) {
     if (_query.isEmpty) return true;
 
@@ -371,6 +392,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return _localProductSearchScore(document) >= 20;
   }
 
+  // Scores local product relevance using exact matches, aliases, incomplete words, and conservative typo tolerance.
   int _localProductSearchScore(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) {
@@ -462,11 +484,13 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return 0;
   }
 
+  // Checks whether the current value satisfies the is coke query rule used by this module.
   bool _isCokeQuery(String query) {
     final normalized = _normalizeSearchText(query).replaceAll(' ', '');
     return normalized == 'coke' || normalized == 'cocacola';
   }
 
+  // Handles the normalize search text logic used by this module.
   String _normalizeSearchText(dynamic value) {
     return (value ?? '')
         .toString()
@@ -476,6 +500,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         .trim();
   }
 
+  // Expands approved cashier aliases while keeping matching controlled and product-specific.
   List<String> _searchAliases(String value) {
     final normalized = _normalizeSearchText(value);
     if (normalized.isEmpty) return <String>[];
@@ -532,6 +557,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return result;
   }
 
+  // Checks whether a typed word is sufficiently close to a product word without allowing overly broad matches.
   bool _hasCloseWord(String searchable, String queryWord) {
     final normalizedQuery = _normalizeSearchText(queryWord);
     if (normalizedQuery.length < 3) return false;
@@ -587,6 +613,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return false;
   }
 
+  // Calculates edit distance used by typo-tolerant product matching.
   int _levenshteinDistance(String first, String second) {
     final previous = List<int>.generate(second.length + 1, (index) => index);
 
@@ -611,6 +638,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return previous.last;
   }
 
+  // Scores products locally before the AI request so only relevant candidates are sent to Gemini.
   int _aiCandidateScore(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
     String rawQuery,
@@ -654,6 +682,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return total;
   }
 
+  // Runs AI-assisted product retrieval after local candidate ranking.
+  // Only validated Firestore product IDs are accepted so AI cannot create products outside the store catalog.
   Future<void> _runAiSearch(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) async {
@@ -864,6 +894,8 @@ Do not explain.
     }
   }
 
+  // Validates current stock, prepares transaction items, deducts stock, and writes the completed POS transaction.
+  // A Firestore batch keeps transaction and inventory updates grouped as one operation.
   Future<String> _saveTransaction({
     required DateTime startedAt,
     required DateTime completedAt,
@@ -902,6 +934,7 @@ Do not explain.
       final productSnapshot = await productReference.get();
 
       if (!productSnapshot.exists) {
+        // Handles the exception logic used by this module.
         throw Exception('${item.productName} no longer exists.');
       }
 
@@ -910,6 +943,7 @@ Do not explain.
       final currentStock = (productData['stock'] as num?)?.toInt() ?? 0;
 
       if (currentStock < item.quantity) {
+        // Handles the exception logic used by this module.
         throw Exception(
           'Not enough stock for ${item.productName}. '
           'Available: $currentStock.',
@@ -963,6 +997,7 @@ Do not explain.
     return receiptNumber;
   }
 
+  // Handles the remember scanned product logic used by this module.
   void _rememberScannedProduct(
     QueryDocumentSnapshot<Map<String, dynamic>> product,
   ) {
@@ -977,6 +1012,7 @@ Do not explain.
     });
   }
 
+  // Matches a scanned barcode to an active product, logs scanner-related service issues when needed, and adds the product to the cart.
   Future<void> _findAndAddByBarcode(
     String barcode,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
@@ -992,6 +1028,7 @@ Do not explain.
         _productsByBarcode[cleanedBarcode.toLowerCase()] ?? const [];
 
     if (matches.length > 1) {
+      // Writes automatically detected POS/service problems to the service_issues collection for owner monitoring.
       await _logAutomaticServiceIssue(
         issueType: 'Duplicate Barcode',
         severity: 'Moderate',
@@ -1014,6 +1051,7 @@ Do not explain.
     final matchedProduct = matches.isEmpty ? null : matches.first;
 
     if (matchedProduct == null) {
+      // Writes automatically detected POS/service problems to the service_issues collection for owner monitoring.
       await _logAutomaticServiceIssue(
         issueType: 'Barcode Not Recognized',
         severity: 'Moderate',
@@ -1059,6 +1097,7 @@ Do not explain.
     _rememberScannedProduct(matchedProduct);
   }
 
+  // Opens the POS camera scanner and supports automatic or manual barcode entry.
   Future<void> _openPosBarcodeScanner(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) async {
@@ -1085,8 +1124,10 @@ Do not explain.
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
+        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Handles the process barcode logic used by this module.
             Future<void> processBarcode(String value) async {
               final cleanedValue = value.trim();
 
@@ -1111,6 +1152,7 @@ Do not explain.
               unawaited(scannerController.stop().catchError((_) {}));
             }
 
+            // Handles the close dialog logic used by this module.
             Future<void> closeDialog() async {
               if (processing) return;
 
@@ -1124,6 +1166,7 @@ Do not explain.
               Navigator.of(dialogContext).pop();
             }
 
+            // Handles the alert dialog logic used by this module.
             return AlertDialog(
               title: const Row(
                 children: [
@@ -1178,6 +1221,7 @@ Do not explain.
                                   );
                                 }
 
+                                // Handles the container logic used by this module.
                                 return Container(
                                   color: Colors.black87,
                                   alignment: Alignment.center,
@@ -1218,6 +1262,7 @@ Do not explain.
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 18),
                     Row(
                       children: [
@@ -1234,6 +1279,7 @@ Do not explain.
                             ),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 10),
                         SizedBox(
                           height: 50,
@@ -1272,6 +1318,7 @@ Do not explain.
     _refocusSearchBar(delay: const Duration(milliseconds: 20));
   }
 
+  // Builds the printable POS receipt, including store information, purchased items, totals, and customer-feedback QR code.
   Future<void> _printReceipt({
     required String receiptNumber,
     required List<_CartItem> items,
@@ -1428,6 +1475,7 @@ Do not explain.
     );
   }
 
+  // Handles the pdf money row logic used by this module.
   pw.Widget _pdfMoneyRow(String label, double value, {bool bold = false}) {
     final style = pw.TextStyle(
       fontSize: 10,
@@ -1446,6 +1494,7 @@ Do not explain.
     );
   }
 
+  // Persists the current cart as a held transaction so it can be resumed later.
   Future<void> _holdTransaction() async {
     if (_cart.isEmpty) {
       _message('The cart is empty.', Colors.orange);
@@ -1457,6 +1506,7 @@ Do not explain.
     final label = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Hold Transaction'),
           content: SizedBox(
@@ -1561,6 +1611,7 @@ Do not explain.
     }
   }
 
+  // Opens the held transactions interface using the current record or screen state.
   Future<void> _showHeldTransactions(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) async {
@@ -1574,6 +1625,7 @@ Do not explain.
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Held Transactions'),
           content: SizedBox(
@@ -1587,10 +1639,12 @@ Do not explain.
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
+                  // Handles the center logic used by this module.
                   return const Center(child: CircularProgressIndicator());
                 }
 
                 if (snapshot.hasError) {
+                  // Handles the center logic used by this module.
                   return Center(
                     child: Text(
                       'Unable to load held transactions.\n'
@@ -1621,6 +1675,7 @@ Do not explain.
                 });
 
                 if (held.isEmpty) {
+                  // Handles the center logic used by this module.
                   return const Center(
                     child: Text(
                       'No held transactions.',
@@ -1646,6 +1701,7 @@ Do not explain.
 
                     final createdAt = _readTimestamp(data['createdAt']);
 
+                    // Handles the card logic used by this module.
                     return Card(
                       child: ListTile(
                         leading: const CircleAvatar(
@@ -1713,6 +1769,7 @@ Do not explain.
     );
   }
 
+  // Normalizes Firestore timestamps or date strings into DateTime values.
   DateTime? _readTimestamp(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -1720,6 +1777,7 @@ Do not explain.
     return null;
   }
 
+  // Formats held date into a user-friendly display value.
   String _formatHeldDate(DateTime date) {
     final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
     final minute = date.minute.toString().padLeft(2, '0');
@@ -1729,6 +1787,7 @@ Do not explain.
         '$hour:$minute $period';
   }
 
+  // Restores a held cart after rechecking current product availability and stock.
   Future<bool> _resumeHeldTransaction(
     QueryDocumentSnapshot<Map<String, dynamic>> heldDocument,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
@@ -1737,6 +1796,7 @@ Do not explain.
       final replace = await showDialog<bool>(
         context: context,
         builder: (dialogContext) {
+          // Handles the alert dialog logic used by this module.
           return AlertDialog(
             title: const Text('Replace Current Cart?'),
             content: const Text(
@@ -1849,12 +1909,14 @@ Do not explain.
     return true;
   }
 
+  // Deletes the selected held transaction record after the required checks.
   Future<void> _deleteHeldTransaction(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
+        // Handles the alert dialog logic used by this module.
         return AlertDialog(
           title: const Text('Delete Held Transaction'),
           content: const Text('This will permanently remove the held cart.'),
@@ -1885,6 +1947,7 @@ Do not explain.
     _message('Held transaction deleted.', Colors.green);
   }
 
+  // Coordinates payment validation, transaction saving, receipt handling, and transaction-state reset.
   Future<void> _payNow() async {
     if (_cart.isEmpty) {
       _message('The cart is empty.', Colors.orange);
@@ -1917,6 +1980,7 @@ Do not explain.
         completedAt: completedAt,
       );
 
+      // Loads active product records into local caches used by fast POS search and barcode lookup.
       await _loadProducts();
 
       if (!mounted) return;
@@ -1953,6 +2017,7 @@ Do not explain.
               '${receiptDate.hour.toString().padLeft(2, '0')}:'
               '${receiptDate.minute.toString().padLeft(2, '0')}';
 
+          // Handles the dialog logic used by this module.
           return Dialog(
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.symmetric(
@@ -2001,6 +2066,7 @@ Do not explain.
                                 'assets/images/eu_mart_logo.png',
                                 fit: BoxFit.contain,
                                 errorBuilder: (context, error, stackTrace) {
+                                  // Handles the icon logic used by this module.
                                   return const Icon(
                                     Icons.storefront_rounded,
                                     size: 45,
@@ -2009,7 +2075,9 @@ Do not explain.
                                 },
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
+                            // Handles the text logic used by this module.
                             const Text(
                               'EÜ MART',
                               style: TextStyle(
@@ -2019,7 +2087,9 @@ Do not explain.
                                 letterSpacing: 1.2,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 4),
+                            // Handles the text logic used by this module.
                             const Text(
                               'SALES RECEIPT',
                               style: TextStyle(
@@ -2029,6 +2099,7 @@ Do not explain.
                                 letterSpacing: 1.4,
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 14),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -2078,6 +2149,7 @@ Do not explain.
                                 children: [
                                   Row(
                                     children: [
+                                      // Handles the expanded logic used by this module.
                                       const Expanded(
                                         child: Text(
                                           'Receipt No.',
@@ -2102,9 +2174,11 @@ Do not explain.
                                       ),
                                     ],
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 7),
                                   Row(
                                     children: [
+                                      // Handles the expanded logic used by this module.
                                       const Expanded(
                                         child: Text(
                                           'Date / Time',
@@ -2125,9 +2199,11 @@ Do not explain.
                                       ),
                                     ],
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 7),
                                   Row(
                                     children: [
+                                      // Handles the expanded logic used by this module.
                                       const Expanded(
                                         child: Text(
                                           'Transaction Time',
@@ -2155,7 +2231,9 @@ Do not explain.
                                 ],
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 18),
+                            // Handles the row logic used by this module.
                             const Row(
                               children: [
                                 Expanded(
@@ -2194,8 +2272,11 @@ Do not explain.
                                 ),
                               ],
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 8),
+                            // Handles the divider logic used by this module.
                             const Divider(height: 1),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             ...items.map(
                               (item) => Padding(
@@ -2236,17 +2317,23 @@ Do not explain.
                                 ),
                               ),
                             ),
+                            // Handles the divider logic used by this module.
                             const Divider(height: 1),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 13),
                             if (_totalSavings > 0) ...[
                               _receiptRow('You Saved', _totalSavings),
+                              // Handles the sized box logic used by this module.
                               const SizedBox(height: 7),
                             ],
                             _receiptRow('Total', total),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 7),
                             _receiptRow('Cash', cash),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 7),
                             _receiptRow('Change', change),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 14),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -2259,6 +2346,7 @@ Do not explain.
                               ),
                               child: Row(
                                 children: [
+                                  // Handles the expanded logic used by this module.
                                   const Expanded(
                                     child: Text(
                                       'TOTAL',
@@ -2280,6 +2368,7 @@ Do not explain.
                                 ],
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 20),
                             Text(
                               receiptFooter,
@@ -2290,6 +2379,7 @@ Do not explain.
                                 color: Color(0xFF172033),
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 16),
                             Container(
                               width: double.infinity,
@@ -2306,6 +2396,7 @@ Do not explain.
                               ),
                               child: Column(
                                 children: [
+                                  // Handles the text logic used by this module.
                                   const Text(
                                     'How was your experience?',
                                     textAlign: TextAlign.center,
@@ -2315,6 +2406,7 @@ Do not explain.
                                       color: Color(0xFF172033),
                                     ),
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 9),
                                   Container(
                                     padding: const EdgeInsets.all(7),
@@ -2326,7 +2418,9 @@ Do not explain.
                                       backgroundColor: Colors.white,
                                     ),
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 7),
+                                  // Handles the text logic used by this module.
                                   const Text(
                                     'Scan to rate your experience',
                                     textAlign: TextAlign.center,
@@ -2336,7 +2430,9 @@ Do not explain.
                                       color: Color(0xFF1565C0),
                                     ),
                                   ),
+                                  // Handles the sized box logic used by this module.
                                   const SizedBox(height: 3),
+                                  // Handles the text logic used by this module.
                                   const Text(
                                     'Use your phone camera to open the EÜ MART feedback page.',
                                     textAlign: TextAlign.center,
@@ -2348,12 +2444,14 @@ Do not explain.
                                 ],
                               ),
                             ),
+                            // Handles the sized box logic used by this module.
                             const SizedBox(height: 18),
                             Row(
                               children: [
                                 Expanded(
                                   child: OutlinedButton.icon(
                                     onPressed: () async {
+                                      // Builds the printable POS receipt, including store information, purchased items, totals, and customer-feedback QR code.
                                       await _printReceipt(
                                         receiptNumber: receiptNumber,
                                         items: items,
@@ -2384,6 +2482,7 @@ Do not explain.
                                     ),
                                   ),
                                 ),
+                                // Handles the sized box logic used by this module.
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: ElevatedButton.icon(
@@ -2454,7 +2553,9 @@ Do not explain.
     }
   }
 
+  // Handles the receipt row logic used by this module.
   Widget _receiptRow(String label, double value) {
+    // Handles the padding logic used by this module.
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -2474,10 +2575,12 @@ Do not explain.
     );
   }
 
+  // Handles the product panel logic used by this module.
   Widget _productPanel(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> allProducts,
   ) {
+    // Handles the column logic used by this module.
     return Column(
       children: [
         LayoutBuilder(
@@ -2519,6 +2622,8 @@ Do not explain.
                   return;
                 }
 
+                // Runs AI-assisted product retrieval after local candidate ranking.
+                // Only validated Firestore product IDs are accepted so AI cannot create products outside the store catalog.
                 await _runAiSearch(allProducts);
                 _focusSearchBar();
               },
@@ -2603,13 +2708,16 @@ Do not explain.
             );
 
             if (isMobile) {
+              // Handles the column logic used by this module.
               return Column(
                 children: [
                   searchField,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(child: scanButton),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 8),
                       Expanded(child: aiButton),
                     ],
@@ -2618,11 +2726,14 @@ Do not explain.
               );
             }
 
+            // Handles the row logic used by this module.
             return Row(
               children: [
                 Expanded(child: searchField),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 10),
                 scanButton,
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 10),
                 aiButton,
               ],
@@ -2630,6 +2741,7 @@ Do not explain.
           },
         ),
         if (_aiSearchMessage.isNotEmpty) ...[
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
@@ -2642,6 +2754,7 @@ Do not explain.
             ),
           ),
           if (_aiResponseTimeMs != null) ...[
+            // Handles the sized box logic used by this module.
             const SizedBox(height: 4),
             Align(
               alignment: Alignment.centerLeft,
@@ -2653,12 +2766,14 @@ Do not explain.
             ),
           ],
         ],
+        // Handles the sized box logic used by this module.
         const SizedBox(height: 18),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (_query.isEmpty && _recentScannedProductIds.isNotEmpty) ...[
+                // Handles the text logic used by this module.
                 const Text(
                   'Recently scanned',
                   style: TextStyle(
@@ -2667,6 +2782,7 @@ Do not explain.
                     color: Color(0xFF263238),
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 10),
                 SizedBox(
                   height: 180,
@@ -2689,6 +2805,7 @@ Do not explain.
                           (data['sellingPrice'] as num?)?.toDouble() ?? 0;
                       final stock = (data['stock'] as num?)?.toInt() ?? 0;
 
+                      // Handles the sized box logic used by this module.
                       return SizedBox(
                         width: 260,
                         child: _PosProductCard(
@@ -2704,6 +2821,7 @@ Do not explain.
                     },
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 16),
               ],
               Expanded(
@@ -2712,6 +2830,7 @@ Do not explain.
                     : GridView.builder(
                         itemCount: products.length,
                         gridDelegate:
+                            // Handles the sliver grid delegate with max cross axis extent logic used by this module.
                             const SliverGridDelegateWithMaxCrossAxisExtent(
                               maxCrossAxisExtent: 280,
                               mainAxisExtent: 180,
@@ -2728,6 +2847,7 @@ Do not explain.
                               (data['sellingPrice'] as num?)?.toDouble() ?? 0;
                           final stock = (data['stock'] as num?)?.toInt() ?? 0;
 
+                          // Handles the pos product card logic used by this module.
                           return _PosProductCard(
                             name: name,
                             price: price,
@@ -2749,9 +2869,11 @@ Do not explain.
     );
   }
 
+  // Handles the cart panel logic used by this module.
   Widget _cartPanel(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
@@ -2794,7 +2916,9 @@ Do not explain.
                       size: 22,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 12),
+                  // Handles the flexible logic used by this module.
                   const Flexible(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2838,11 +2962,13 @@ Do not explain.
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Handles the icon logic used by this module.
                           const Icon(
                             Icons.timer_outlined,
                             size: 17,
                             color: Color(0xFF1565C0),
                           ),
+                          // Handles the sized box logic used by this module.
                           const SizedBox(width: 5),
                           Text(
                             _formattedElapsedTime,
@@ -2856,11 +2982,13 @@ Do not explain.
                     );
 
               if (compact) {
+                // Handles the column logic used by this module.
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     title,
                     if (_transactionStartedAt != null) ...[
+                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 10),
                       timer,
                     ],
@@ -2868,6 +2996,7 @@ Do not explain.
                 );
               }
 
+              // Handles the row logic used by this module.
               return Row(
                 children: [
                   Expanded(child: title),
@@ -2876,6 +3005,7 @@ Do not explain.
               );
             },
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 16),
           Expanded(
             child: _cart.isEmpty
@@ -2925,6 +3055,7 @@ Do not explain.
                     itemBuilder: (context, index) {
                       final item = _cart.values.elementAt(index);
 
+                      // Handles the container logic used by this module.
                       return Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -2993,6 +3124,7 @@ Do not explain.
                     },
                   ),
           ),
+          // Handles the divider logic used by this module.
           const Divider(height: 28),
           if (_totalSavings > 0) ...[
             Container(
@@ -3005,12 +3137,15 @@ Do not explain.
               ),
               child: Row(
                 children: [
+                  // Handles the icon logic used by this module.
                   const Icon(
                     Icons.savings_outlined,
                     color: Colors.green,
                     size: 20,
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 8),
+                  // Handles the expanded logic used by this module.
                   const Expanded(
                     child: Text(
                       'CUSTOMER SAVINGS',
@@ -3043,6 +3178,7 @@ Do not explain.
             ),
             child: Row(
               children: [
+                // Handles the expanded logic used by this module.
                 const Expanded(
                   child: Text(
                     'TOTAL AMOUNT',
@@ -3074,6 +3210,7 @@ Do not explain.
               ],
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 16),
           TextField(
             controller: _cashController,
@@ -3103,9 +3240,11 @@ Do not explain.
               ),
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 14),
           Row(
             children: [
+              // Handles the expanded logic used by this module.
               const Expanded(
                 child: Text(
                   'Change',
@@ -3122,6 +3261,7 @@ Do not explain.
               ),
             ],
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 18),
           LayoutBuilder(
             builder: (context, actionConstraints) {
@@ -3148,24 +3288,29 @@ Do not explain.
               );
 
               if (stackButtons) {
+                // Handles the column logic used by this module.
                 return Column(
                   children: [
                     SizedBox(width: double.infinity, child: holdButton),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 8),
                     SizedBox(width: double.infinity, child: resumeButton),
                   ],
                 );
               }
 
+              // Handles the row logic used by this module.
               return Row(
                 children: [
                   Expanded(child: holdButton),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(width: 10),
                   Expanded(child: resumeButton),
                 ],
               );
             },
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -3208,10 +3353,12 @@ Do not explain.
   @override
   Widget build(BuildContext context) {
     if (_productsLoading) {
+      // Handles the center logic used by this module.
       return const Center(child: CircularProgressIndicator());
     }
 
     if (_productsError != null) {
+      // Handles the center logic used by this module.
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -3223,6 +3370,7 @@ Do not explain.
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.red),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 onPressed: _loadProducts,
@@ -3235,6 +3383,7 @@ Do not explain.
       );
     }
 
+    // Handles the layout builder logic used by this module.
     return LayoutBuilder(
       builder: (context, constraints) {
         final isPhone = constraints.maxWidth < 1000;
@@ -3245,6 +3394,7 @@ Do not explain.
         final verticalPadding = isPhone ? 10.0 : 22.0;
 
         if (constraints.maxWidth >= 980) {
+          // Handles the container logic used by this module.
           return Container(
             color: const Color(0xFFF2F6FC),
             padding: EdgeInsets.symmetric(
@@ -3257,6 +3407,7 @@ Do not explain.
                   flex: 3,
                   child: _productPanel(_visibleProducts, _activeProducts),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 22),
                 SizedBox(width: 420, child: _cartPanel(_activeProducts)),
               ],
@@ -3265,6 +3416,7 @@ Do not explain.
         }
 
         if (isTablet) {
+          // Handles the container logic used by this module.
           return Container(
             color: const Color(0xFFF2F6FC),
             padding: EdgeInsets.symmetric(
@@ -3276,6 +3428,7 @@ Do not explain.
                 Expanded(
                   child: _productPanel(_visibleProducts, _activeProducts),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 18),
                 SizedBox(height: 520, child: _cartPanel(_activeProducts)),
               ],
@@ -3298,6 +3451,7 @@ Do not explain.
                   height: 570,
                   child: _productPanel(_visibleProducts, _activeProducts),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 14),
                 SizedBox(height: 720, child: _cartPanel(_activeProducts)),
               ],
@@ -3308,6 +3462,7 @@ Do not explain.
     );
   }
 
+  // Loads active product records into local caches used by fast POS search and barcode lookup.
   Future<void> _loadProducts() async {
     if (mounted) {
       setState(() {
@@ -3362,6 +3517,7 @@ Do not explain.
     }
   }
 
+  // Handles the focus search bar logic used by this module.
   void _focusSearchBar() {
     if (!mounted) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -3383,6 +3539,7 @@ Do not explain.
     });
   }
 
+  // Handles the refocus search bar logic used by this module.
   void _refocusSearchBar({Duration delay = const Duration(milliseconds: 80)}) {
     if (!mounted) return;
 
@@ -3392,6 +3549,7 @@ Do not explain.
     });
   }
 
+  // Handles the search key event user or system event and updates state as required.
   KeyEventResult _handleSearchKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.tab) {
       // Many hardware barcode scanners send TAB after ENTER.
@@ -3421,6 +3579,7 @@ Do not explain.
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _PosProductCard extends StatefulWidget {
   final String name;
   final double price;
@@ -3428,6 +3587,7 @@ class _PosProductCard extends StatefulWidget {
   final bool highlighted;
   final VoidCallback? onTap;
 
+  // Handles the pos product card logic used by this module.
   const _PosProductCard({
     required this.name,
     required this.price,
@@ -3440,6 +3600,7 @@ class _PosProductCard extends StatefulWidget {
   State<_PosProductCard> createState() => _PosProductCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PosProductCardState extends State<_PosProductCard> {
   bool _hovered = false;
 
@@ -3450,6 +3611,7 @@ class _PosProductCardState extends State<_PosProductCard> {
         ? const Color(0xFF7B1FA2)
         : const Color(0xFF1565C0);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       cursor: available
           ? SystemMouseCursors.click
@@ -3522,6 +3684,7 @@ class _PosProductCardState extends State<_PosProductCard> {
                           size: 23,
                         ),
                       ),
+                      // Handles the spacer logic used by this module.
                       const Spacer(),
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -3549,6 +3712,7 @@ class _PosProductCardState extends State<_PosProductCard> {
                       ),
                     ],
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 13),
                   Text(
                     widget.name,
@@ -3561,6 +3725,7 @@ class _PosProductCardState extends State<_PosProductCard> {
                       height: 1.3,
                     ),
                   ),
+                  // Handles the spacer logic used by this module.
                   const Spacer(),
                   Row(
                     children: [
@@ -3600,6 +3765,7 @@ class _PosProductCardState extends State<_PosProductCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _CartItem {
   final String productId;
   final String productName;
@@ -3644,6 +3810,7 @@ class _CartItem {
   }
 
   _CartItem copy() {
+    // Handles the cart item logic used by this module.
     return _CartItem(
       productId: productId,
       productName: productName,

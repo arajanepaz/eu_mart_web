@@ -1,8 +1,15 @@
+// -----------------------------------------------------------------------------
+// Module overview: Provides cashier barcode scanning and exact product lookup for supported retail barcode formats.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+// Screen widget for provides cashier barcode scanning and exact product lookup for supported retail barcode formats.
 class CashierBarcodeScannerScreen extends StatefulWidget {
+  // Handles the cashier barcode scanner screen logic used by this module.
   const CashierBarcodeScannerScreen({super.key});
 
   @override
@@ -10,6 +17,7 @@ class CashierBarcodeScannerScreen extends StatefulWidget {
       _CashierBarcodeScannerScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _CashierBarcodeScannerScreenState
     extends State<CashierBarcodeScannerScreen> {
   final MobileScannerController _scannerController = MobileScannerController(
@@ -36,6 +44,7 @@ class _CashierBarcodeScannerScreenState
   String? _productDocumentId;
   String? _message;
 
+  // Handles the barcode user or system event and updates state as required.
   Future<void> _handleBarcode(String code) async {
     final cleanedCode = code.trim();
 
@@ -89,6 +98,7 @@ class _CashierBarcodeScannerScreenState
     }
   }
 
+  // Handles the on detect event for this widget.
   void _onDetect(BarcodeCapture capture) {
     if (!_scannerEnabled || _isProcessing) return;
 
@@ -102,6 +112,7 @@ class _CashierBarcodeScannerScreenState
     }
   }
 
+  // Handles the scan again logic used by this module.
   void _scanAgain() {
     setState(() {
       _lastScannedCode = null;
@@ -112,23 +123,27 @@ class _CashierBarcodeScannerScreenState
     });
   }
 
+  // Handles the stock color logic used by this module.
   Color _stockColor(int stock) {
     if (stock <= 0) return Colors.red;
     if (stock <= 10) return Colors.orange;
     return Colors.green;
   }
 
+  // Handles the stock status logic used by this module.
   String _stockStatus(int stock) {
     if (stock <= 0) return 'Out of Stock';
     if (stock <= 10) return 'Low Stock';
     return 'Available';
   }
 
+  // Builds the product result UI from the current data and screen state.
   Widget _buildProductResult() {
     final data = _product;
 
     if (data == null) {
       if (_message != null) {
+        // Handles the container logic used by this module.
         return Container(
           width: double.infinity,
           padding: const EdgeInsets.all(22),
@@ -139,7 +154,9 @@ class _CashierBarcodeScannerScreenState
           ),
           child: Column(
             children: [
+              // Handles the icon logic used by this module.
               const Icon(Icons.search_off, color: Colors.red, size: 42),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 10),
               Text(
                 _message!,
@@ -149,6 +166,7 @@ class _CashierBarcodeScannerScreenState
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 14),
               OutlinedButton.icon(
                 onPressed: _scanAgain,
@@ -160,6 +178,7 @@ class _CashierBarcodeScannerScreenState
         );
       }
 
+      // Handles the container logic used by this module.
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(24),
@@ -192,6 +211,7 @@ class _CashierBarcodeScannerScreenState
 
     final stockColor = _stockColor(stock);
 
+    // Handles the container logic used by this module.
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
@@ -224,6 +244,7 @@ class _CashierBarcodeScannerScreenState
                   size: 30,
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -236,6 +257,7 @@ class _CashierBarcodeScannerScreenState
                         fontWeight: FontWeight.bold,
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 5),
                     Text(
                       [
@@ -267,13 +289,17 @@ class _CashierBarcodeScannerScreenState
               ),
             ],
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 22),
+          // Handles the divider logic used by this module.
           const Divider(),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 14),
           _infoRow('Barcode', barcode),
           _infoRow('Document ID', _productDocumentId ?? ''),
           _infoRow('Selling Price', '₱${price.toStringAsFixed(2)}'),
           _infoRow('Current Stock', '$stock'),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
@@ -289,7 +315,9 @@ class _CashierBarcodeScannerScreenState
     );
   }
 
+  // Handles the info row logic used by this module.
   Widget _infoRow(String label, String value) {
+    // Handles the padding logic used by this module.
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
       child: Row(
@@ -318,6 +346,7 @@ class _CashierBarcodeScannerScreenState
 
   @override
   Widget build(BuildContext context) {
+    // Handles the single child scroll view logic used by this module.
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Center(
@@ -345,6 +374,7 @@ class _CashierBarcodeScannerScreenState
                   children: [
                     Row(
                       children: [
+                        // Handles the expanded logic used by this module.
                         const Expanded(
                           child: Text(
                             'Barcode Scanner',
@@ -370,6 +400,7 @@ class _CashierBarcodeScannerScreenState
                         ),
                       ],
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 14),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(16),
@@ -383,6 +414,7 @@ class _CashierBarcodeScannerScreenState
                                 controller: _scannerController,
                                 onDetect: _onDetect,
                                 errorBuilder: (context, error) {
+                                  // Handles the container logic used by this module.
                                   return Container(
                                     color: Colors.black87,
                                     alignment: Alignment.center,
@@ -431,11 +463,14 @@ class _CashierBarcodeScannerScreenState
                         ),
                       ),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 18),
+                    // Handles the text logic used by this module.
                     const Text(
                       'Manual Barcode Entry',
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -450,6 +485,7 @@ class _CashierBarcodeScannerScreenState
                             ),
                           ),
                         ),
+                        // Handles the sized box logic used by this module.
                         const SizedBox(width: 10),
                         SizedBox(
                           height: 50,
@@ -472,29 +508,35 @@ class _CashierBarcodeScannerScreenState
               final resultPanel = Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Handles the text logic used by this module.
                   const Text(
                     'Product Result',
                     style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
                   _buildProductResult(),
                 ],
               );
 
               if (isWide) {
+                // Handles the row logic used by this module.
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(flex: 5, child: scannerPanel),
+                    // Handles the sized box logic used by this module.
                     const SizedBox(width: 22),
                     Expanded(flex: 4, child: resultPanel),
                   ],
                 );
               }
 
+              // Handles the column logic used by this module.
               return Column(
                 children: [
                   scannerPanel,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 22),
                   resultPanel,
                 ],

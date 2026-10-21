@@ -1,9 +1,16 @@
+// -----------------------------------------------------------------------------
+// Module overview: Reports service-management indicators such as transaction duration and logged service issues.
+// Comments in this file document non-obvious behavior and maintenance intent.
+// -----------------------------------------------------------------------------
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// Private UI/data helper used only inside this module.
 class _ServiceMonitorHoverCard extends StatefulWidget {
   final Widget child;
 
+  // Handles the service monitor hover card logic used by this module.
   const _ServiceMonitorHoverCard({required this.child});
 
   @override
@@ -11,11 +18,13 @@ class _ServiceMonitorHoverCard extends StatefulWidget {
       _ServiceMonitorHoverCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceMonitorHoverCardState extends State<_ServiceMonitorHoverCard> {
   bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -40,12 +49,14 @@ class _ServiceMonitorHoverCardState extends State<_ServiceMonitorHoverCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ServiceStatusPill extends StatelessWidget {
   final String label;
   final int value;
   final Color color;
   final IconData icon;
 
+  // Handles the service status pill logic used by this module.
   const _ServiceStatusPill({
     required this.label,
     required this.value,
@@ -55,6 +66,7 @@ class _ServiceStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
@@ -65,6 +77,7 @@ class _ServiceStatusPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: color, size: 18),
+          // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Text(
             '$label: $value',
@@ -80,6 +93,7 @@ class _ServiceStatusPill extends StatelessWidget {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _ServiceHourCard extends StatefulWidget {
   final String hourLabel;
   final int transactionCount;
@@ -90,6 +104,7 @@ class _ServiceHourCard extends StatefulWidget {
   final double progress;
   final bool peak;
 
+  // Handles the service hour card logic used by this module.
   const _ServiceHourCard({
     required this.hourLabel,
     required this.transactionCount,
@@ -105,6 +120,7 @@ class _ServiceHourCard extends StatefulWidget {
   State<_ServiceHourCard> createState() => _ServiceHourCardState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceHourCardState extends State<_ServiceHourCard> {
   bool _hovered = false;
 
@@ -114,6 +130,7 @@ class _ServiceHourCardState extends State<_ServiceHourCard> {
         ? const Color(0xFF7B1FA2)
         : const Color(0xFF1565C0);
 
+    // Handles the mouse region logic used by this module.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -162,6 +179,7 @@ class _ServiceHourCardState extends State<_ServiceHourCard> {
                     size: 24,
                   ),
                 ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(width: 13),
                 Expanded(
                   child: Column(
@@ -176,6 +194,7 @@ class _ServiceHourCardState extends State<_ServiceHourCard> {
                         ),
                       ),
                       if (widget.peak) ...[
+                        // Handles the sized box logic used by this module.
                         const SizedBox(height: 3),
                         Text(
                           'Peak transaction hour',
@@ -224,17 +243,20 @@ class _ServiceHourCardState extends State<_ServiceHourCard> {
               ],
             );
 
+            // Handles the column logic used by this module.
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (compact) ...[
                   title,
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 12),
                   metrics,
                 ] else
                   Row(
                     children: [
                       Expanded(child: title),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 14),
                       Flexible(
                         flex: 2,
@@ -245,6 +267,7 @@ class _ServiceHourCardState extends State<_ServiceHourCard> {
                       ),
                     ],
                   ),
+                // Handles the sized box logic used by this module.
                 const SizedBox(height: 14),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
@@ -264,11 +287,13 @@ class _ServiceHourCardState extends State<_ServiceHourCard> {
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _HourMetricPill extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
 
+  // Handles the hour metric pill logic used by this module.
   const _HourMetricPill({
     required this.label,
     required this.value,
@@ -277,6 +302,7 @@ class _HourMetricPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
@@ -295,6 +321,7 @@ class _HourMetricPill extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          // Handles the sized box logic used by this module.
           const SizedBox(height: 2),
           Text(
             value,
@@ -310,15 +337,19 @@ class _HourMetricPill extends StatelessWidget {
   }
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceMonitoringEmptyState extends StatelessWidget {
+  // Handles the service monitoring empty state logic used by this module.
   const _ServiceMonitoringEmptyState();
 
   @override
   Widget build(BuildContext context) {
+    // Handles the layout builder logic used by this module.
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 180;
 
+        // Handles the single child scroll view logic used by this module.
         return SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           padding: EdgeInsets.symmetric(
@@ -375,7 +406,9 @@ class _ServiceMonitoringEmptyState extends StatelessWidget {
   }
 }
 
+// Screen widget for reports service-management indicators such as transaction duration and logged service issues.
 class ServiceMonitoringReportScreen extends StatefulWidget {
+  // Handles the service monitoring report screen logic used by this module.
   const ServiceMonitoringReportScreen({super.key});
 
   @override
@@ -383,10 +416,12 @@ class ServiceMonitoringReportScreen extends StatefulWidget {
       _ServiceMonitoringReportScreenState();
 }
 
+// Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ServiceMonitoringReportScreenState
     extends State<ServiceMonitoringReportScreen> {
   String _selectedFilter = 'Today';
 
+  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
@@ -394,6 +429,7 @@ class _ServiceMonitoringReportScreenState
     return null;
   }
 
+  // Checks whether the current value satisfies the matches filter rule used by this module.
   bool _matchesFilter(DateTime? date) {
     if (date == null) return false;
 
@@ -421,6 +457,7 @@ class _ServiceMonitoringReportScreenState
     }
   }
 
+  // Handles the hour label logic used by this module.
   String _hourLabel(int hour) {
     final startHour = hour == 0
         ? 12
@@ -442,6 +479,7 @@ class _ServiceMonitoringReportScreenState
         '$endHour:00 $endPeriod';
   }
 
+  // Formats duration into a user-friendly display value.
   String _formatDuration(double seconds) {
     if (seconds <= 0) return '0s';
 
@@ -456,9 +494,11 @@ class _ServiceMonitoringReportScreenState
     return '${minutes}m ${remaining}s';
   }
 
+  // Filters chip according to the current user selection or business rule.
   Widget _filterChip(String label) {
     final selected = _selectedFilter == label;
 
+    // Handles the choice chip logic used by this module.
     return ChoiceChip(
       label: Text(label),
       selected: selected,
@@ -475,12 +515,14 @@ class _ServiceMonitoringReportScreenState
     );
   }
 
+  // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
     required String value,
     required IconData icon,
     required Color color,
   }) {
+    // Handles the service monitor hover card logic used by this module.
     return _ServiceMonitorHoverCard(
       child: Container(
         padding: const EdgeInsets.all(17),
@@ -511,6 +553,7 @@ class _ServiceMonitoringReportScreenState
               ),
               child: Icon(icon, color: Colors.white, size: 24),
             ),
+            // Handles the sized box logic used by this module.
             const SizedBox(width: 13),
             Expanded(
               child: Column(
@@ -524,6 +567,7 @@ class _ServiceMonitoringReportScreenState
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  // Handles the sized box logic used by this module.
                   const SizedBox(height: 4),
                   Text(
                     value,
@@ -551,10 +595,12 @@ class _ServiceMonitoringReportScreenState
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
+          // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
+          // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load service monitoring data.\n'
@@ -659,6 +705,7 @@ class _ServiceMonitoringReportScreenState
             ? 0.0
             : totalDurationSeconds / durationRecordCount;
 
+        // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
@@ -716,6 +763,7 @@ class _ServiceMonitoringReportScreenState
                   ],
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               Container(
                 width: double.infinity,
@@ -733,18 +781,23 @@ class _ServiceMonitoringReportScreenState
                   child: Row(
                     children: [
                       _filterChip('Today'),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 8),
                       _filterChip('Yesterday'),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 8),
                       _filterChip('This Week'),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 8),
                       _filterChip('This Month'),
+                      // Handles the sized box logic used by this module.
                       const SizedBox(width: 8),
                       _filterChip('All Time'),
                     ],
                   ),
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -796,6 +849,7 @@ class _ServiceMonitoringReportScreenState
                   );
                 },
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 16),
               _ServiceMonitorHoverCard(
                 child: Container(
@@ -841,9 +895,11 @@ class _ServiceMonitoringReportScreenState
                   ),
                 ),
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 18),
               Row(
                 children: [
+                  // Handles the expanded logic used by this module.
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -887,6 +943,7 @@ class _ServiceMonitoringReportScreenState
                   ),
                 ],
               ),
+              // Handles the sized box logic used by this module.
               const SizedBox(height: 12),
               Expanded(
                 child: activeHours.isEmpty
@@ -910,6 +967,7 @@ class _ServiceMonitoringReportScreenState
                               ? 0.0
                               : hour.transactionCount / maxTransactions;
 
+                          // Handles the service hour card logic used by this module.
                           return _ServiceHourCard(
                             hourLabel: _hourLabel(hour.hour),
                             transactionCount: hour.transactionCount,
@@ -930,11 +988,14 @@ class _ServiceMonitoringReportScreenState
     );
   }
 
+  // Handles the metric logic used by this module.
   Widget _metric(String label, String value, {Color? color}) {
+    // Handles the column logic used by this module.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        // Handles the sized box logic used by this module.
         const SizedBox(height: 4),
         Text(
           value,
@@ -945,6 +1006,7 @@ class _ServiceMonitoringReportScreenState
   }
 }
 
+// Private UI/data helper used only inside this module.
 class _HourPerformance {
   final int hour;
 
@@ -957,6 +1019,7 @@ class _HourPerformance {
 
   _HourPerformance({required this.hour});
 
+  // Handles the add duration logic used by this module.
   void addDuration(int seconds) {
     totalDurationSeconds += seconds;
     durationRecordCount++;
