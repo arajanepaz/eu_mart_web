@@ -824,7 +824,7 @@ Do not explain.
           errorText.contains('temporarily');
 
       final fallbackProducts =
-          List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(aiCandidates)
+          List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(products)
             ..sort(
               (a, b) => _localProductSearchScore(
                 b,
