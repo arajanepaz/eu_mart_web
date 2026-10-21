@@ -128,19 +128,24 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         elevation: 0,
         foregroundColor: const Color(0xFF1565C0),
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Card(
-              elevation: 12,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(36),
-                child: Column(
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final mobile = constraints.maxWidth < 900;
+
+            return Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(mobile ? 14 : 28),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: Card(
+                    elevation: mobile ? 4 : 12,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(mobile ? 18 : 24),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.all(mobile ? 20 : 36),
+                      child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const CircleAvatar(
@@ -291,10 +296,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                       label: const Text('BACK TO LOGIN'),
                     ),
                   ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
     );

@@ -712,26 +712,40 @@ class _OwnerTransactionHistoryScreenState
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _summaryCard(
-                      title: 'Completed Transactions',
-                      value: '$completedCount',
-                      icon: Icons.receipt_long,
-                      color: const Color(0xFFFF9800),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _summaryCard(
-                      title: 'Total Sales',
-                      value: '₱${totalSales.toStringAsFixed(2)}',
-                      icon: Icons.payments,
-                      color: Colors.green,
-                    ),
-                  ),
-                ],
+              LayoutBuilder(
+                builder: (context, summaryConstraints) {
+                  final compactSummary = summaryConstraints.maxWidth < 900;
+                  final completedCard = _summaryCard(
+                    title: 'Completed Transactions',
+                    value: '$completedCount',
+                    icon: Icons.receipt_long,
+                    color: const Color(0xFFFF9800),
+                  );
+                  final salesCard = _summaryCard(
+                    title: 'Total Sales',
+                    value: '₱${totalSales.toStringAsFixed(2)}',
+                    icon: Icons.payments,
+                    color: Colors.green,
+                  );
+
+                  if (compactSummary) {
+                    return Column(
+                      children: [
+                        SizedBox(width: double.infinity, child: completedCard),
+                        const SizedBox(height: 12),
+                        SizedBox(width: double.infinity, child: salesCard),
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(child: completedCard),
+                      const SizedBox(width: 16),
+                      Expanded(child: salesCard),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 18),
               Row(
@@ -876,19 +890,13 @@ class _OwnerTransactionHistoryScreenState
                               ),
                               children: [
                                 const Divider(),
-                                Row(
+                                Wrap(
+                                  spacing: 16,
+                                  runSpacing: 8,
+                                  alignment: WrapAlignment.spaceBetween,
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        'Cash: ₱${cash.toStringAsFixed(2)}',
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        'Change: ₱${change.toStringAsFixed(2)}',
-                                        textAlign: TextAlign.end,
-                                      ),
-                                    ),
+                                    Text('Cash: ₱${cash.toStringAsFixed(2)}'),
+                                    Text('Change: ₱${change.toStringAsFixed(2)}'),
                                   ],
                                 ),
                                 const SizedBox(height: 12),
@@ -926,8 +934,10 @@ class _OwnerTransactionHistoryScreenState
                                   );
                                 }),
                                 const Divider(),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
+                                Wrap(
+                                  alignment: WrapAlignment.end,
+                                  spacing: 10,
+                                  runSpacing: 8,
                                   children: [
                                     OutlinedButton.icon(
                                       onPressed: () =>
@@ -935,8 +945,7 @@ class _OwnerTransactionHistoryScreenState
                                       icon: const Icon(Icons.print_outlined),
                                       label: const Text('Reprint Receipt'),
                                     ),
-                                    if (!isVoided) ...[
-                                      const SizedBox(width: 10),
+                                    if (!isVoided)
                                       ElevatedButton.icon(
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.red,
@@ -947,7 +956,6 @@ class _OwnerTransactionHistoryScreenState
                                         icon: const Icon(Icons.block),
                                         label: const Text('Void Transaction'),
                                       ),
-                                    ],
                                   ],
                                 ),
                                 if (!isVoided)

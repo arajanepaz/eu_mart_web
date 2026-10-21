@@ -774,7 +774,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 760;
+                  final compact = constraints.maxWidth < 900;
 
                   final search = TextField(
                     controller: _searchController,

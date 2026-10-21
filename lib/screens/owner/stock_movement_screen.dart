@@ -111,7 +111,7 @@ class _StockMovementCardState extends State<_StockMovementCard> {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxWidth < 700;
+            final compact = constraints.maxWidth < 900;
 
             final mainInfo = Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -894,7 +894,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
             ),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final compact = constraints.maxWidth < 650;
+                final compact = constraints.maxWidth < 900;
 
                 final title = const Row(
                   children: [

@@ -1031,7 +1031,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   child: LayoutBuilder(
                                     builder: (context, constraints) {
                                       final compact =
-                                          constraints.maxWidth < 700;
+                                          constraints.maxWidth < 900;
 
                                       final heading = Row(
                                         children: [

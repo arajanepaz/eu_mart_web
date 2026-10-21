@@ -509,7 +509,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                   ),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final compact = constraints.maxWidth < 760;
+                      final compact = constraints.maxWidth < 900;
 
                       final title = Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

@@ -429,7 +429,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                     ),
                     child: LayoutBuilder(
                       builder: (context, constraints) {
-                        final compact = constraints.maxWidth < 650;
+                        final compact = constraints.maxWidth < 900;
 
                         final statusInfo = Row(
                           children: [

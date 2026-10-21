@@ -342,7 +342,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final count = constraints.maxWidth >= 900 ? 4 : 2;
+                  final count = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 600 ? 2 : 1;
 
                   return GridView.count(
                     shrinkWrap: true,
@@ -383,7 +383,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 760;
+                  final compact = constraints.maxWidth < 900;
 
                   final searchField = TextField(
                     controller: _searchController,

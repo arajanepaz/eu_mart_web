@@ -31,6 +31,26 @@ class EuMartWebApp extends StatelessWidget {
 
       theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green),
 
+      // Keep text/layout predictable on narrow phone screens while still
+      // respecting normal accessibility scaling.
+      builder: (context, child) {
+        final media = MediaQuery.of(context);
+        final width = media.size.width;
+        final currentScale = media.textScaler.scale(1.0);
+        final cappedScale = width < 430 && currentScale > 1.15
+            ? 1.15
+            : currentScale;
+
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: MediaQuery(
+            data: media.copyWith(textScaler: TextScaler.linear(cappedScale)),
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
+
       // Default page of the EÜ MART system
       initialRoute: '/',
 

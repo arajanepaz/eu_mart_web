@@ -183,7 +183,7 @@ class _PermitCardState extends State<_PermitCard> {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxWidth < 760;
+            final compact = constraints.maxWidth < 900;
 
             final mainInfo = Row(
               crossAxisAlignment: CrossAxisAlignment.start,

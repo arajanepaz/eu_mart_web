@@ -756,7 +756,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                 ),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final compact = constraints.maxWidth < 700;
+                    final compact = constraints.maxWidth < 900;
 
                     final heading = const Row(
                       children: [

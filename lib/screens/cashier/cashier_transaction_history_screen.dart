@@ -207,7 +207,7 @@ class _CashierTransactionCardState extends State<_CashierTransactionCard> {
                 padding: const EdgeInsets.all(18),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final compact = constraints.maxWidth < 760;
+                    final compact = constraints.maxWidth < 900;
 
                     final receipt = Row(
                       children: [
@@ -1062,7 +1062,7 @@ class _CashierTransactionHistoryScreenState
                     const SizedBox(height: 16),
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        final compact = constraints.maxWidth < 760;
+                        final compact = constraints.maxWidth < 900;
 
                         final search = TextField(
                           controller: _searchController,

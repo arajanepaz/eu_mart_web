@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../utils/responsive_device.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -444,7 +445,10 @@ class _LoginScreenState extends State<LoginScreen> {
             opacity: 0.22,
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 38),
+            padding: EdgeInsets.symmetric(
+              horizontal: MediaQuery.sizeOf(context).width < 600 ? 16 : 48,
+              vertical: MediaQuery.sizeOf(context).width < 600 ? 14 : 38,
+            ),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 580),
@@ -465,8 +469,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 190,
-                        height: 190,
+                        width: MediaQuery.sizeOf(context).width < 600 ? 82 : 190,
+                        height: MediaQuery.sizeOf(context).width < 600 ? 82 : 190,
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.12),
@@ -494,18 +498,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         textAlign: TextAlign.center,
                         style: GoogleFonts.baloo2(
                           color: Colors.white,
-                          fontSize: 43,
+                          fontSize: MediaQuery.sizeOf(context).width < 600 ? 28 : 43,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 1.4,
                         ),
                       ),
                       const SizedBox(height: 10),
-                      const Text(
+                      Text(
                         'Point-of-Sale Service Management System',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 21,
+                          fontSize: MediaQuery.sizeOf(context).width < 600 ? 15 : 21,
                           fontWeight: FontWeight.w700,
                           height: 1.3,
                         ),
@@ -521,8 +525,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 1.45,
                         ),
                       ),
-                      const SizedBox(height: 30),
-                      Wrap(
+                      SizedBox(height: MediaQuery.sizeOf(context).width < 600 ? 12 : 30),
+                      if (MediaQuery.sizeOf(context).width >= 600) Wrap(
                         alignment: WrapAlignment.center,
                         spacing: 10,
                         runSpacing: 10,
@@ -563,7 +567,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       child: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
+          padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 14 : 28),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 445),
             child: TweenAnimationBuilder<double>(
@@ -580,7 +584,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
               },
               child: Container(
-                padding: const EdgeInsets.all(34),
+                padding: EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 20 : 34),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(26),
@@ -967,9 +971,12 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: const Color(0xFFF5F7FA),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 900;
+          final mobileDevice = ResponsiveDevice.isMobilePlatform;
+          final desktopTwoPanel = !mobileDevice && constraints.maxWidth >= 900;
 
-          if (isWide) {
+          // Desktop/tablet landscape keeps the original branded blue panel
+          // beside the login form.
+          if (desktopTwoPanel) {
             return Row(
               children: [
                 Expanded(flex: 5, child: _buildBrandPanel()),
@@ -978,15 +985,10 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           }
 
-          return Stack(
-            children: [
-              Positioned.fill(child: _buildBrandPanel()),
-              Positioned.fill(
-                child: Container(color: Colors.black.withValues(alpha: 0.18)),
-              ),
-              _buildLoginForm(),
-            ],
-          );
+          // Phones and mobile in-app browsers use a clean single-column form.
+          // This prevents the brand panel from consuming most of the small
+          // viewport while preserving the full desktop design above.
+          return _buildLoginForm();
         },
       ),
     );

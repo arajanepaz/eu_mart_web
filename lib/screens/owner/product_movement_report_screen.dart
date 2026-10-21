@@ -502,10 +502,21 @@ class _ProductMovementReportScreenState
               (document.data()['category'] ?? '').toString(),
         }.toList()..sort();
 
+        final cutoff = _cutoffDate();
+
+        Query<Map<String, dynamic>> transactionQuery = FirebaseFirestore
+            .instance
+            .collection('transactions');
+
+        if (_selectedPeriod != 'All Time') {
+          transactionQuery = transactionQuery.where(
+            'createdAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff),
+          );
+        }
+
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('transactions')
-              .snapshots(),
+          stream: transactionQuery.snapshots(),
           builder: (context, transactionSnapshot) {
             if (transactionSnapshot.connectionState ==
                     ConnectionState.waiting &&
@@ -513,7 +524,16 @@ class _ProductMovementReportScreenState
               return const Center(child: CircularProgressIndicator());
             }
 
-            final cutoff = _cutoffDate();
+            if (transactionSnapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Unable to load transactions.\n${transactionSnapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              );
+            }
+
             final Map<String, int> soldByProductId = {};
             final Map<String, int> soldByProductName = {};
             final Map<String, double> revenueByProductId = {};
@@ -570,7 +590,7 @@ class _ProductMovementReportScreenState
               }
             }
 
-            final rows = products
+            final allRows = products
                 .map((document) {
                   final data = document.data();
 
@@ -607,6 +627,11 @@ class _ProductMovementReportScreenState
                 })
                 .toList();
 
+            // Keep the summary counts based on all products in the selected
+            // category, but only render products with actual sales movement.
+            // This prevents thousands of "No Sales" cards from being built.
+            final rows = allRows.where((row) => row.quantitySold > 0).toList();
+
             rows.sort((a, b) {
               final quantityComparison = b.quantitySold.compareTo(
                 a.quantitySold,
@@ -619,19 +644,19 @@ class _ProductMovementReportScreenState
               return a.productName.compareTo(b.productName);
             });
 
-            final fastCount = rows
+            final fastCount = allRows
                 .where((row) => row.classification == 'Fast-Moving')
                 .length;
 
-            final regularCount = rows
+            final regularCount = allRows
                 .where((row) => row.classification == 'Regular')
                 .length;
 
-            final slowCount = rows
+            final slowCount = allRows
                 .where((row) => row.classification == 'Slow-Moving')
                 .length;
 
-            final noSalesCount = rows
+            final noSalesCount = allRows
                 .where((row) => row.classification == 'No Sales')
                 .length;
 
@@ -704,7 +729,7 @@ class _ProductMovementReportScreenState
                         const SizedBox(height: 16),
                         LayoutBuilder(
                           builder: (context, constraints) {
-                            final compact = constraints.maxWidth < 720;
+                            final compact = constraints.maxWidth < 900;
 
                             final periodFilter =
                                 DropdownButtonFormField<String>(

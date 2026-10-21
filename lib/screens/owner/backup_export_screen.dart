@@ -1157,7 +1157,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                   ),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final compact = constraints.maxWidth < 720;
+                      final compact = constraints.maxWidth < 900;
 
                       final information = Row(
                         children: [
@@ -1281,7 +1281,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                 const SizedBox(height: 18),
                 LayoutBuilder(
                   builder: (context, constraints) {
-                    final compact = constraints.maxWidth < 760;
+                    final compact = constraints.maxWidth < 900;
 
                     final securityCard = _BackupHoverCard(
                       child: Container(

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../utils/responsive_device.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -93,7 +94,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
-  Widget _buildSidebar({required bool compact}) {
+  Widget _buildSidebar({required bool compact, bool drawerMode = false}) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 280),
       curve: Curves.easeInOutCubic,
@@ -208,6 +209,9 @@ class _CashierDashboardState extends State<CashierDashboard> {
                             setState(() {
                               _selectedIndex = index;
                             });
+                            if (drawerMode && Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop();
+                            }
                           },
                           child: SizedBox(
                             height: 48,
@@ -306,7 +310,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
-  Widget _buildTopBar() {
+  Widget _buildTopBar({bool mobile = false, VoidCallback? onMenuPressed}) {
     final user = FirebaseAuth.instance.currentUser;
     final pageTitle = _menuItems[_selectedIndex].label;
 
@@ -326,6 +330,25 @@ class _CashierDashboardState extends State<CashierDashboard> {
       ),
       child: Row(
         children: [
+          if (mobile) ...[
+            Material(
+              color: const Color(0xFFF0F5FC),
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                onTap: onMenuPressed,
+                borderRadius: BorderRadius.circular(12),
+                child: const SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: Icon(
+                    Icons.menu_rounded,
+                    color: Color(0xFF1565C0),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+          ],
           if (_selectedIndex != 0) ...[
             Material(
               color: const Color(0xFFF0F5FC),
@@ -382,6 +405,13 @@ class _CashierDashboardState extends State<CashierDashboard> {
               ),
             ),
           ),
+          if (mobile)
+            const CircleAvatar(
+              radius: 18,
+              backgroundColor: Color(0xFF1565C0),
+              child: Icon(Icons.person_rounded, color: Colors.white, size: 19),
+            )
+          else
           Container(
             height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1213,15 +1243,71 @@ class _CashierDashboardState extends State<CashierDashboard> {
     );
   }
 
+  Widget _selectedPage() {
+    return KeyedSubtree(
+      key: ValueKey<int>(_selectedIndex),
+      child: switch (_selectedIndex) {
+                              0 => _buildDashboardOverview(),
+                              1 => const NewTransactionScreen(),
+                              2 => const CashierProductsScreen(),
+                              3 => const CashierBarcodeScannerScreen(),
+                              4 => const CashierTransactionHistoryScreen(),
+                              5 => const CashierShiftReportScreen(),
+                              6 => const ServiceIssueLoggingScreen(),
+                              7 => const ChangePasswordScreen(),
+                              _ => _buildPlaceholderPage(),
+                            }
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF2F6FC),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final compactSidebar = constraints.maxWidth < 1050;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isPhone = ResponsiveDevice.useMobileLayout(
+          constraints.maxWidth,
+          breakpoint: 1000,
+        );
 
-          return Row(
+        if (isPhone) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF2F6FC),
+            drawer: Drawer(
+              width: 280,
+              child: _buildSidebar(compact: false, drawerMode: true),
+            ),
+            body: SafeArea(
+              child: Builder(
+                builder: (scaffoldContext) {
+                  return Column(
+                    children: [
+                      _buildTopBar(
+                        mobile: true,
+                        onMenuPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
+                      ),
+                      Expanded(
+                        child: ClipRect(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            child: _selectedPage(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          );
+        }
+
+        final compactSidebar = constraints.maxWidth < 1050;
+
+        return Scaffold(
+          backgroundColor: const Color(0xFFF2F6FC),
+          body: Row(
             children: [
               _buildSidebar(compact: compactSidebar),
               Expanded(
@@ -1234,20 +1320,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                           duration: const Duration(milliseconds: 220),
                           switchInCurve: Curves.easeOut,
                           switchOutCurve: Curves.easeIn,
-                          child: KeyedSubtree(
-                            key: ValueKey<int>(_selectedIndex),
-                            child: switch (_selectedIndex) {
-                              0 => _buildDashboardOverview(),
-                              1 => const NewTransactionScreen(),
-                              2 => const CashierProductsScreen(),
-                              3 => const CashierBarcodeScannerScreen(),
-                              4 => const CashierTransactionHistoryScreen(),
-                              5 => const CashierShiftReportScreen(),
-                              6 => const ServiceIssueLoggingScreen(),
-                              7 => const ChangePasswordScreen(),
-                              _ => _buildPlaceholderPage(),
-                            },
-                          ),
+                          child: _selectedPage(),
                         ),
                       ),
                     ),
@@ -1255,9 +1328,9 @@ class _CashierDashboardState extends State<CashierDashboard> {
                 ),
               ),
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

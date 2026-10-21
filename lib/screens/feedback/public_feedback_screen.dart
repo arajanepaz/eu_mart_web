@@ -85,22 +85,29 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF3F7FC),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
-              child: _submitted ? _buildThankYouCard() : _buildFeedbackCard(),
-            ),
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final mobile = constraints.maxWidth < 900;
+            return Center(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(mobile ? 12 : 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: _submitted
+                      ? _buildThankYouCard()
+                      : _buildFeedbackCard(mobile: mobile),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  Widget _buildFeedbackCard() {
+  Widget _buildFeedbackCard({bool mobile = false}) {
     return Container(
-      padding: const EdgeInsets.all(30),
+      padding: EdgeInsets.all(mobile ? 18 : 30),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -133,7 +140,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
           Text(
             'EÜ MART',
             style: GoogleFonts.baloo2(
-              fontSize: 34,
+              fontSize: mobile ? 29 : 34,
               fontWeight: FontWeight.w800,
               color: const Color(0xFF1565C0),
             ),
@@ -142,7 +149,7 @@ class _PublicFeedbackScreenState extends State<PublicFeedbackScreen> {
           Text(
             'Customer Feedback',
             style: GoogleFonts.baloo2(
-              fontSize: 25,
+              fontSize: mobile ? 21 : 25,
               fontWeight: FontWeight.w700,
               color: const Color(0xFF1F2937),
             ),

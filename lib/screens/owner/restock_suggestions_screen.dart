@@ -792,7 +792,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               ),
                               child: LayoutBuilder(
                                 builder: (context, constraints) {
-                                  final compact = constraints.maxWidth < 700;
+                                  final compact = constraints.maxWidth < 900;
 
                                   final information = Row(
                                     children: [

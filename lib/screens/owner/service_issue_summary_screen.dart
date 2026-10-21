@@ -19,31 +19,6 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
     return null;
   }
 
-  bool _matchesFilter(DateTime? date) {
-    if (date == null) return false;
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final issueDate = DateTime(date.year, date.month, date.day);
-
-    switch (_selectedFilter) {
-      case 'Today':
-        return issueDate == today;
-      case 'This Week':
-        final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
-        final endOfWeek = startOfWeek.add(const Duration(days: 6));
-
-        return !issueDate.isBefore(startOfWeek) &&
-            !issueDate.isAfter(endOfWeek);
-      case 'This Month':
-        return issueDate.year == now.year && issueDate.month == now.month;
-      case 'All Time':
-        return true;
-      default:
-        return true;
-    }
-  }
-
   String _formatDate(DateTime? date) {
     if (date == null) return 'Unavailable';
 
@@ -164,10 +139,41 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    Query<Map<String, dynamic>> issueQuery = FirebaseFirestore.instance
+        .collection('service_issues');
+
+    final now = DateTime.now();
+
+    if (_selectedFilter == 'Today') {
+      final start = DateTime(now.year, now.month, now.day);
+      final end = start.add(const Duration(days: 1));
+
+      issueQuery = issueQuery
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('createdAt', isLessThan: Timestamp.fromDate(end));
+    } else if (_selectedFilter == 'This Week') {
+      final today = DateTime(now.year, now.month, now.day);
+      final start = today.subtract(Duration(days: today.weekday - 1));
+      final end = start.add(const Duration(days: 7));
+
+      issueQuery = issueQuery
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('createdAt', isLessThan: Timestamp.fromDate(end));
+    } else if (_selectedFilter == 'This Month') {
+      final start = DateTime(now.year, now.month, 1);
+      final end = now.month == 12
+          ? DateTime(now.year + 1, 1, 1)
+          : DateTime(now.year, now.month + 1, 1);
+
+      issueQuery = issueQuery
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('createdAt', isLessThan: Timestamp.fromDate(end));
+    }
+
+    issueQuery = issueQuery.orderBy('createdAt', descending: true);
+
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('service_issues')
-          .snapshots(),
+      stream: issueQuery.snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -185,24 +191,10 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
           );
         }
 
-        final issues =
-            List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-              snapshot.data?.docs ??
-                  <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-            ).where((document) {
-              return _matchesFilter(_readDate(document.data()['createdAt']));
-            }).toList();
-
-        issues.sort((a, b) {
-          final first = _readDate(a.data()['createdAt']);
-          final second = _readDate(b.data()['createdAt']);
-
-          if (first == null && second == null) return 0;
-          if (first == null) return 1;
-          if (second == null) return -1;
-
-          return second.compareTo(first);
-        });
+        final issues = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
+          snapshot.data?.docs ??
+              <QueryDocumentSnapshot<Map<String, dynamic>>>[],
+        );
 
         int openCount = 0;
         int resolvedCount = 0;

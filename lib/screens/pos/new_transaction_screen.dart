@@ -2440,106 +2440,115 @@ Do not explain.
   ) {
     return Column(
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                onChanged: (value) => _handleSearchInput(value, allProducts),
-                onSubmitted: (value) async {
-                  final normalized = value.trim();
-                  if (normalized.isEmpty) return;
+        LayoutBuilder(
+          builder: (context, toolbarConstraints) {
+            final isMobile = toolbarConstraints.maxWidth < 900;
 
-                  final exactBarcodeMatches =
-                      _productsByBarcode[normalized.toLowerCase()] ?? const [];
+            final searchField = TextField(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              onChanged: (value) => _handleSearchInput(value, allProducts),
+              onSubmitted: (value) async {
+                final normalized = value.trim();
+                if (normalized.isEmpty) return;
 
-                  if (exactBarcodeMatches.length == 1) {
-                    final product = exactBarcodeMatches.first;
-                    if (mounted) {
-                      setState(() {
-                        _query = normalized.toLowerCase();
-                        _scannedBarcodeProductId = product.id;
-                        _aiMatchedProductIds.clear();
-                        _aiSearchMessage = 'Scanned barcode: $normalized';
-                      });
-                    }
-                    _addProduct(product);
-                    _rememberScannedProduct(product);
-                    _refocusSearchBar(delay: const Duration(milliseconds: 120));
-                    return;
+                final exactBarcodeMatches =
+                    _productsByBarcode[normalized.toLowerCase()] ?? const [];
+
+                if (exactBarcodeMatches.length == 1) {
+                  final product = exactBarcodeMatches.first;
+                  if (mounted) {
+                    setState(() {
+                      _query = normalized.toLowerCase();
+                      _scannedBarcodeProductId = product.id;
+                      _aiMatchedProductIds.clear();
+                      _aiSearchMessage = 'Scanned barcode: $normalized';
+                    });
                   }
+                  _addProduct(product);
+                  _rememberScannedProduct(product);
+                  _refocusSearchBar(
+                    delay: const Duration(milliseconds: 120),
+                  );
+                  return;
+                }
 
-                  if (exactBarcodeMatches.length > 1) {
-                    _message(
-                      'Barcode $normalized is assigned to multiple products. Please fix the duplicate barcode.',
-                      Colors.red,
-                    );
-                    return;
-                  }
+                if (exactBarcodeMatches.length > 1) {
+                  _message(
+                    'Barcode $normalized is assigned to multiple products. Please fix the duplicate barcode.',
+                    Colors.red,
+                  );
+                  return;
+                }
 
-                  await _runAiSearch(allProducts);
-                  _focusSearchBar();
-                },
-                decoration: InputDecoration(
-                  hintText:
-                      'Search product name or description, or scan a barcode',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _query = '';
-                              _scannedBarcodeProductId = null;
-                              _aiMatchedProductIds.clear();
-                              _aiSearchMessage = '';
-                              _aiResponseTimeMs = null;
-                            });
-                          },
-                          icon: const Icon(Icons.clear),
-                        ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 17,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Color(0xFFDDE6F1)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: Color(0xFFDDE6F1)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: Color(0xFF1565C0),
-                      width: 2,
-                    ),
+                await _runAiSearch(allProducts);
+                _focusSearchBar();
+              },
+              decoration: InputDecoration(
+                hintText: isMobile
+                    ? 'Search product or scan barcode'
+                    : 'Search product name or description, or scan a barcode',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isEmpty
+                    ? null
+                    : IconButton(
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {
+                            _query = '';
+                            _scannedBarcodeProductId = null;
+                            _aiMatchedProductIds.clear();
+                            _aiSearchMessage = '';
+                            _aiResponseTimeMs = null;
+                          });
+                        },
+                        icon: const Icon(Icons.clear),
+                      ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 17,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFDDE6F1)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFDDE6F1)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF1565C0),
+                    width: 2,
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
+            );
+
+            final scanButton = SizedBox(
               height: 52,
               child: OutlinedButton.icon(
                 onPressed: () => _openPosBarcodeScanner(allProducts),
                 icon: const Icon(Icons.qr_code_scanner),
-                label: const Text('SCAN BARCODE'),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'SCAN BARCODE',
+                    maxLines: 1,
+                    softWrap: false,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
+            );
+
+            final aiButton = SizedBox(
               height: 52,
               child: ElevatedButton.icon(
-                onPressed: _aiSearching
-                    ? null
-                    : () => _runAiSearch(allProducts),
+                onPressed:
+                    _aiSearching ? null : () => _runAiSearch(allProducts),
                 icon: _aiSearching
                     ? const SizedBox(
                         width: 17,
@@ -2547,10 +2556,43 @@ Do not explain.
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.auto_awesome),
-                label: Text(_aiSearching ? 'SEARCHING...' : 'AI SEARCH'),
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    _aiSearching ? 'SEARCHING...' : 'AI SEARCH',
+                    maxLines: 1,
+                    softWrap: false,
+                  ),
+                ),
               ),
-            ),
-          ],
+            );
+
+            if (isMobile) {
+              return Column(
+                children: [
+                  searchField,
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: scanButton),
+                      const SizedBox(width: 8),
+                      Expanded(child: aiButton),
+                    ],
+                  ),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: searchField),
+                const SizedBox(width: 10),
+                scanButton,
+                const SizedBox(width: 10),
+                aiButton,
+              ],
+            );
+          },
         ),
         if (_aiSearchMessage.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -2695,32 +2737,37 @@ Do not explain.
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-                        ),
-                        borderRadius: BorderRadius.circular(13),
+          LayoutBuilder(
+            builder: (context, headerConstraints) {
+              final compact = headerConstraints.maxWidth < 360;
+
+              final title = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
                       ),
-                      child: const Icon(
-                        Icons.shopping_cart_outlined,
-                        color: Colors.white,
-                        size: 22,
-                      ),
+                      borderRadius: BorderRadius.circular(13),
                     ),
-                    const SizedBox(width: 12),
-                    const Column(
+                    child: const Icon(
+                      Icons.shopping_cart_outlined,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Flexible(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Shopping Cart',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w900,
@@ -2729,6 +2776,8 @@ Do not explain.
                         ),
                         Text(
                           'Review items before payment',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: Color(0xFF7D8796),
                             fontSize: 11,
@@ -2736,77 +2785,102 @@ Do not explain.
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              if (_transactionStartedAt != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
                   ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEAF2FF),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.timer_outlined,
-                        size: 17,
-                        color: Color(0xFF1565C0),
+                ],
+              );
+
+              final timer = _transactionStartedAt == null
+                  ? const SizedBox.shrink()
+                  : Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
                       ),
-                      const SizedBox(width: 5),
-                      Text(
-                        _formattedElapsedTime,
-                        style: const TextStyle(
-                          color: Color(0xFF1565C0),
-                          fontWeight: FontWeight.bold,
-                        ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF2FF),
+                        borderRadius: BorderRadius.circular(16),
                       ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.timer_outlined,
+                            size: 17,
+                            color: Color(0xFF1565C0),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            _formattedElapsedTime,
+                            style: const TextStyle(
+                              color: Color(0xFF1565C0),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+
+              if (compact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    title,
+                    if (_transactionStartedAt != null) ...[
+                      const SizedBox(height: 10),
+                      timer,
                     ],
-                  ),
-                ),
-            ],
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: title),
+                  if (_transactionStartedAt != null) timer,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 16),
           Expanded(
             child: _cart.isEmpty
                 ? Center(
-                    child: TweenAnimationBuilder<double>(
-                      duration: const Duration(milliseconds: 500),
-                      tween: Tween(begin: 0.85, end: 1),
-                      curve: Curves.easeOutBack,
-                      builder: (context, value, child) {
-                        return Transform.scale(scale: value, child: child);
-                      },
-                      child: const Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.shopping_cart_checkout_rounded,
-                            size: 48,
-                            color: Color(0xFFB6C4D5),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Your cart is empty',
-                            style: TextStyle(
-                              color: Color(0xFF657386),
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: TweenAnimationBuilder<double>(
+                        duration: const Duration(milliseconds: 500),
+                        tween: Tween(begin: 0.85, end: 1),
+                        curve: Curves.easeOutBack,
+                        builder: (context, value, child) {
+                          return Transform.scale(scale: value, child: child);
+                        },
+                        child: const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.shopping_cart_checkout_rounded,
+                              size: 48,
+                              color: Color(0xFFB6C4D5),
                             ),
-                          ),
-                          SizedBox(height: 3),
-                          Text(
-                            'Select a product to begin.',
-                            style: TextStyle(
-                              color: Color(0xFF9AA5B3),
-                              fontSize: 12,
+                            SizedBox(height: 8),
+                            Text(
+                              'Your cart is empty',
+                              style: TextStyle(
+                                color: Color(0xFF657386),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
                             ),
-                          ),
-                        ],
+                            SizedBox(height: 3),
+                            Text(
+                              'Select a product to begin.',
+                              style: TextStyle(
+                                color: Color(0xFF9AA5B3),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   )
@@ -3014,26 +3088,56 @@ Do not explain.
             ],
           ),
           const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
+          LayoutBuilder(
+            builder: (context, actionConstraints) {
+              final stackButtons = actionConstraints.maxWidth < 340;
+
+              final holdButton = SizedBox(
+                height: 46,
                 child: OutlinedButton.icon(
                   onPressed: _processing ? null : _holdTransaction,
-                  icon: const Icon(Icons.pause_circle_outline),
-                  label: const Text('HOLD'),
+                  icon: const Icon(Icons.pause_circle_outline, size: 19),
+                  label: const Text(
+                    'HOLD',
+                    maxLines: 1,
+                    softWrap: false,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
+              );
+
+              final resumeButton = SizedBox(
+                height: 46,
                 child: OutlinedButton.icon(
                   onPressed: _processing
                       ? null
                       : () => _showHeldTransactions(products),
-                  icon: const Icon(Icons.restore_outlined),
-                  label: const Text('RESUME'),
+                  icon: const Icon(Icons.restore_outlined, size: 19),
+                  label: const Text(
+                    'RESUME',
+                    maxLines: 1,
+                    softWrap: false,
+                  ),
                 ),
-              ),
-            ],
+              );
+
+              if (stackButtons) {
+                return Column(
+                  children: [
+                    SizedBox(width: double.infinity, child: holdButton),
+                    const SizedBox(height: 8),
+                    SizedBox(width: double.infinity, child: resumeButton),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: holdButton),
+                  const SizedBox(width: 10),
+                  Expanded(child: resumeButton),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 10),
           SizedBox(
@@ -3082,52 +3186,116 @@ Do not explain.
 
     if (_productsError != null) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Unable to load products.\n$_productsError',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: _loadProducts,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Unable to load products.\n$_productsError',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: _loadProducts,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    return Container(
-      color: const Color(0xFFF2F6FC),
-      padding: const EdgeInsets.all(22),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth >= 980) {
-            return Row(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isPhone = constraints.maxWidth < 1000;
+        final isTablet = constraints.maxWidth >= 700 &&
+            constraints.maxWidth < 980;
+
+        final horizontalPadding = isPhone ? 10.0 : 22.0;
+        final verticalPadding = isPhone ? 10.0 : 22.0;
+
+        if (constraints.maxWidth >= 980) {
+          return Container(
+            color: const Color(0xFFF2F6FC),
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: verticalPadding,
+            ),
+            child: Row(
               children: [
                 Expanded(
                   flex: 3,
-                  child: _productPanel(_visibleProducts, _activeProducts),
+                  child: _productPanel(
+                    _visibleProducts,
+                    _activeProducts,
+                  ),
                 ),
                 const SizedBox(width: 22),
-                SizedBox(width: 420, child: _cartPanel(_activeProducts)),
+                SizedBox(
+                  width: 420,
+                  child: _cartPanel(_activeProducts),
+                ),
               ],
-            );
-          }
-
-          return Column(
-            children: [
-              Expanded(child: _productPanel(_visibleProducts, _activeProducts)),
-              const SizedBox(height: 18),
-              SizedBox(height: 500, child: _cartPanel(_activeProducts)),
-            ],
+            ),
           );
-        },
-      ),
+        }
+
+        if (isTablet) {
+          return Container(
+            color: const Color(0xFFF2F6FC),
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: verticalPadding,
+            ),
+            child: Column(
+              children: [
+                Expanded(
+                  child: _productPanel(
+                    _visibleProducts,
+                    _activeProducts,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: 520,
+                  child: _cartPanel(_activeProducts),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Phone layout: the whole POS becomes vertically scrollable instead of
+        // forcing the product panel and cart into a cramped fixed-height column.
+        return Container(
+          color: const Color(0xFFF2F6FC),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: verticalPadding,
+            ),
+            child: Column(
+              children: [
+                SizedBox(
+                  height: 570,
+                  child: _productPanel(
+                    _visibleProducts,
+                    _activeProducts,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                SizedBox(
+                  height: 720,
+                  child: _cartPanel(_activeProducts),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

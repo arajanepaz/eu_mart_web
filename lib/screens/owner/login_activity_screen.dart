@@ -783,7 +783,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                       if (constraints.maxWidth < 1180) {
                         count = 3;
                       }
-                      if (constraints.maxWidth < 760) {
+                      if (constraints.maxWidth < 900) {
                         count = 2;
                       }
                       if (constraints.maxWidth < 520) {

@@ -1290,7 +1290,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 760;
+                  final compact = constraints.maxWidth < 900;
 
                   final title = Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1383,7 +1383,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
             const SizedBox(height: 18),
             LayoutBuilder(
               builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 900 ? 4 : 2;
+                final columns = constraints.maxWidth >= 900
+                    ? 4
+                    : constraints.maxWidth >= 650
+                    ? 2
+                    : 1;
 
                 return GridView.count(
                   shrinkWrap: true,
@@ -1391,7 +1395,11 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                   crossAxisCount: columns,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
-                  childAspectRatio: columns == 4 ? 2.45 : 2.8,
+                  mainAxisExtent: columns == 4
+                      ? 112
+                      : columns == 2
+                      ? 122
+                      : 104,
                   children: [
                     _inventorySummaryCard(
                       label: 'Total Products',

@@ -234,7 +234,7 @@ class SalesComparisonScreen extends StatelessWidget {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final compact = constraints.maxWidth < 700;
+            final compact = constraints.maxWidth < 900;
 
             if (compact) {
               return Column(
@@ -582,7 +582,7 @@ class SalesComparisonScreen extends StatelessWidget {
                         ),
                         child: LayoutBuilder(
                           builder: (context, constraints) {
-                            final compact = constraints.maxWidth < 650;
+                            final compact = constraints.maxWidth < 900;
 
                             final info = Row(
                               children: [
