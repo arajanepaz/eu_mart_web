@@ -266,124 +266,271 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return 'Normal';
   }
 
+  String _notificationPermitType(Map<String, dynamic> data) {
+    if (data['renewed'] == true) return 'Normal';
+
+    final expirationDate = _notificationReadDate(data['expirationDate']);
+    if (expirationDate == null) return 'Normal';
+
+    final reminderDays = (data['reminderDays'] as num?)?.toInt() ?? 30;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final target = DateTime(
+      expirationDate.year,
+      expirationDate.month,
+      expirationDate.day,
+    );
+    final days = target.difference(today).inDays;
+
+    if (days < 0) return 'Permit Expired';
+    if (days <= reminderDays) return 'Permit Due Soon';
+
+    return 'Normal';
+  }
+
   String _notificationReadId({
     required String userId,
-
-    required String productId,
-
+    required String source,
+    required String documentId,
     required String type,
   }) {
     final normalizedType = type.toLowerCase().replaceAll(
       RegExp(r'[^a-z0-9]+'),
-
       '_',
     );
 
-    return '${userId}_${productId}_$normalizedType';
+    return '${userId}_${source}_${documentId}_$normalizedType';
   }
 
-  // Lightweight notification badge:
-  // This performs one-time reads instead of opening a permanent listener to
-  // the entire products collection. It reuses the same product/settings/read
-  // logic used by the Notifications module and therefore avoids a continuous
-  // Firestore listener on the sidebar.
-  Future<int> _loadUnreadNotificationCount() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return 0;
-
-    try {
-      final results = await Future.wait([
-        FirebaseFirestore.instance.collection('settings').doc('system').get(),
-        FirebaseFirestore.instance.collection('products').get(),
-        FirebaseFirestore.instance
-            .collection('notification_reads')
-            .where('userId', isEqualTo: user.uid)
-            .get(),
-      ]);
-
-      final settingsSnapshot =
-          results[0] as DocumentSnapshot<Map<String, dynamic>>;
-      final productSnapshot = results[1] as QuerySnapshot<Map<String, dynamic>>;
-      final readSnapshot = results[2] as QuerySnapshot<Map<String, dynamic>>;
-
-      final settings = settingsSnapshot.data() ?? <String, dynamic>{};
-      final lowStockThreshold =
-          (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
-      final expirationAlertDays =
-          (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
-      final enableLowStockAlerts =
-          settings['enableLowStockAlerts'] as bool? ?? true;
-      final enableExpirationAlerts =
-          settings['enableExpirationAlerts'] as bool? ?? true;
-
-      final readIds = readSnapshot.docs.map((doc) => doc.id).toSet();
-      var unreadCount = 0;
-
-      for (final document in productSnapshot.docs) {
-        final type = _notificationType(
-          document.data(),
-          lowStockThreshold: lowStockThreshold,
-          expirationAlertDays: expirationAlertDays,
-          enableLowStockAlerts: enableLowStockAlerts,
-          enableExpirationAlerts: enableExpirationAlerts,
-        );
-
-        if (type == 'Normal') continue;
-
-        final readId = _notificationReadId(
-          userId: user.uid,
-          productId: document.id,
-          type: type,
-        );
-
-        if (!readIds.contains(readId)) unreadCount++;
-      }
-
-      return unreadCount;
-    } catch (error) {
-      debugPrint('Unable to load notification badge: $error');
-      return 0;
-    }
-  }
-
+  // Optimized realtime notification badge:
+  // Listen only to records that can become alerts instead of the full product
+  // catalog. notification_reads stays realtime so the count clears instantly.
   Widget _buildNotificationBadge({
     required bool compact,
     required Widget child,
   }) {
-    return FutureBuilder<int>(
-      future: _loadUnreadNotificationCount(),
-      builder: (context, snapshot) {
-        final unreadCount = snapshot.data ?? 0;
-        if (unreadCount <= 0) return child;
+    final user = FirebaseAuth.instance.currentUser;
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            child,
-            Positioned(
-              top: 5,
-              right: compact ? 5 : 9,
-              child: Container(
-                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.redAccent,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white, width: 1.5),
+    if (user == null) return child;
+
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('settings')
+          .doc('system')
+          .snapshots(),
+      builder: (context, settingsSnapshot) {
+        final settings = settingsSnapshot.data?.data() ?? <String, dynamic>{};
+
+        final lowStockThreshold =
+            (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
+        final expirationAlertDays =
+            (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
+        final enableLowStockAlerts =
+            settings['enableLowStockAlerts'] as bool? ?? true;
+        final enableExpirationAlerts =
+            settings['enableExpirationAlerts'] as bool? ?? true;
+
+        final now = DateTime.now();
+        final expirationCutoff = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).add(Duration(days: expirationAlertDays + 1));
+
+        final lowStockStream = enableLowStockAlerts
+            ? FirebaseFirestore.instance
+                  .collection('products')
+                  .where('stock', isLessThanOrEqualTo: lowStockThreshold)
+                  .snapshots()
+            : const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: lowStockStream,
+          builder: (context, lowStockSnapshot) {
+            final productAlerts = <String>{};
+
+            for (final document
+                in lowStockSnapshot.data?.docs ??
+                    <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+              final type = _notificationType(
+                document.data(),
+                lowStockThreshold: lowStockThreshold,
+                expirationAlertDays: expirationAlertDays,
+                enableLowStockAlerts: enableLowStockAlerts,
+                enableExpirationAlerts: false,
+              );
+
+              if (type == 'Normal') continue;
+
+              productAlerts.add(
+                _notificationReadId(
+                  userId: user.uid,
+                  source: 'product',
+                  documentId: document.id,
+                  type: type,
                 ),
-                child: Text(
-                  unreadCount > 99 ? '99+' : '$unreadCount',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    height: 1,
-                  ),
-                ),
-              ),
-            ),
-          ],
+              );
+            }
+
+            final expirationStream = enableExpirationAlerts
+                ? FirebaseFirestore.instance
+                      .collection('products')
+                      .where(
+                        'expirationDate',
+                        isLessThan: Timestamp.fromDate(expirationCutoff),
+                      )
+                      .snapshots()
+                : const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
+
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: expirationStream,
+              builder: (context, expirationSnapshot) {
+                for (final document
+                    in expirationSnapshot.data?.docs ??
+                        <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+                  final type = _notificationType(
+                    document.data(),
+                    lowStockThreshold: lowStockThreshold,
+                    expirationAlertDays: expirationAlertDays,
+                    enableLowStockAlerts: false,
+                    enableExpirationAlerts: enableExpirationAlerts,
+                  );
+
+                  if (type == 'Normal') continue;
+
+                  productAlerts.add(
+                    _notificationReadId(
+                      userId: user.uid,
+                      source: 'product',
+                      documentId: document.id,
+                      type: type,
+                    ),
+                  );
+                }
+
+                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: FirebaseFirestore.instance
+                      .collection('permit_reminders')
+                      .snapshots(),
+                  builder: (context, permitSnapshot) {
+                    final permitAlerts = <String>{};
+
+                    for (final document
+                        in permitSnapshot.data?.docs ??
+                            <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+                      final type = _notificationPermitType(document.data());
+
+                      if (type == 'Normal') continue;
+
+                      permitAlerts.add(
+                        _notificationReadId(
+                          userId: user.uid,
+                          source: 'permit',
+                          documentId: document.id,
+                          type: type,
+                        ),
+                      );
+                    }
+
+                    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('price_update_reminders')
+                          .snapshots(),
+                      builder: (context, priceSnapshot) {
+                        final priceAlerts = <String>{
+                          for (final document
+                              in priceSnapshot.data?.docs ??
+                                  <
+                                    QueryDocumentSnapshot<Map<String, dynamic>>
+                                  >[])
+                            _notificationReadId(
+                              userId: user.uid,
+                              source: 'price_update_reminder',
+                              documentId: document.id,
+                              type: 'Price Update',
+                            ),
+                        };
+
+                        final alertIds = <String>{
+                          ...productAlerts,
+                          ...permitAlerts,
+                          ...priceAlerts,
+                        };
+
+                        return StreamBuilder<
+                          QuerySnapshot<Map<String, dynamic>>
+                        >(
+                          stream: FirebaseFirestore.instance
+                              .collection('notification_reads')
+                              .where('userId', isEqualTo: user.uid)
+                              .snapshots(),
+                          builder: (context, readsSnapshot) {
+                            final readIds = <String>{};
+
+                            for (final document
+                                in readsSnapshot.data?.docs ??
+                                    <
+                                      QueryDocumentSnapshot<
+                                        Map<String, dynamic>
+                                      >
+                                    >[]) {
+                              if (document.data()['isRead'] == true) {
+                                readIds.add(document.id);
+                              }
+                            }
+
+                            final unreadCount = alertIds
+                                .where((id) => !readIds.contains(id))
+                                .length;
+
+                            if (unreadCount <= 0) return child;
+
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                child,
+                                Positioned(
+                                  top: 5,
+                                  right: compact ? 5 : 9,
+                                  child: Container(
+                                    constraints: const BoxConstraints(
+                                      minWidth: 20,
+                                      minHeight: 20,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                    ),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: Colors.redAccent,
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      unreadCount > 99 ? '99+' : '$unreadCount',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            );
+          },
         );
       },
     );
@@ -726,10 +873,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 child: const SizedBox(
                   width: 42,
                   height: 42,
-                  child: Icon(
-                    Icons.menu_rounded,
-                    color: Color(0xFF1565C0),
-                  ),
+                  child: Icon(Icons.menu_rounded, color: Color(0xFF1565C0)),
                 ),
               ),
             ),
@@ -822,69 +966,69 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               child: Icon(Icons.person_rounded, color: Colors.white, size: 19),
             )
           else
-          Container(
-            height: 48,
+            Container(
+              height: 48,
 
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
 
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF3FF),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF3FF),
 
-              borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(14),
 
-              border: Border.all(color: const Color(0xFFD2E4FA)),
-            ),
+                border: Border.all(color: const Color(0xFFD2E4FA)),
+              ),
 
-            child: Row(
-              children: [
-                const CircleAvatar(
-                  radius: 17,
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 17,
 
-                  backgroundColor: Color(0xFF1565C0),
+                    backgroundColor: Color(0xFF1565C0),
 
-                  child: Icon(
-                    Icons.person_rounded,
+                    child: Icon(
+                      Icons.person_rounded,
 
-                    color: Colors.white,
+                      color: Colors.white,
 
-                    size: 19,
+                      size: 19,
+                    ),
                   ),
-                ),
 
-                const SizedBox(width: 9),
+                  const SizedBox(width: 9),
 
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
 
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
 
-                  children: [
-                    const Text(
-                      'Owner',
+                    children: [
+                      const Text(
+                        'Owner',
 
-                      style: TextStyle(
-                        color: Color(0xFF17345A),
+                        style: TextStyle(
+                          color: Color(0xFF17345A),
 
-                        fontSize: 12.5,
+                          fontSize: 12.5,
 
-                        fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
 
-                    Text(
-                      user?.email ?? '',
+                      Text(
+                        user?.email ?? '',
 
-                      style: const TextStyle(
-                        color: Color(0xFF6D798B),
+                        style: const TextStyle(
+                          color: Color(0xFF6D798B),
 
-                        fontSize: 9.5,
+                          fontSize: 9.5,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -2137,90 +2281,88 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return KeyedSubtree(
       key: ValueKey<int>(_selectedIndex),
       child: switch (_selectedIndex) {
-                              0 => _buildDashboardOverview(),
+        0 => _buildDashboardOverview(),
 
-                              1 => const NewTransactionScreen(),
+        1 => const NewTransactionScreen(),
 
-                              2 => const ProductsInventoryScreen(),
+        2 => const ProductsInventoryScreen(),
 
-                              3 => const RestockSuggestionsScreen(),
+        3 => const RestockSuggestionsScreen(),
 
-                              4 => const StockMovementScreen(),
+        4 => const StockMovementScreen(),
 
-                              5 => const SupplierManagementScreen(),
+        5 => const SupplierManagementScreen(),
 
-                              6 => const BarcodeGeneratorScreen(),
+        6 => const BarcodeGeneratorScreen(),
 
-                              7 => const OwnerTransactionHistoryScreen(),
+        7 => const OwnerTransactionHistoryScreen(),
 
-                              8 => const SalesReportsScreen(),
+        8 => const SalesReportsScreen(),
 
-                              9 => const PromotionsManagementScreen(),
+        9 => const PromotionsManagementScreen(),
 
-                              10 => NotificationsScreen(
-                                onOpenProducts: () {
-                                  setState(() {
-                                    _selectedIndex = 2;
-                                  });
-                                },
+        10 => NotificationsScreen(
+          onOpenProducts: () {
+            setState(() {
+              _selectedIndex = 2;
+            });
+          },
 
-                                onOpenRestockSuggestions: () {
-                                  setState(() {
-                                    _selectedIndex = 3;
-                                  });
-                                },
+          onOpenRestockSuggestions: () {
+            setState(() {
+              _selectedIndex = 3;
+            });
+          },
 
-                                onOpenStockMovements: () {
-                                  setState(() {
-                                    _selectedIndex = 4;
-                                  });
-                                },
+          onOpenStockMovements: () {
+            setState(() {
+              _selectedIndex = 4;
+            });
+          },
 
-                                onOpenPermitReminders: () {
-                                  setState(() {
-                                    _selectedIndex = 21;
-                                  });
-                                },
-                              ),
+          onOpenPermitReminders: () {
+            setState(() {
+              _selectedIndex = 21;
+            });
+          },
+        ),
 
-                              11 => const ManageCashiersScreen(),
+        11 => const ManageCashiersScreen(),
 
-                              12 => const AuditTrailScreen(),
+        12 => const AuditTrailScreen(),
 
-                              13 => const CustomerFeedbackScreen(),
+        13 => const CustomerFeedbackScreen(),
 
-                              14 => const BackupExportScreen(),
+        14 => const BackupExportScreen(),
 
-                              15 => const PromoSalesReportScreen(),
+        15 => const PromoSalesReportScreen(),
 
-                              16 => const CashierPerformanceReportScreen(),
+        16 => const CashierPerformanceReportScreen(),
 
-                              17 => const EstimatedProfitReportScreen(),
+        17 => const EstimatedProfitReportScreen(),
 
-                              18 => const ProductMovementReportScreen(),
+        18 => const ProductMovementReportScreen(),
 
-                              19 => const ServiceIssueLoggingScreen(
-                                ownerView: true,
-                              ),
+        19 => const ServiceIssueLoggingScreen(ownerView: true),
 
-                              20 => const ServiceMonitoringReportScreen(),
+        20 => const ServiceMonitoringReportScreen(),
 
-                              21 => const PermitRenewalReminderScreen(),
+        21 => const PermitRenewalReminderScreen(),
 
-                              22 => const SalesComparisonScreen(),
+        22 => const SalesComparisonScreen(),
 
-                              23 => const ServiceIssueSummaryScreen(),
+        23 => const ServiceIssueSummaryScreen(),
 
-                              24 => const DailyOperationsSummaryScreen(),
+        24 => const DailyOperationsSummaryScreen(),
 
-                              25 => const ChangePasswordScreen(),
+        25 => const ChangePasswordScreen(),
 
-                              26 => const LoginActivityScreen(),
+        26 => const LoginActivityScreen(),
 
-                              27 => const SettingsScreen(),
+        27 => const SettingsScreen(),
 
-                              _ => _buildPlaceholderPage(),
-                            }
+        _ => _buildPlaceholderPage(),
+      },
     );
   }
 
@@ -2247,7 +2389,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                     children: [
                       _buildTopBar(
                         mobile: true,
-                        onMenuPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
+                        onMenuPressed: () =>
+                            Scaffold.of(scaffoldContext).openDrawer(),
                       ),
                       Expanded(
                         child: ClipRect(

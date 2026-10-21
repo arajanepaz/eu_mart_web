@@ -23,10 +23,101 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   String _selectedFilter = 'All';
 
+  final Set<String> _locallyReadIds = <String>{};
+  bool _markingAllAsRead = false;
+
+  late final Future<
+    ({
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> permits,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> priceUpdates,
+    })
+  >
+  _alertDataFuture = _loadAlertData();
+
   int _lowStockThreshold = 10;
   int _expirationAlertDays = 30;
   bool _enableLowStockAlerts = true;
   bool _enableExpirationAlerts = true;
+
+  Future<
+    ({
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> permits,
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> priceUpdates,
+    })
+  >
+  _loadAlertData() async {
+    final firestore = FirebaseFirestore.instance;
+
+    final settingsSnapshot = await firestore
+        .collection('settings')
+        .doc('system')
+        .get();
+
+    final settings = settingsSnapshot.data() ?? <String, dynamic>{};
+
+    _lowStockThreshold = (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
+    _expirationAlertDays =
+        (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
+    _enableLowStockAlerts = settings['enableLowStockAlerts'] != false;
+    _enableExpirationAlerts = settings['enableExpirationAlerts'] != false;
+
+    final now = DateTime.now();
+    final expirationCutoff = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(Duration(days: _expirationAlertDays + 1));
+
+    final productQueries = <Future<QuerySnapshot<Map<String, dynamic>>>>[];
+
+    if (_enableLowStockAlerts) {
+      productQueries.add(
+        firestore
+            .collection('products')
+            .where('stock', isLessThanOrEqualTo: _lowStockThreshold)
+            .get(),
+      );
+    }
+
+    if (_enableExpirationAlerts) {
+      productQueries.add(
+        firestore
+            .collection('products')
+            .where(
+              'expirationDate',
+              isLessThan: Timestamp.fromDate(expirationCutoff),
+            )
+            .get(),
+      );
+    }
+
+    final results = await Future.wait<Object>([
+      Future.wait<QuerySnapshot<Map<String, dynamic>>>(productQueries),
+      firestore.collection('permit_reminders').get(),
+      firestore.collection('price_update_reminders').get(),
+    ]);
+
+    final productSnapshots =
+        results[0] as List<QuerySnapshot<Map<String, dynamic>>>;
+    final permitSnapshot = results[1] as QuerySnapshot<Map<String, dynamic>>;
+    final priceSnapshot = results[2] as QuerySnapshot<Map<String, dynamic>>;
+
+    final productMap = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+
+    for (final querySnapshot in productSnapshots) {
+      for (final document in querySnapshot.docs) {
+        productMap[document.id] = document;
+      }
+    }
+
+    return (
+      products: productMap.values.toList(),
+      permits: permitSnapshot.docs,
+      priceUpdates: priceSnapshot.docs,
+    );
+  }
 
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
@@ -196,53 +287,110 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     if (user == null) return;
 
-    await FirebaseFirestore.instance
-        .collection('notification_reads')
-        .doc(_readDocumentId(alert))
-        .set({
-          'userId': user.uid,
-          'source': alert.source,
-          'sourceId': alert.documentId,
-          'notificationType': alert.type,
-          'isRead': true,
-          'readAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+    final readId = _readDocumentId(alert);
+
+    if (mounted) {
+      setState(() {
+        _locallyReadIds.add(readId);
+      });
+    }
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('notification_reads')
+          .doc(readId)
+          .set({
+            'userId': user.uid,
+            'source': alert.source,
+            'sourceId': alert.documentId,
+            'notificationType': alert.type,
+            'isRead': true,
+            'readAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _locallyReadIds.remove(readId);
+        });
+      }
+      rethrow;
+    }
   }
 
   Future<void> _markAllAsRead(List<_UnifiedAlert> alerts) async {
     final user = FirebaseAuth.instance.currentUser;
 
-    if (user == null || alerts.isEmpty) {
+    if (user == null || alerts.isEmpty || _markingAllAsRead) {
       return;
     }
 
-    final batch = FirebaseFirestore.instance.batch();
+    final alertIds = alerts.map(_readDocumentId).toSet();
 
-    for (final alert in alerts) {
-      final reference = FirebaseFirestore.instance
-          .collection('notification_reads')
-          .doc(_readDocumentId(alert));
-
-      batch.set(reference, {
-        'userId': user.uid,
-        'source': alert.source,
-        'sourceId': alert.documentId,
-        'notificationType': alert.type,
-        'isRead': true,
-        'readAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+    if (mounted) {
+      setState(() {
+        _markingAllAsRead = true;
+        _locallyReadIds.addAll(alertIds);
+      });
     }
 
-    await batch.commit();
+    try {
+      const chunkSize = 400;
 
-    if (!mounted) return;
+      for (var start = 0; start < alerts.length; start += chunkSize) {
+        final end = (start + chunkSize) < alerts.length
+            ? start + chunkSize
+            : alerts.length;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('All current alerts marked as read.'),
-        backgroundColor: Colors.green,
-      ),
-    );
+        final batch = FirebaseFirestore.instance.batch();
+
+        for (final alert in alerts.sublist(start, end)) {
+          final reference = FirebaseFirestore.instance
+              .collection('notification_reads')
+              .doc(_readDocumentId(alert));
+
+          batch.set(reference, {
+            'userId': user.uid,
+            'source': alert.source,
+            'sourceId': alert.documentId,
+            'notificationType': alert.type,
+            'isRead': true,
+            'readAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
+
+        await batch.commit();
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All current alerts marked as read.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _locallyReadIds.removeAll(alertIds);
+        });
+      }
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to mark all alerts as read. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _markingAllAsRead = false;
+        });
+      }
+    }
   }
 
   Future<void> _openAlert(_UnifiedAlert alert) async {
@@ -851,563 +999,434 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('settings')
-          .doc('system')
-          .snapshots(),
-      builder: (context, settingsSnapshot) {
-        final settings = settingsSnapshot.data?.data() ?? <String, dynamic>{};
+    return FutureBuilder<
+      ({
+        List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
+        List<QueryDocumentSnapshot<Map<String, dynamic>>> permits,
+        List<QueryDocumentSnapshot<Map<String, dynamic>>> priceUpdates,
+      })
+    >(
+      future: _alertDataFuture,
+      builder: (context, alertDataSnapshot) {
+        if (alertDataSnapshot.connectionState == ConnectionState.waiting &&
+            !alertDataSnapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-        _lowStockThreshold =
-            (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
+        if (alertDataSnapshot.hasError) {
+          return Center(
+            child: Text(
+              'Unable to load notifications.\n${alertDataSnapshot.error}',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.red),
+            ),
+          );
+        }
 
-        _expirationAlertDays =
-            (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
+        final data = alertDataSnapshot.data;
+        if (data == null) {
+          return const Center(child: Text('No notification data available.'));
+        }
 
-        _enableLowStockAlerts = settings['enableLowStockAlerts'] != false;
+        final allAlerts = _buildAlerts(
+          products: data.products,
+          permits: data.permits,
+          priceUpdates: data.priceUpdates,
+        );
 
-        _enableExpirationAlerts = settings['enableExpirationAlerts'] != false;
+        final filteredAlerts = allAlerts
+            .where((alert) => _matchesFilter(alert.type))
+            .toList();
+
+        final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('products').snapshots(),
-          builder: (context, productSnapshot) {
-            if (productSnapshot.connectionState == ConnectionState.waiting &&
-                !productSnapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+          stream: userId.isEmpty
+              ? null
+              : FirebaseFirestore.instance
+                    .collection('notification_reads')
+                    .where('userId', isEqualTo: userId)
+                    .snapshots(),
+          builder: (context, readSnapshot) {
+            final readIds = <String>{..._locallyReadIds};
+
+            for (final document
+                in readSnapshot.data?.docs ??
+                    <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+              if (document.data()['isRead'] == true) {
+                readIds.add(document.id);
+              }
             }
 
-            if (productSnapshot.hasError) {
-              return Center(
-                child: Text(
-                  'Unable to load product alerts.\n'
-                  '${productSnapshot.error}',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red),
-                ),
-              );
-            }
+            final unreadCount = allAlerts
+                .where((alert) => !readIds.contains(_readDocumentId(alert)))
+                .length;
 
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('permit_reminders')
-                  .snapshots(),
-              builder: (context, permitSnapshot) {
-                if (permitSnapshot.connectionState == ConnectionState.waiting &&
-                    !permitSnapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            final productAlertCount = allAlerts
+                .where((alert) => alert.source == 'product')
+                .length;
+            final permitAlertCount = allAlerts
+                .where((alert) => alert.source == 'permit')
+                .length;
+            final priceUpdateCount = allAlerts
+                .where((alert) => alert.type == 'Price Update')
+                .length;
 
-                if (permitSnapshot.hasError) {
-                  return Center(
-                    child: Text(
-                      'Unable to load permit alerts.\n'
-                      '${permitSnapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red),
-                    ),
-                  );
-                }
-
-                return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: FirebaseFirestore.instance
-                      .collection('price_update_reminders')
-                      .snapshots(),
-                  builder: (context, priceUpdateSnapshot) {
-                    if (priceUpdateSnapshot.connectionState ==
-                            ConnectionState.waiting &&
-                        !priceUpdateSnapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-
-                    if (priceUpdateSnapshot.hasError) {
-                      return Center(
-                        child: Text(
-                          'Unable to load price update reminders.\n'
-                          '${priceUpdateSnapshot.error}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.red),
+            return Container(
+              color: const Color(0xFFF2F6FC),
+              child: CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 22,
+                          vertical: 18,
                         ),
-                      );
-                    }
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                          ),
+                          borderRadius: BorderRadius.circular(22),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x291565C0),
+                              blurRadius: 20,
+                              offset: Offset(0, 9),
+                            ),
+                          ],
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final compact = constraints.maxWidth < 900;
 
-                    final products =
-                        List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-                          productSnapshot.data?.docs ??
-                              <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-                        );
-
-                    final permits =
-                        List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-                          permitSnapshot.data?.docs ??
-                              <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-                        );
-
-                    final priceUpdates =
-                        List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-                          priceUpdateSnapshot.data?.docs ??
-                              <QueryDocumentSnapshot<Map<String, dynamic>>>[],
-                        );
-
-                    final allAlerts = _buildAlerts(
-                      products: products,
-                      permits: permits,
-                      priceUpdates: priceUpdates,
-                    );
-
-                    final filteredAlerts = allAlerts
-                        .where((alert) => _matchesFilter(alert.type))
-                        .toList();
-
-                    final userId = FirebaseAuth.instance.currentUser?.uid ?? '';
-
-                    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: userId.isEmpty
-                          ? null
-                          : FirebaseFirestore.instance
-                                .collection('notification_reads')
-                                .where('userId', isEqualTo: userId)
-                                .snapshots(),
-                      builder: (context, readSnapshot) {
-                        final readIds = <String>{};
-
-                        for (final document
-                            in readSnapshot.data?.docs ??
-                                <
-                                  QueryDocumentSnapshot<Map<String, dynamic>>
-                                >[]) {
-                          if (document.data()['isRead'] == true) {
-                            readIds.add(document.id);
-                          }
-                        }
-
-                        final unreadCount = allAlerts
-                            .where(
-                              (alert) =>
-                                  !readIds.contains(_readDocumentId(alert)),
-                            )
-                            .length;
-
-                        // ====================================================
-                        // FIX:
-                        // The entire notification dashboard is scrollable.
-                        // This prevents RenderFlex bottom overflow.
-                        // ====================================================
-
-                        return Container(
-                          color: const Color(0xFFF2F6FC),
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(22),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            final heading = Row(
                               children: [
-                                // ==================================================
-                                // HEADER
-                                // ==================================================
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 22,
-                                    vertical: 18,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Color(0xFF0D47A1),
-                                        Color(0xFF1976D2),
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(22),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x291565C0),
-                                        blurRadius: 20,
-                                        offset: Offset(0, 9),
+                                const Icon(
+                                  Icons.notifications_active_outlined,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Notification Dashboard',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 23,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '$unreadCount unread alert(s) requiring attention.',
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12.5,
+                                        ),
                                       ),
                                     ],
                                   ),
-                                  child: LayoutBuilder(
-                                    builder: (context, constraints) {
-                                      final compact =
-                                          constraints.maxWidth < 900;
-
-                                      final heading = Row(
-                                        children: [
-                                          const Icon(
-                                            Icons.notifications_active_outlined,
-                                            color: Colors.white,
-                                            size: 28,
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                const Text(
-                                                  'Notification Dashboard',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 23,
-                                                    fontWeight: FontWeight.w900,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  '$unreadCount unread alert(s) requiring attention.',
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 12.5,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      );
-
-                                      final action = ElevatedButton.icon(
-                                        onPressed: allAlerts.isEmpty
-                                            ? null
-                                            : () => _markAllAsRead(allAlerts),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.white,
-                                          foregroundColor: const Color(
-                                            0xFF1565C0,
-                                          ),
-                                          disabledBackgroundColor:
-                                              Colors.white54,
-                                          elevation: 0,
-                                          minimumSize: const Size(175, 46),
-                                        ),
-                                        icon: const Icon(Icons.done_all),
-                                        label: const Text(
-                                          'MARK ALL AS READ',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      );
-
-                                      if (compact) {
-                                        return Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            heading,
-                                            const SizedBox(height: 16),
-                                            action,
-                                          ],
-                                        );
-                                      }
-
-                                      return Row(
-                                        children: [
-                                          Expanded(child: heading),
-                                          const SizedBox(width: 16),
-                                          action,
-                                        ],
-                                      );
-                                    },
-                                  ),
                                 ),
-
-                                const SizedBox(height: 18),
-
-                                // ==================================================
-                                // SUMMARY CARDS
-                                // ==================================================
-                                LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    int count = 5;
-
-                                    if (constraints.maxWidth < 1150) {
-                                      count = 2;
-                                    }
-
-                                    if (constraints.maxWidth < 620) {
-                                      count = 1;
-                                    }
-
-                                    return GridView.count(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      crossAxisCount: count,
-                                      crossAxisSpacing: 14,
-                                      mainAxisSpacing: 14,
-                                      childAspectRatio: count == 5
-                                          ? 2.05
-                                          : count == 2
-                                          ? 3.2
-                                          : 4.0,
-                                      children: [
-                                        _summaryCard(
-                                          title: 'Product Alerts',
-                                          value: allAlerts
-                                              .where(
-                                                (alert) =>
-                                                    alert.source == 'product',
-                                              )
-                                              .length,
-                                          icon: Icons.inventory_2_outlined,
-                                          color: Colors.orange,
-                                        ),
-                                        _summaryCard(
-                                          title: 'Permit Alerts',
-                                          value: allAlerts
-                                              .where(
-                                                (alert) =>
-                                                    alert.source == 'permit',
-                                              )
-                                              .length,
-                                          icon: Icons.description_outlined,
-                                          color: Colors.red,
-                                        ),
-                                        _summaryCard(
-                                          title: 'Price Updates',
-                                          value: allAlerts
-                                              .where(
-                                                (alert) =>
-                                                    alert.type ==
-                                                    'Price Update',
-                                              )
-                                              .length,
-                                          icon: Icons.price_change_outlined,
-                                          color: const Color(0xFF7B1FA2),
-                                        ),
-                                        _summaryCard(
-                                          title: 'Unread',
-                                          value: unreadCount,
-                                          icon:
-                                              Icons.mark_email_unread_outlined,
-                                          color: const Color(0xFF1565C0),
-                                        ),
-                                        _summaryCard(
-                                          title: 'Total Alerts',
-                                          value: allAlerts.length,
-                                          icon: Icons
-                                              .notifications_active_outlined,
-                                          color: Colors.purple,
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                ),
-
-                                const SizedBox(height: 18),
-
-                                // ==================================================
-                                // FILTERS
-                                // ==================================================
-                                SingleChildScrollView(
-                                  scrollDirection: Axis.horizontal,
-                                  child: Row(
-                                    children: [
-                                      _filterChip('All'),
-                                      const SizedBox(width: 8),
-                                      _filterChip('Price Update'),
-                                      const SizedBox(width: 8),
-                                      _filterChip('Out of Stock'),
-                                      const SizedBox(width: 8),
-                                      _filterChip('Low Stock'),
-                                      const SizedBox(width: 8),
-                                      _filterChip('Expired'),
-                                      const SizedBox(width: 8),
-                                      _filterChip('Expiring Soon'),
-                                      const SizedBox(width: 8),
-                                      _filterChip('Permit Expired'),
-                                      const SizedBox(width: 8),
-                                      _filterChip('Permit Due Soon'),
-                                    ],
-                                  ),
-                                ),
-
-                                const SizedBox(height: 18),
-
-                                // ==================================================
-                                // ALERT LIST
-                                // ==================================================
-                                if (filteredAlerts.isEmpty)
-                                  const SizedBox(
-                                    height: 300,
-                                    child: _NotificationEmptyState(),
-                                  )
-                                else
-                                  ListView.separated(
-                                    shrinkWrap: true,
-                                    physics:
-                                        const NeverScrollableScrollPhysics(),
-                                    itemCount: filteredAlerts.length,
-                                    separatorBuilder: (_, _) =>
-                                        const SizedBox(height: 10),
-                                    itemBuilder: (context, index) {
-                                      final alert = filteredAlerts[index];
-
-                                      final isRead = readIds.contains(
-                                        _readDocumentId(alert),
-                                      );
-
-                                      final color = _typeColor(alert.type);
-
-                                      final isPriceUpdate =
-                                          alert.type == 'Price Update';
-
-                                      return _NotificationAlertCard(
-                                        color: color,
-                                        unread: !isRead,
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 5,
-                                          ),
-                                          child: ListTile(
-                                            onTap: () => _openAlert(alert),
-                                            leading: CircleAvatar(
-                                              backgroundColor: color.withValues(
-                                                alpha: 0.12,
-                                              ),
-                                              child: Icon(
-                                                _typeIcon(alert.type),
-                                                color: color,
-                                              ),
-                                            ),
-                                            title: Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    alert.title,
-                                                    style: TextStyle(
-                                                      fontWeight: isRead
-                                                          ? FontWeight.w600
-                                                          : FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 5,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    color: color.withValues(
-                                                      alpha: 0.12,
-                                                    ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          16,
-                                                        ),
-                                                  ),
-                                                  child: Text(
-                                                    alert.type,
-                                                    style: TextStyle(
-                                                      color: color,
-                                                      fontSize: 12,
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            subtitle: Padding(
-                                              padding: const EdgeInsets.only(
-                                                top: 4,
-                                              ),
-                                              child: Text(
-                                                '${alert.subtitle}\n'
-                                                '${alert.description}',
-                                              ),
-                                            ),
-                                            isThreeLine: true,
-                                            trailing: isPriceUpdate
-                                                ? Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      OutlinedButton.icon(
-                                                        onPressed: () =>
-                                                            _showPriceComparison(
-                                                              alert,
-                                                            ),
-                                                        style: OutlinedButton.styleFrom(
-                                                          foregroundColor:
-                                                              const Color(
-                                                                0xFF7B1FA2,
-                                                              ),
-                                                          side:
-                                                              const BorderSide(
-                                                                color: Color(
-                                                                  0xFF7B1FA2,
-                                                                ),
-                                                              ),
-                                                          shape: RoundedRectangleBorder(
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  10,
-                                                                ),
-                                                          ),
-                                                        ),
-                                                        icon: const Icon(
-                                                          Icons
-                                                              .compare_arrows_rounded,
-                                                          size: 17,
-                                                        ),
-                                                        label: const Text(
-                                                          'COMPARE',
-                                                          style: TextStyle(
-                                                            fontWeight:
-                                                                FontWeight.w800,
-                                                            fontSize: 11,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(width: 8),
-                                                      isRead
-                                                          ? const Icon(
-                                                              Icons.done_all,
-                                                              color:
-                                                                  Colors.green,
-                                                            )
-                                                          : const Icon(
-                                                              Icons.circle,
-                                                              size: 11,
-                                                              color: Color(
-                                                                0xFF1565C0,
-                                                              ),
-                                                            ),
-                                                    ],
-                                                  )
-                                                : isRead
-                                                ? const Icon(
-                                                    Icons.done_all,
-                                                    color: Colors.green,
-                                                  )
-                                                : const Icon(
-                                                    Icons.circle,
-                                                    size: 11,
-                                                    color: Color(0xFF1565C0),
-                                                  ),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-
-                                const SizedBox(height: 22),
                               ],
+                            );
+
+                            final action = ElevatedButton.icon(
+                              onPressed: allAlerts.isEmpty || _markingAllAsRead
+                                  ? null
+                                  : () => _markAllAsRead(allAlerts),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: const Color(0xFF1565C0),
+                                disabledBackgroundColor: Colors.white54,
+                                elevation: 0,
+                                minimumSize: const Size(175, 46),
+                              ),
+                              icon: _markingAllAsRead
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.done_all),
+                              label: Text(
+                                _markingAllAsRead
+                                    ? 'MARKING AS READ...'
+                                    : 'MARK ALL AS READ',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            );
+
+                            if (compact) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  heading,
+                                  const SizedBox(height: 16),
+                                  action,
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              children: [
+                                Expanded(child: heading),
+                                const SizedBox(width: 16),
+                                action,
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(22, 18, 22, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          int count = 5;
+                          if (constraints.maxWidth < 1150) count = 2;
+                          if (constraints.maxWidth < 620) count = 1;
+
+                          return GridView.count(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            crossAxisCount: count,
+                            crossAxisSpacing: 14,
+                            mainAxisSpacing: 14,
+                            childAspectRatio: count == 5
+                                ? 2.05
+                                : count == 2
+                                ? 3.2
+                                : 4.0,
+                            children: [
+                              _summaryCard(
+                                title: 'Product Alerts',
+                                value: productAlertCount,
+                                icon: Icons.inventory_2_outlined,
+                                color: Colors.orange,
+                              ),
+                              _summaryCard(
+                                title: 'Permit Alerts',
+                                value: permitAlertCount,
+                                icon: Icons.description_outlined,
+                                color: Colors.red,
+                              ),
+                              _summaryCard(
+                                title: 'Price Updates',
+                                value: priceUpdateCount,
+                                icon: Icons.price_change_outlined,
+                                color: const Color(0xFF7B1FA2),
+                              ),
+                              _summaryCard(
+                                title: 'Unread',
+                                value: unreadCount,
+                                icon: Icons.mark_email_unread_outlined,
+                                color: const Color(0xFF1565C0),
+                              ),
+                              _summaryCard(
+                                title: 'Total Alerts',
+                                value: allAlerts.length,
+                                icon: Icons.notifications_active_outlined,
+                                color: Colors.purple,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(22, 18, 22, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _filterChip('All'),
+                            const SizedBox(width: 8),
+                            _filterChip('Price Update'),
+                            const SizedBox(width: 8),
+                            _filterChip('Out of Stock'),
+                            const SizedBox(width: 8),
+                            _filterChip('Low Stock'),
+                            const SizedBox(width: 8),
+                            _filterChip('Expired'),
+                            const SizedBox(width: 8),
+                            _filterChip('Expiring Soon'),
+                            const SizedBox(width: 8),
+                            _filterChip('Permit Expired'),
+                            const SizedBox(width: 8),
+                            _filterChip('Permit Due Soon'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  if (filteredAlerts.isEmpty)
+                    const SliverPadding(
+                      padding: EdgeInsets.fromLTRB(22, 18, 22, 22),
+                      sliver: SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 300,
+                          child: _NotificationEmptyState(),
+                        ),
+                      ),
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+                      sliver: SliverList.separated(
+                        itemCount: filteredAlerts.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final alert = filteredAlerts[index];
+
+                          final isRead = readIds.contains(
+                            _readDocumentId(alert),
+                          );
+
+                          final color = _typeColor(alert.type);
+                          final isPriceUpdate = alert.type == 'Price Update';
+
+                          return _NotificationAlertCard(
+                            color: color,
+                            unread: !isRead,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 5,
+                              ),
+                              child: ListTile(
+                                onTap: () => _openAlert(alert),
+                                leading: CircleAvatar(
+                                  backgroundColor: color.withValues(
+                                    alpha: 0.12,
+                                  ),
+                                  child: Icon(
+                                    _typeIcon(alert.type),
+                                    color: color,
+                                  ),
+                                ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        alert.title,
+                                        style: TextStyle(
+                                          fontWeight: isRead
+                                              ? FontWeight.w600
+                                              : FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: color.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      child: Text(
+                                        alert.type,
+                                        style: TextStyle(
+                                          color: color,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                subtitle: Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    '${alert.subtitle}\n'
+                                    '${alert.description}',
+                                  ),
+                                ),
+                                isThreeLine: true,
+                                trailing: isPriceUpdate
+                                    ? Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          OutlinedButton.icon(
+                                            onPressed: () =>
+                                                _showPriceComparison(alert),
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: const Color(
+                                                0xFF7B1FA2,
+                                              ),
+                                              side: const BorderSide(
+                                                color: Color(0xFF7B1FA2),
+                                              ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                            ),
+                                            icon: const Icon(
+                                              Icons.compare_arrows_rounded,
+                                              size: 17,
+                                            ),
+                                            label: const Text(
+                                              'COMPARE',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          isRead
+                                              ? const Icon(
+                                                  Icons.done_all,
+                                                  color: Colors.green,
+                                                )
+                                              : const Icon(
+                                                  Icons.circle,
+                                                  size: 11,
+                                                  color: Color(0xFF1565C0),
+                                                ),
+                                        ],
+                                      )
+                                    : isRead
+                                    ? const Icon(
+                                        Icons.done_all,
+                                        color: Colors.green,
+                                      )
+                                    : const Icon(
+                                        Icons.circle,
+                                        size: 11,
+                                        color: Color(0xFF1565C0),
+                                      ),
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
             );
           },
         );
