@@ -280,6 +280,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       expirationDate.month,
       expirationDate.day,
     );
+
     final days = target.difference(today).inDays;
 
     if (days < 0) return 'Permit Expired';
@@ -303,8 +304,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   }
 
   // Optimized realtime notification badge:
-  // Listen only to records that can become alerts instead of the full product
-  // catalog. notification_reads stays realtime so the count clears instantly.
+  // Product candidates are queried by stock/expiration, merged by document ID,
+  // and then classified once using the same priority logic as Notifications.
   Widget _buildNotificationBadge({
     required bool compact,
     required Widget child,
@@ -323,10 +324,13 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
         final lowStockThreshold =
             (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
+
         final expirationAlertDays =
             (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
+
         final enableLowStockAlerts =
             settings['enableLowStockAlerts'] as bool? ?? true;
+
         final enableExpirationAlerts =
             settings['enableExpirationAlerts'] as bool? ?? true;
 
@@ -347,31 +351,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: lowStockStream,
           builder: (context, lowStockSnapshot) {
-            final productAlerts = <String>{};
-
-            for (final document
-                in lowStockSnapshot.data?.docs ??
-                    <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
-              final type = _notificationType(
-                document.data(),
-                lowStockThreshold: lowStockThreshold,
-                expirationAlertDays: expirationAlertDays,
-                enableLowStockAlerts: enableLowStockAlerts,
-                enableExpirationAlerts: false,
-              );
-
-              if (type == 'Normal') continue;
-
-              productAlerts.add(
-                _notificationReadId(
-                  userId: user.uid,
-                  source: 'product',
-                  documentId: document.id,
-                  type: type,
-                ),
-              );
-            }
-
             final expirationStream = enableExpirationAlerts
                 ? FirebaseFirestore.instance
                       .collection('products')
@@ -385,14 +364,31 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: expirationStream,
               builder: (context, expirationSnapshot) {
+                // Merge candidate products first so one product produces only
+                // one final alert, exactly like NotificationsScreen._productType.
+                final productMap =
+                    <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+
+                for (final document
+                    in lowStockSnapshot.data?.docs ??
+                        <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+                  productMap[document.id] = document;
+                }
+
                 for (final document
                     in expirationSnapshot.data?.docs ??
                         <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
+                  productMap[document.id] = document;
+                }
+
+                final productAlerts = <String>{};
+
+                for (final document in productMap.values) {
                   final type = _notificationType(
                     document.data(),
                     lowStockThreshold: lowStockThreshold,
                     expirationAlertDays: expirationAlertDays,
-                    enableLowStockAlerts: false,
+                    enableLowStockAlerts: enableLowStockAlerts,
                     enableExpirationAlerts: enableExpirationAlerts,
                   );
 
