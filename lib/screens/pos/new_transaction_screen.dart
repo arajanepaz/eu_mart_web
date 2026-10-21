@@ -814,8 +814,48 @@ Do not explain.
       debugPrint('🔥 AI SEARCH ERROR: $e');
       debugPrint('🔥 AI SEARCH STACK: $st');
 
+      final errorText = e.toString().toLowerCase();
+
+      final isTemporaryAiIssue =
+          errorText.contains('500') ||
+          errorText.contains('high demand') ||
+          errorText.contains('internal') ||
+          errorText.contains('unavailable') ||
+          errorText.contains('temporarily');
+
+      final fallbackProducts =
+          List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(aiCandidates)
+            ..sort(
+              (a, b) => _localProductSearchScore(
+                b,
+              ).compareTo(_localProductSearchScore(a)),
+            );
+
+      final localMatches = fallbackProducts
+          .where((product) => _localProductSearchScore(product) > 0)
+          .take(_maxVisibleProducts)
+          .toList();
+
+      if (!mounted) return;
+
       setState(() {
-        _aiSearchMessage = 'AI ERROR: $e';
+        _aiMatchedProductIds.clear();
+
+        if (localMatches.isNotEmpty) {
+          _visibleProducts = localMatches;
+
+          _aiSearchMessage = isTemporaryAiIssue
+              ? 'AI Search is temporarily unavailable. '
+                    'Showing possible matches using standard search.'
+              : 'AI Search is unavailable. '
+                    'Showing possible matches using standard search.';
+        } else {
+          _aiSearchMessage = isTemporaryAiIssue
+              ? 'AI Search is temporarily unavailable due to high demand. '
+                    'Please try again in a few moments or use standard product search.'
+              : 'AI Search is currently unavailable. '
+                    'Please use standard product search and try AI Search again later.';
+        }
       });
     } finally {
       if (mounted) {
@@ -2467,9 +2507,7 @@ Do not explain.
                   }
                   _addProduct(product);
                   _rememberScannedProduct(product);
-                  _refocusSearchBar(
-                    delay: const Duration(milliseconds: 120),
-                  );
+                  _refocusSearchBar(delay: const Duration(milliseconds: 120));
                   return;
                 }
 
@@ -2535,11 +2573,7 @@ Do not explain.
                 icon: const Icon(Icons.qr_code_scanner),
                 label: const FittedBox(
                   fit: BoxFit.scaleDown,
-                  child: Text(
-                    'SCAN BARCODE',
-                    maxLines: 1,
-                    softWrap: false,
-                  ),
+                  child: Text('SCAN BARCODE', maxLines: 1, softWrap: false),
                 ),
               ),
             );
@@ -2547,8 +2581,9 @@ Do not explain.
             final aiButton = SizedBox(
               height: 52,
               child: ElevatedButton.icon(
-                onPressed:
-                    _aiSearching ? null : () => _runAiSearch(allProducts),
+                onPressed: _aiSearching
+                    ? null
+                    : () => _runAiSearch(allProducts),
                 icon: _aiSearching
                     ? const SizedBox(
                         width: 17,
@@ -3097,11 +3132,7 @@ Do not explain.
                 child: OutlinedButton.icon(
                   onPressed: _processing ? null : _holdTransaction,
                   icon: const Icon(Icons.pause_circle_outline, size: 19),
-                  label: const Text(
-                    'HOLD',
-                    maxLines: 1,
-                    softWrap: false,
-                  ),
+                  label: const Text('HOLD', maxLines: 1, softWrap: false),
                 ),
               );
 
@@ -3112,11 +3143,7 @@ Do not explain.
                       ? null
                       : () => _showHeldTransactions(products),
                   icon: const Icon(Icons.restore_outlined, size: 19),
-                  label: const Text(
-                    'RESUME',
-                    maxLines: 1,
-                    softWrap: false,
-                  ),
+                  label: const Text('RESUME', maxLines: 1, softWrap: false),
                 ),
               );
 
@@ -3211,8 +3238,8 @@ Do not explain.
     return LayoutBuilder(
       builder: (context, constraints) {
         final isPhone = constraints.maxWidth < 1000;
-        final isTablet = constraints.maxWidth >= 700 &&
-            constraints.maxWidth < 980;
+        final isTablet =
+            constraints.maxWidth >= 700 && constraints.maxWidth < 980;
 
         final horizontalPadding = isPhone ? 10.0 : 22.0;
         final verticalPadding = isPhone ? 10.0 : 22.0;
@@ -3228,16 +3255,10 @@ Do not explain.
               children: [
                 Expanded(
                   flex: 3,
-                  child: _productPanel(
-                    _visibleProducts,
-                    _activeProducts,
-                  ),
+                  child: _productPanel(_visibleProducts, _activeProducts),
                 ),
                 const SizedBox(width: 22),
-                SizedBox(
-                  width: 420,
-                  child: _cartPanel(_activeProducts),
-                ),
+                SizedBox(width: 420, child: _cartPanel(_activeProducts)),
               ],
             ),
           );
@@ -3253,16 +3274,10 @@ Do not explain.
             child: Column(
               children: [
                 Expanded(
-                  child: _productPanel(
-                    _visibleProducts,
-                    _activeProducts,
-                  ),
+                  child: _productPanel(_visibleProducts, _activeProducts),
                 ),
                 const SizedBox(height: 18),
-                SizedBox(
-                  height: 520,
-                  child: _cartPanel(_activeProducts),
-                ),
+                SizedBox(height: 520, child: _cartPanel(_activeProducts)),
               ],
             ),
           );
@@ -3281,16 +3296,10 @@ Do not explain.
               children: [
                 SizedBox(
                   height: 570,
-                  child: _productPanel(
-                    _visibleProducts,
-                    _activeProducts,
-                  ),
+                  child: _productPanel(_visibleProducts, _activeProducts),
                 ),
                 const SizedBox(height: 14),
-                SizedBox(
-                  height: 720,
-                  child: _cartPanel(_activeProducts),
-                ),
+                SizedBox(height: 720, child: _cartPanel(_activeProducts)),
               ],
             ),
           ),
