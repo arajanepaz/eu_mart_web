@@ -467,24 +467,37 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     }
   }
 
-  // Opens the stock movement dialog interface using the current record or screen state.
+  // Opens the stock movement dialog. Products are fetched once and filtered
+  // in memory while the owner types; no per-keystroke Firestore queries.
   Future<void> _showStockMovementDialog() async {
-    final results = await Future.wait([
-      FirebaseFirestore.instance.collection('products').get(),
-      FirebaseFirestore.instance
-          .collection('suppliers')
-          .where('isActive', isEqualTo: true)
-          .get(),
-    ]);
+    QuerySnapshot<Map<String, dynamic>> productsSnapshot;
+    QuerySnapshot<Map<String, dynamic>> suppliersSnapshot;
+
+    try {
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('products').get(),
+        FirebaseFirestore.instance
+            .collection('suppliers')
+            .where('isActive', isEqualTo: true)
+            .get(),
+      ]);
+      productsSnapshot = results[0];
+      suppliersSnapshot = results[1];
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to load products or suppliers: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     if (!mounted) return;
 
-    final productsSnapshot = results[0];
-    final suppliersSnapshot = results[1];
-
     if (productsSnapshot.docs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('No products available. Add a product first.'),
           backgroundColor: Colors.orange,
@@ -496,229 +509,401 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     final products = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
       productsSnapshot.docs,
     );
-
     final suppliers = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
       suppliersSnapshot.docs,
     );
-
-    suppliers.sort((a, b) {
-      final first = (a.data()['supplierName'] ?? '').toString().toLowerCase();
-      final second = (b.data()['supplierName'] ?? '').toString().toLowerCase();
-
-      return first.compareTo(second);
-    });
 
     products.sort((a, b) {
       final first = (a.data()['productName'] ?? '').toString().toLowerCase();
       final second = (b.data()['productName'] ?? '').toString().toLowerCase();
       return first.compareTo(second);
     });
+    suppliers.sort((a, b) {
+      final first = (a.data()['supplierName'] ?? '').toString().toLowerCase();
+      final second = (b.data()['supplierName'] ?? '').toString().toLowerCase();
+      return first.compareTo(second);
+    });
 
     String? selectedProductId;
     String? selectedSupplierId;
     String movementType = 'Restock';
+    String searchQuery = '';
+    String quantityInput = '';
+    String costInput = '';
+    String reasonInput = '';
     bool saving = false;
 
-    final quantityController = TextEditingController();
-    final costController = TextEditingController();
-    final reasonController = TextEditingController();
-
+    // No TextEditingControllers are owned outside the dialog, so nothing is
+    // disposed prematurely while the Navigator plays its exit animation.
+    // Search matches are rendered inline: no Autocomplete overlay remains
+    // attached to the Navigator during dialog dismissal.
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) {
-        // Handles the stateful builder logic used by this module.
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            // Validates and saves movement data to the application data store.
-            Future<void> saveMovement() async {
-              if (selectedProductId == null) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  // Handles the snack bar logic used by this module.
-                  const SnackBar(
-                    content: Text('Select a product.'),
-                    backgroundColor: Colors.red,
-                  ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final query = searchQuery.trim().toLowerCase();
+          final matchingProducts = selectedProductId != null || query.isEmpty
+              ? <QueryDocumentSnapshot<Map<String, dynamic>>>[]
+              : products
+                    .where((document) {
+                      final data = document.data();
+                      final name = (data['productName'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      final barcode = (data['barcode'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      return name.contains(query) || barcode.contains(query);
+                    })
+                    .take(30)
+                    .toList();
+
+          final selectedProduct = selectedProductId == null
+              ? null
+              : products.firstWhere(
+                  (document) => document.id == selectedProductId,
                 );
-                return;
-              }
+          final selectedStock = selectedProduct == null
+              ? 0
+              : (selectedProduct.data()['stock'] as num?)?.toInt() ?? 0;
+          final selectedName = selectedProduct == null
+              ? ''
+              : (selectedProduct.data()['productName'] ?? 'Unknown Product')
+                    .toString();
 
-              final quantity = int.tryParse(quantityController.text.trim());
+          Future<void> saveMovement() async {
+            if (saving) return;
 
-              if (quantity == null || quantity <= 0) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  // Handles the snack bar logic used by this module.
-                  const SnackBar(
-                    content: Text('Quantity must be greater than zero.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-
-              if (movementType == 'Restock' && selectedSupplierId == null) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  // Handles the snack bar logic used by this module.
-                  const SnackBar(
-                    content: Text('Select an active supplier for restocking.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-
-              final productDocument = products.firstWhere(
-                (document) => document.id == selectedProductId,
+            if (selectedProductId == null || selectedProduct == null) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text('Select a product from the search results.'),
+                  backgroundColor: Colors.red,
+                ),
               );
-
-              final productData = productDocument.data();
-              final productName =
-                  (productData['productName'] ?? 'Unknown Product').toString();
-
-              final isIncrease =
-                  movementType == 'Restock' || movementType == 'Stock Increase';
-
-              setDialogState(() => saving = true);
-
-              try {
-                final user = FirebaseAuth.instance.currentUser;
-
-                await FirebaseFirestore.instance.runTransaction((
-                  transaction,
-                ) async {
-                  final freshProduct = await transaction.get(
-                    productDocument.reference,
-                  );
-
-                  final freshData = freshProduct.data() ?? <String, dynamic>{};
-
-                  final previousStock =
-                      (freshData['stock'] as num?)?.toInt() ?? 0;
-
-                  final newStock = isIncrease
-                      ? previousStock + quantity
-                      : previousStock - quantity;
-
-                  if (newStock < 0) {
-                    // Handles the exception logic used by this module.
-                    throw Exception(
-                      'Not enough stock. Current stock: $previousStock.',
-                    );
-                  }
-
-                  transaction.update(productDocument.reference, {
-                    'stock': newStock,
-                    'updatedAt': FieldValue.serverTimestamp(),
-                  });
-
-                  final movementReference = FirebaseFirestore.instance
-                      .collection('stock_movements')
-                      .doc();
-
-                  transaction.set(movementReference, {
-                    'productId': productDocument.id,
-                    'productName': productName,
-                    'movementType': movementType,
-                    'quantity': quantity,
-                    'direction': isIncrease ? 'increase' : 'decrease',
-                    'previousStock': previousStock,
-                    'newStock': newStock,
-                    'supplierId': selectedSupplierId ?? '',
-                    'supplier': selectedSupplierId == null
-                        ? ''
-                        : (suppliers
-                                      .firstWhere(
-                                        (supplier) =>
-                                            supplier.id == selectedSupplierId,
-                                      )
-                                      .data()['supplierName'] ??
-                                  '')
-                              .toString(),
-                    'buyingCost':
-                        double.tryParse(costController.text.trim()) ?? 0,
-                    'reason': reasonController.text.trim(),
-                    'performedById': user?.uid ?? '',
-                    'performedByEmail': user?.email ?? '',
-                    'createdAt': FieldValue.serverTimestamp(),
-                  });
-
-                  final auditReference = FirebaseFirestore.instance
-                      .collection('audit_logs')
-                      .doc();
-
-                  transaction.set(auditReference, {
-                    'action': 'Stock Movement',
-                    'description':
-                        '$movementType: $productName, quantity $quantity, '
-                        '$previousStock to $newStock',
-                    'module': 'Inventory',
-                    'performedById': user?.uid ?? '',
-                    'performedByEmail': user?.email ?? '',
-                    'createdAt': FieldValue.serverTimestamp(),
-                  });
-                });
-
-                if (!dialogContext.mounted) return;
-                Navigator.pop(dialogContext);
-
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('$movementType recorded successfully.'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              } catch (error) {
-                if (!dialogContext.mounted) return;
-
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(
-                    content: Text('Unable to record stock movement: $error'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-
-                setDialogState(() => saving = false);
-              }
+              return;
             }
 
-            final selectedProduct = selectedProductId == null
-                ? null
-                : products.firstWhere(
-                    (document) => document.id == selectedProductId,
+            final quantity = int.tryParse(quantityInput.trim());
+            if (quantity == null || quantity <= 0) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text('Quantity must be greater than zero.'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+
+            if (movementType == 'Restock' && selectedSupplierId == null) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text('Select an active supplier for restocking.'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+
+            final productDocument = selectedProduct;
+            final productName = selectedName;
+            final isIncrease =
+                movementType == 'Restock' || movementType == 'Stock Increase';
+            final supplierName = selectedSupplierId == null
+                ? ''
+                : (suppliers
+                              .firstWhere((s) => s.id == selectedSupplierId)
+                              .data()['supplierName'] ??
+                          '')
+                      .toString();
+            final buyingCost = double.tryParse(costInput.trim()) ?? 0;
+            final reason = reasonInput.trim();
+
+            setDialogState(() => saving = true);
+            try {
+              final user = FirebaseAuth.instance.currentUser;
+
+              // Keep the original atomic operation: stock, movement log and
+              // audit log either all commit or all fail together.
+              await FirebaseFirestore.instance.runTransaction((
+                transaction,
+              ) async {
+                final freshProduct = await transaction.get(
+                  productDocument.reference,
+                );
+                final freshData = freshProduct.data() ?? <String, dynamic>{};
+                final previousStock =
+                    (freshData['stock'] as num?)?.toInt() ?? 0;
+                final newStock = isIncrease
+                    ? previousStock + quantity
+                    : previousStock - quantity;
+
+                if (newStock < 0) {
+                  throw Exception(
+                    'Not enough stock. Current stock: $previousStock.',
                   );
+                }
 
-            final selectedStock = selectedProduct == null
-                ? 0
-                : (selectedProduct.data()['stock'] as num?)?.toInt() ?? 0;
+                transaction.update(productDocument.reference, {
+                  'stock': newStock,
+                  'updatedAt': FieldValue.serverTimestamp(),
+                });
 
-            // Handles the alert dialog logic used by this module.
-            return AlertDialog(
-              title: const Text('Record Stock Movement'),
-              content: SizedBox(
-                width: 560,
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
+                final movementReference = FirebaseFirestore.instance
+                    .collection('stock_movements')
+                    .doc();
+                transaction.set(movementReference, {
+                  'productId': productDocument.id,
+                  'productName': productName,
+                  'movementType': movementType,
+                  'quantity': quantity,
+                  'direction': isIncrease ? 'increase' : 'decrease',
+                  'previousStock': previousStock,
+                  'newStock': newStock,
+                  'supplierId': selectedSupplierId ?? '',
+                  'supplier': supplierName,
+                  'buyingCost': buyingCost,
+                  'reason': reason,
+                  'performedById': user?.uid ?? '',
+                  'performedByEmail': user?.email ?? '',
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+
+                final auditReference = FirebaseFirestore.instance
+                    .collection('audit_logs')
+                    .doc();
+                transaction.set(auditReference, {
+                  'action': 'Stock Movement',
+                  'description':
+                      '$movementType: $productName, quantity $quantity, '
+                      '$previousStock to $newStock',
+                  'module': 'Inventory',
+                  'performedById': user?.uid ?? '',
+                  'performedByEmail': user?.email ?? '',
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+              });
+
+              if (!dialogContext.mounted) return;
+              Navigator.of(dialogContext).pop();
+
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('$movementType recorded successfully.'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            } catch (error, stackTrace) {
+              debugPrint('Stock movement save failed: $error');
+              debugPrintStack(stackTrace: stackTrace);
+              if (!dialogContext.mounted) return;
+              setDialogState(() => saving = false);
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                SnackBar(
+                  content: Text('Unable to record stock movement: $error'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Record Stock Movement'),
+            content: SizedBox(
+              width: 560,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      enabled: !saving,
+                      decoration: const InputDecoration(
+                        labelText: 'Search Product',
+                        hintText: 'Type product name or barcode',
+                        prefixIcon: Icon(Icons.search_rounded),
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          searchQuery = value;
+                          selectedProductId = null;
+                        });
+                      },
+                    ),
+                    if (matchingProducts.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: const Color(0xFFDDE6F1)),
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white,
+                        ),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 240),
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: matchingProducts.length,
+                            itemBuilder: (context, index) {
+                              final product = matchingProducts[index];
+                              final data = product.data();
+                              final name =
+                                  (data['productName'] ?? 'Unknown Product')
+                                      .toString();
+                              final stock =
+                                  (data['stock'] as num?)?.toInt() ?? 0;
+                              final barcode = (data['barcode'] ?? '')
+                                  .toString()
+                                  .trim();
+                              final expiration = _readDate(
+                                data['expirationDate'],
+                              );
+                              final today = DateTime.now();
+                              final expired =
+                                  expiration != null &&
+                                  DateTime(
+                                    expiration.year,
+                                    expiration.month,
+                                    expiration.day,
+                                  ).isBefore(
+                                    DateTime(
+                                      today.year,
+                                      today.month,
+                                      today.day,
+                                    ),
+                                  );
+
+                              return ListTile(
+                                dense: true,
+                                title: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  barcode.isEmpty
+                                      ? 'Stock: $stock'
+                                      : 'Stock: $stock  •  Barcode: $barcode',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: expired
+                                    ? const Text(
+                                        'Expired',
+                                        style: TextStyle(
+                                          color: Colors.red,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : null,
+                                onTap: saving
+                                    ? null
+                                    : () {
+                                        FocusScope.of(dialogContext).unfocus();
+                                        setDialogState(() {
+                                          selectedProductId = product.id;
+                                        });
+                                      },
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ] else if (query.isNotEmpty &&
+                        selectedProductId == null) ...[
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text(
+                          'No matching products.',
+                          style: TextStyle(color: Colors.black54),
+                        ),
+                      ),
+                    ],
+                    if (selectedProduct != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF8F0),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          'Selected: $selectedName  •  Current stock: $selectedStock',
+                          style: const TextStyle(
+                            color: Color(0xFF168653),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      initialValue: movementType,
+                      decoration: const InputDecoration(
+                        labelText: 'Movement Type',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'Restock',
+                          child: Text('Restock'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Stock Increase',
+                          child: Text('Manual Stock Increase'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Stock Decrease',
+                          child: Text('Manual Stock Decrease'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Damaged',
+                          child: Text('Damaged Product'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'Expired',
+                          child: Text('Expired Product'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              if (value == null) return;
+                              setDialogState(() => movementType = value);
+                            },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      enabled: !saving,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Quantity',
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) => quantityInput = value,
+                    ),
+                    if (movementType == 'Restock') ...[
+                      const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
-                        initialValue: selectedProductId,
+                        initialValue: selectedSupplierId,
+                        isExpanded: true,
                         decoration: const InputDecoration(
-                          labelText: 'Product',
+                          labelText: 'Supplier',
                           border: OutlineInputBorder(),
                         ),
-                        isExpanded: true,
-                        items: products.map((document) {
-                          final data = document.data();
+                        items: suppliers.map((supplier) {
+                          final data = supplier.data();
                           final name =
-                              (data['productName'] ?? 'Unknown Product')
+                              (data['supplierName'] ?? 'Unnamed Supplier')
                                   .toString();
-                          final stock = (data['stock'] as num?)?.toInt() ?? 0;
-
-                          // Handles the dropdown menu item logic used by this module.
-                          return DropdownMenuItem(
-                            value: document.id,
+                          final contact = (data['contactPerson'] ?? '')
+                              .toString();
+                          return DropdownMenuItem<String>(
+                            value: supplier.id,
                             child: Text(
-                              '$name — Stock: $stock',
+                              contact.isEmpty ? name : '$name — $contact',
                               overflow: TextOverflow.ellipsis,
                             ),
                           );
@@ -726,184 +911,71 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                         onChanged: saving
                             ? null
                             : (value) {
-                                setDialogState(() {
-                                  selectedProductId = value;
-                                });
+                                setDialogState(
+                                  () => selectedSupplierId = value,
+                                );
                               },
                       ),
-                      if (selectedProductId != null) ...[
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Current stock: $selectedStock',
-                            style: const TextStyle(
-                              color: Color(0xFF1565C0),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                      if (suppliers.isEmpty) ...[
+                        const SizedBox(height: 8),
+                        const Text(
+                          'No active suppliers found. Add one in Supplier Management.',
+                          style: TextStyle(color: Colors.orange, fontSize: 12),
                         ),
                       ],
-                      // Handles the sized box logic used by this module.
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        initialValue: movementType,
+                      TextFormField(
+                        enabled: !saving,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
                         decoration: const InputDecoration(
-                          labelText: 'Movement Type',
+                          labelText: 'Total Buying Cost',
+                          prefixText: '₱ ',
                           border: OutlineInputBorder(),
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Restock',
-                            child: Text('Restock'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Stock Increase',
-                            child: Text('Manual Stock Increase'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Stock Decrease',
-                            child: Text('Manual Stock Decrease'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Damaged',
-                            child: Text('Damaged Product'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Expired',
-                            child: Text('Expired Product'),
-                          ),
-                        ],
-                        onChanged: saving
-                            ? null
-                            : (value) {
-                                if (value == null) return;
-                                setDialogState(() {
-                                  movementType = value;
-                                });
-                              },
-                      ),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: quantityController,
-                        enabled: !saving,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Quantity',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      if (movementType == 'Restock') ...[
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
-                          initialValue: selectedSupplierId,
-                          decoration: const InputDecoration(
-                            labelText: 'Supplier',
-                            border: OutlineInputBorder(),
-                          ),
-                          isExpanded: true,
-                          items: suppliers.map((supplier) {
-                            final data = supplier.data();
-                            final name =
-                                (data['supplierName'] ?? 'Unnamed Supplier')
-                                    .toString();
-                            final contact = (data['contactPerson'] ?? '')
-                                .toString();
-
-                            // Handles the dropdown menu item logic used by this module.
-                            return DropdownMenuItem(
-                              value: supplier.id,
-                              child: Text(
-                                contact.isEmpty ? name : '$name — $contact',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: saving
-                              ? null
-                              : (value) {
-                                  setDialogState(() {
-                                    selectedSupplierId = value;
-                                  });
-                                },
-                        ),
-                        if (suppliers.isEmpty) ...[
-                          // Handles the sized box logic used by this module.
-                          const SizedBox(height: 8),
-                          // Handles the align logic used by this module.
-                          const Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              'No active suppliers found. '
-                              'Add one in Supplier Management.',
-                              style: TextStyle(
-                                color: Colors.orange,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: costController,
-                          enabled: !saving,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Total Buying Cost',
-                            prefixText: '₱ ',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ],
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: reasonController,
-                        enabled: !saving,
-                        maxLines: 3,
-                        decoration: InputDecoration(
-                          labelText: movementType == 'Restock'
-                              ? 'Notes'
-                              : 'Reason',
-                          border: const OutlineInputBorder(),
-                        ),
+                        onChanged: (value) => costInput = value,
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      enabled: !saving,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        labelText: movementType == 'Restock'
+                            ? 'Notes'
+                            : 'Reason',
+                        border: const OutlineInputBorder(),
+                      ),
+                      onChanged: (value) => reasonInput = value,
+                    ),
+                  ],
                 ),
               ),
-              actions: [
-                TextButton(
-                  onPressed: saving ? null : () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: saving ? null : saveMovement,
-                  icon: saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save_outlined),
-                  label: Text(saving ? 'SAVING...' : 'SAVE MOVEMENT'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving
+                    ? null
+                    : () => Navigator.of(dialogContext).pop(),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton.icon(
+                onPressed: saving ? null : saveMovement,
+                icon: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: Text(saving ? 'SAVING...' : 'SAVE MOVEMENT'),
+              ),
+            ],
+          );
+        },
+      ),
     );
-
-    quantityController.dispose();
-    costController.dispose();
-    reasonController.dispose();
   }
 
   // Filters chip according to the current user selection or business rule.

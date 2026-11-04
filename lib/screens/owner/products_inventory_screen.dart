@@ -4,6 +4,7 @@
 // -----------------------------------------------------------------------------
 
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:csv/csv.dart';
@@ -65,6 +66,7 @@ class _InventoryProductCard extends StatefulWidget {
   final String barcode;
   final double price;
   final int stock;
+  final int lowStockThreshold;
   final bool active;
   final VoidCallback onTap;
   final VoidCallback onEdit;
@@ -78,6 +80,7 @@ class _InventoryProductCard extends StatefulWidget {
     required this.barcode,
     required this.price,
     required this.stock,
+    required this.lowStockThreshold,
     required this.active,
     required this.onTap,
     required this.onEdit,
@@ -94,7 +97,8 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
 
   @override
   Widget build(BuildContext context) {
-    final lowStock = widget.stock <= 10;
+    final lowStock =
+        widget.stock > 0 && widget.stock <= widget.lowStockThreshold;
 
     // Handles the mouse region logic used by this module.
     return MouseRegion(
@@ -286,6 +290,9 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
   static const int _productsPerPage = 25;
   int _currentPage = 0;
+  int _lowStockThreshold = 10;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+  _thresholdSubscription;
 
   // ------------------------------------------------------------
   // SAFE FIRESTORE VALUE CONVERTERS
@@ -1169,13 +1176,29 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   String? _productsError;
 
   int _activeCount = 0;
-  int _lowStockCount = 0;
+  int get _lowStockCount => _allProducts.where((document) {
+    final stock = _readInt(document.data()['stock']);
+    return stock > 0 && stock <= _lowStockThreshold;
+  }).length;
   int _totalStock = 0;
 
   @override
   void initState() {
     super.initState();
     _loadProducts();
+    _thresholdSubscription = FirebaseFirestore.instance
+        .collection('settings')
+        .doc('system')
+        .snapshots()
+        .listen((snapshot) {
+          final raw = snapshot.data()?['lowStockThreshold'];
+          final threshold = raw is num
+              ? raw.toInt()
+              : int.tryParse(raw?.toString() ?? '') ?? 10;
+          if (mounted && threshold != _lowStockThreshold) {
+            setState(() => _lowStockThreshold = threshold);
+          }
+        });
   }
 
   // Loads active product records into local caches used by fast POS search and barcode lookup.
@@ -1201,11 +1224,6 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
           .where((document) => document.data()['isActive'] != false)
           .length;
 
-      final lowStockCount = documents.where((document) {
-        // Reads and normalizes int from stored data.
-        return _readInt(document.data()['stock']) <= 10;
-      }).length;
-
       final totalStock = documents.fold<int>(
         0,
         (sum, document) => sum + _readInt(document.data()['stock']),
@@ -1216,7 +1234,6 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       setState(() {
         _allProducts = documents;
         _activeCount = activeCount;
-        _lowStockCount = lowStockCount;
         _totalStock = totalStock;
         _productsLoading = false;
 
@@ -1837,7 +1854,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: stock <= 10
+                          color: stock > 0 && stock <= _lowStockThreshold
                               ? const Color(0xFFFFF1E6)
                               : const Color(0xFFEAF8F0),
                           borderRadius: BorderRadius.circular(20),
@@ -1845,7 +1862,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                         child: Text(
                           '$stock',
                           style: TextStyle(
-                            color: stock <= 10
+                            color: stock > 0 && stock <= _lowStockThreshold
                                 ? const Color(0xFFD97706)
                                 : const Color(0xFF168653),
                             fontWeight: FontWeight.w900,
@@ -1917,6 +1934,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
           barcode: (data['barcode'] ?? '').toString(),
           price: sellingPrice,
           stock: stock,
+          lowStockThreshold: _lowStockThreshold,
           active: active,
           onTap: () => _showProductDialog(document: document),
           onEdit: () => _showProductDialog(document: document),
@@ -1928,6 +1946,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
   @override
   void dispose() {
+    _thresholdSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
   }

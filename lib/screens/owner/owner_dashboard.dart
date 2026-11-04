@@ -244,11 +244,18 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
     required bool enableExpirationAlerts,
   }) {
-    final stock = (data['stock'] as num?)?.toInt() ?? 0;
+    final rawStock = data['stock'];
+    final stock = rawStock is num
+        ? rawStock.toInt()
+        : int.tryParse(rawStock?.toString().trim() ?? '') ?? 0;
 
     final expirationDate = _notificationReadDate(data['expirationDate']);
 
     if (stock <= 0) return 'Out of Stock';
+
+    if (enableLowStockAlerts && stock <= lowStockThreshold) {
+      return 'Low Stock';
+    }
 
     if (enableExpirationAlerts && expirationDate != null) {
       final now = DateTime.now();
@@ -270,10 +277,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       if (daysRemaining <= expirationAlertDays) {
         return 'Expiring Soon';
       }
-    }
-
-    if (enableLowStockAlerts && stock <= lowStockThreshold) {
-      return 'Low Stock';
     }
 
     return 'Normal';

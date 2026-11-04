@@ -34,7 +34,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   final Set<String> _locallyReadIds = <String>{};
   bool _markingAllAsRead = false;
 
-  late final Future<
+  late Future<
     ({
       List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
       List<QueryDocumentSnapshot<Map<String, dynamic>>> permits,
@@ -176,12 +176,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   // Classifies a product alert using stock and expiration rules, with only one final alert type per product.
   String _productType(Map<String, dynamic> data) {
-    final stock = (data['stock'] as num?)?.toInt() ?? 0;
+    final stockValue = data['stock'];
+    final stock = stockValue is num
+        ? stockValue.toInt()
+        : int.tryParse(stockValue?.toString().trim() ?? '') ?? 0;
 
     final expirationDate = _readDate(data['expirationDate']);
 
     if (stock <= 0) {
       return 'Out of Stock';
+    }
+
+    // Stock warnings take priority so low-stock products are not hidden
+    // behind an expiration warning (one alert per product).
+    if (_enableLowStockAlerts && stock <= _lowStockThreshold) {
+      return 'Low Stock';
     }
 
     if (_enableExpirationAlerts && expirationDate != null) {
@@ -194,10 +203,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (days <= _expirationAlertDays) {
         return 'Expiring Soon';
       }
-    }
-
-    if (_enableLowStockAlerts && stock <= _lowStockThreshold) {
-      return 'Low Stock';
     }
 
     return 'Normal';
@@ -871,7 +876,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       final productName = (data['productName'] ?? 'Unknown Product').toString();
 
-      final stock = (data['stock'] as num?)?.toInt() ?? 0;
+      final stockValue = data['stock'];
+      final stock = stockValue is num
+          ? stockValue.toInt()
+          : int.tryParse(stockValue?.toString().trim() ?? '') ?? 0;
 
       final expirationDate = _readDate(data['expirationDate']);
 
@@ -1046,6 +1054,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
 
     return alerts;
+  }
+
+  void _refreshAlerts() {
+    setState(() {
+      _alertDataFuture = _loadAlertData();
+    });
   }
 
   @override
@@ -1228,6 +1242,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               ),
                             );
 
+                            final refreshAction = OutlinedButton.icon(
+                              onPressed: _refreshAlerts,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('REFRESH'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                                side: const BorderSide(color: Colors.white70),
+                                minimumSize: const Size(120, 46),
+                              ),
+                            );
+
+                            final actions = Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [refreshAction, action],
+                            );
+
                             if (compact) {
                               // Handles the column logic used by this module.
                               return Column(
@@ -1236,7 +1267,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   heading,
                                   // Handles the sized box logic used by this module.
                                   const SizedBox(height: 16),
-                                  action,
+                                  actions,
                                 ],
                               );
                             }
@@ -1247,7 +1278,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 Expanded(child: heading),
                                 // Handles the sized box logic used by this module.
                                 const SizedBox(width: 16),
-                                action,
+                                actions,
                               ],
                             );
                           },
