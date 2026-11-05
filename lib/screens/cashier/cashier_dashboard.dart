@@ -14,7 +14,6 @@ import '../auth/login_screen.dart';
 import '../pos/new_transaction_screen.dart';
 import 'cashier_transaction_history_screen.dart';
 import 'cashier_products_screen.dart';
-import 'cashier_barcode_scanner_screen.dart';
 import 'cashier_shift_report_screen.dart';
 import '../shared/service_issue_logging_screen.dart';
 import '../shared/change_password_screen.dart';
@@ -36,7 +35,6 @@ class _CashierDashboardState extends State<CashierDashboard> {
     _MenuItem('Dashboard', Icons.dashboard_outlined),
     _MenuItem('New Transaction', Icons.point_of_sale),
     _MenuItem('Products', Icons.inventory_2_outlined),
-    _MenuItem('Barcode Scanner', Icons.qr_code_scanner),
     _MenuItem('Transaction History', Icons.receipt_long_outlined),
     _MenuItem('End-of-Shift Report', Icons.summarize_outlined),
     _MenuItem('Service Issues', Icons.report_problem_outlined),
@@ -361,10 +359,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                 child: const SizedBox(
                   width: 42,
                   height: 42,
-                  child: Icon(
-                    Icons.menu_rounded,
-                    color: Color(0xFF1565C0),
-                  ),
+                  child: Icon(Icons.menu_rounded, color: Color(0xFF1565C0)),
                 ),
               ),
             ),
@@ -436,53 +431,53 @@ class _CashierDashboardState extends State<CashierDashboard> {
               child: Icon(Icons.person_rounded, color: Colors.white, size: 19),
             )
           else
-          Container(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF3FF),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFD2E4FA)),
-            ),
-            child: Row(
-              children: [
-                // Handles the circle avatar logic used by this module.
-                const CircleAvatar(
-                  radius: 17,
-                  backgroundColor: Color(0xFF1565C0),
-                  child: Icon(
-                    Icons.point_of_sale_rounded,
-                    color: Colors.white,
-                    size: 19,
+            Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF3FF),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFD2E4FA)),
+              ),
+              child: Row(
+                children: [
+                  // Handles the circle avatar logic used by this module.
+                  const CircleAvatar(
+                    radius: 17,
+                    backgroundColor: Color(0xFF1565C0),
+                    child: Icon(
+                      Icons.point_of_sale_rounded,
+                      color: Colors.white,
+                      size: 19,
+                    ),
                   ),
-                ),
-                // Handles the sized box logic used by this module.
-                const SizedBox(width: 9),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handles the text logic used by this module.
-                    const Text(
-                      'Cashier',
-                      style: TextStyle(
-                        color: Color(0xFF17345A),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
+                  // Handles the sized box logic used by this module.
+                  const SizedBox(width: 9),
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Handles the text logic used by this module.
+                      const Text(
+                        'Cashier',
+                        style: TextStyle(
+                          color: Color(0xFF17345A),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
-                    ),
-                    Text(
-                      user?.email ?? '',
-                      style: const TextStyle(
-                        color: Color(0xFF6D798B),
-                        fontSize: 9.5,
+                      Text(
+                        user?.email ?? '',
+                        style: const TextStyle(
+                          color: Color(0xFF6D798B),
+                          fontSize: 9.5,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1040,7 +1035,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                             title: 'My Recent Transactions',
                             onViewAll: () {
                               setState(() {
-                                _selectedIndex = 4;
+                                _selectedIndex = 3;
                               });
                             },
                             child: completedTransactions.isEmpty
@@ -1054,52 +1049,51 @@ class _CashierDashboardState extends State<CashierDashboard> {
                                     ),
                                   )
                                 : Column(
-                                    children: completedTransactions.take(5).map(
-                                      (document) {
-                                        final data = document.data();
+                                    children: completedTransactions.take(5).map((
+                                      document,
+                                    ) {
+                                      final data = document.data();
 
-                                        final receipt =
-                                            (data['receiptNumber'] ??
-                                                    data['transactionNumber'] ??
-                                                    document.id)
-                                                .toString();
+                                      final receipt =
+                                          (data['receiptNumber'] ??
+                                                  data['transactionNumber'] ??
+                                                  document.id)
+                                              .toString();
 
-                                        final total =
-                                            (data['total'] as num?)
-                                                ?.toDouble() ??
-                                            0;
+                                      final total =
+                                          (data['total'] as num?)?.toDouble() ??
+                                          0;
 
-                                        // Handles the list tile logic used by this module.
-                                        return ListTile(
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: const CircleAvatar(
-                                            backgroundColor: Color(0xFFE3F2FD),
-                                            child: Icon(
-                                              Icons.receipt_long,
-                                              color: Color(0xFF1565C0),
-                                            ),
+                                      // Handles the list tile logic used by this module.
+                                      return ListTile(
+                                        contentPadding: EdgeInsets.zero,
+                                        leading: const CircleAvatar(
+                                          backgroundColor: Color(0xFFE3F2FD),
+                                          child: Icon(
+                                            Icons.receipt_long,
+                                            color: Color(0xFF1565C0),
                                           ),
-                                          title: Text(
-                                            receipt,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                        ),
+                                        title: Text(
+                                          receipt,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
                                           ),
-                                          subtitle: Text(
-                                            _formatDashboardDate(
-                                              _readDate(data['createdAt']),
-                                            ),
+                                        ),
+                                        subtitle: Text(
+                                          _formatDashboardDate(
+                                            _readDate(data['createdAt']),
                                           ),
-                                          trailing: Text(
-                                            '₱${total.toStringAsFixed(2)}',
-                                            style: const TextStyle(
-                                              color: Colors.green,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                        ),
+                                        trailing: Text(
+                                          '₱${total.toStringAsFixed(2)}',
+                                          style: const TextStyle(
+                                            color: Colors.green,
+                                            fontWeight: FontWeight.bold,
                                           ),
-                                        );
-                                      },
-                                    ).toList(),
+                                        ),
+                                      );
+                                    }).toList(),
                                   ),
                           );
 
@@ -1214,20 +1208,11 @@ class _CashierDashboardState extends State<CashierDashboard> {
                               },
                             ),
                             _quickActionButton(
-                              label: 'Scan Barcode',
-                              icon: Icons.qr_code_scanner,
-                              onPressed: () {
-                                setState(() {
-                                  _selectedIndex = 3;
-                                });
-                              },
-                            ),
-                            _quickActionButton(
                               label: 'Transaction History',
                               icon: Icons.history,
                               onPressed: () {
                                 setState(() {
-                                  _selectedIndex = 4;
+                                  _selectedIndex = 3;
                                 });
                               },
                             ),
@@ -1315,16 +1300,15 @@ class _CashierDashboardState extends State<CashierDashboard> {
     return KeyedSubtree(
       key: ValueKey<int>(_selectedIndex),
       child: switch (_selectedIndex) {
-                              0 => _buildDashboardOverview(),
-                              1 => const NewTransactionScreen(),
-                              2 => const CashierProductsScreen(),
-                              3 => const CashierBarcodeScannerScreen(),
-                              4 => const CashierTransactionHistoryScreen(),
-                              5 => const CashierShiftReportScreen(),
-                              6 => const ServiceIssueLoggingScreen(),
-                              7 => const ChangePasswordScreen(),
-                              _ => _buildPlaceholderPage(),
-                            }
+        0 => _buildDashboardOverview(),
+        1 => const NewTransactionScreen(),
+        2 => const CashierProductsScreen(),
+        3 => const CashierTransactionHistoryScreen(),
+        4 => const CashierShiftReportScreen(),
+        5 => const ServiceIssueLoggingScreen(),
+        6 => const ChangePasswordScreen(),
+        _ => _buildPlaceholderPage(),
+      },
     );
   }
 
@@ -1354,7 +1338,8 @@ class _CashierDashboardState extends State<CashierDashboard> {
                     children: [
                       _buildTopBar(
                         mobile: true,
-                        onMenuPressed: () => Scaffold.of(scaffoldContext).openDrawer(),
+                        onMenuPressed: () =>
+                            Scaffold.of(scaffoldContext).openDrawer(),
                       ),
                       Expanded(
                         child: ClipRect(

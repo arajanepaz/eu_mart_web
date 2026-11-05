@@ -45,6 +45,12 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   String _aiSearchMessage = '';
   int? _aiResponseTimeMs;
 
+  // Cache validated AI results only for the current POS product snapshot.
+  // Cache entries are cleared whenever the catalog is reloaded.
+  final Map<String, List<String>> _aiSearchCache = <String, List<String>>{};
+  static const int _maxAiCandidates = 60;
+  static const int _maxAiCachedQueries = 30;
+
   // Recently scanned products stay visible below the search bar.
   final List<String> _recentScannedProductIds = <String>[];
   String? _scannedBarcodeProductId;
@@ -682,30 +688,88 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return total;
   }
 
-  // Runs AI-assisted product retrieval after local candidate ranking.
-  // Only validated Firestore product IDs are accepted so AI cannot create products outside the store catalog.
+  // Local exact matches and repeat queries return immediately. More difficult
+  // searches still use Gemini with a compact, locally ranked candidate list.
+  // No Firestore query or model change is introduced by this optimization.
   Future<void> _runAiSearch(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) async {
-    debugPrint('🔥 AI SEARCH FUNCTION CALLED');
+    if (_aiSearching) return;
 
     final query = _searchController.text.trim();
+    final normalizedQuery = _normalizeSearchText(query);
 
-    if (query.isEmpty) {
+    if (normalizedQuery.isEmpty) {
       _message('Enter a product description first.', Colors.orange);
       return;
     }
 
+    // A network reply must not replace the results of a newer typed query.
+    bool isCurrentQuery() =>
+        mounted &&
+        _normalizeSearchText(_searchController.text) == normalizedQuery;
+
+    void showMatches(
+      Iterable<String> productIds,
+      String message, {
+      int? aiResponseTimeMs,
+    }) {
+      if (!isCurrentQuery()) return;
+
+      final ids = productIds.where(_productsById.containsKey).toList();
+      setState(() {
+        _aiMatchedProductIds
+          ..clear()
+          ..addAll(ids);
+        _aiSearchMessage = message;
+        // Null means Gemini was not called (instant local or cached result).
+        _aiResponseTimeMs = aiResponseTimeMs;
+        if (ids.isNotEmpty) {
+          _visibleProducts = ids
+              .map((id) => _productsById[id])
+              .whereType<QueryDocumentSnapshot<Map<String, dynamic>>>()
+              .take(_maxVisibleProducts)
+              .toList();
+        }
+      });
+    }
+
     setState(() {
+      _query = query.toLowerCase();
       _aiSearching = true;
       _aiMatchedProductIds.clear();
       _aiSearchMessage = '';
       _aiResponseTimeMs = null;
     });
+
     try {
-      // Do not send the entire 2,000+ product catalog to AI. Rank locally
-      // first, then let AI resolve only the strongest candidates. This keeps
-      // the request smaller and the POS responsive.
+      // Exact product names/barcodes don't need an AI request. Only bypass
+      // Gemini when exactly one active product matches, to avoid ambiguity.
+      final exactMatches = products.where((document) {
+        final data = document.data();
+        return _normalizeSearchText(data['productName']) == normalizedQuery ||
+            (data['barcode'] ?? '').toString().trim().toLowerCase() ==
+                query.toLowerCase();
+      }).toList();
+
+      if (exactMatches.length == 1) {
+        showMatches(<String>[
+          exactMatches.first.id,
+        ], 'Exact product match found instantly (local search).');
+        return;
+      }
+
+      // Only reuse matches from this page's loaded product catalog.
+      final cachedIds = _aiSearchCache[normalizedQuery];
+      if (cachedIds != null && cachedIds.isNotEmpty) {
+        showMatches(
+          cachedIds,
+          'Showing ${cachedIds.length} saved AI suggestion(s) (no new request).',
+        );
+        return;
+      }
+
+      // Rank the locally cached catalog first. This does not query Firestore.
       final rankedCandidates =
           products
               .map(
@@ -718,134 +782,128 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
               .toList()
             ..sort((a, b) => b.score.compareTo(a.score));
 
+      // Lower input size without changing the AI model or App Check tokens.
+      // The highest-ranked candidates are retained for AI disambiguation.
       final aiCandidates = rankedCandidates
-          .take(120)
+          .take(_maxAiCandidates)
           .map((entry) => entry.document)
           .toList();
 
       if (aiCandidates.isEmpty) {
-        setState(() {
-          _aiSearchMessage = 'AI found no relevant product.';
-        });
+        showMatches(const <String>[], 'AI found no relevant product.');
         return;
       }
 
+      // Keep all existing matching attributes, but use short field labels and
+      // skip empty values to reduce input tokens for each Gemini request.
       final productLines = aiCandidates
           .map((document) {
             final data = document.data();
+            final fields = <String>[
+              'ID:${document.id}',
+              'N:${(data['productName'] ?? '').toString()}',
+            ];
+            void addIfPresent(String label, dynamic value) {
+              final text = (value ?? '').toString().trim();
+              if (text.isNotEmpty) fields.add('$label:$text');
+            }
 
-            return [
-              'ID=${document.id}',
-              'NAME=${(data['productName'] ?? '').toString()}',
-              'BRAND=${(data['brand'] ?? '').toString()}',
-              'CATEGORY=${(data['category'] ?? '').toString()}',
-              'UNIT=${(data['unit'] ?? '').toString()}',
-              'BARCODE=${(data['barcode'] ?? '').toString()}',
-              'ALIASES=${(data['aliases'] ?? data['searchAliases'] ?? '').toString()}',
-            ].join(' | ');
+            addIfPresent('B', data['brand']);
+            addIfPresent('C', data['category']);
+            addIfPresent('U', data['unit']);
+            addIfPresent('BC', data['barcode']);
+            addIfPresent('A', data['aliases'] ?? data['searchAliases']);
+            return fields.join('|');
           })
           .join('\n');
-      final ai = await FirebaseAI.googleAI(useLimitedUseAppCheckTokens: true);
 
+      // Preserve the existing provider/model/App Check setup. Upgrading the
+      // model is a separate, explicitly tested change.
+      final ai = FirebaseAI.googleAI(useLimitedUseAppCheckTokens: true);
       final model = ai.generativeModel(model: 'gemini-3.6-flash');
 
       final prompt =
           '''
-You are a product-search assistant for EÜ MART.
-Find products that best match the cashier query.
-
-The cashier may type an incomplete product name or make small spelling
-mistakes. Treat obvious missing letters, extra letters, transposed letters,
-and close phonetic/visual spellings as possible matches, but only when the
-intended product is reasonably clear from the available products.
-Never invent a product that is not in the provided list.
-Prefer the cashier's likely intended product over merely similar-looking
-product words. For example, an extra/missing letter should not turn one
-distinct product word into another unrelated word. Use product name, brand,
-category, unit, and aliases together to decide the intended match.
-
-Cashier query:
-$query
-
-Available products:
+You identify matching store products for a cashier. The list below uses:
+ID=Firestore ID; N=name; B=brand; C=category; U=unit; BC=barcode; A=aliases.
+Understand incomplete names, minor typos and abbreviations. Consider all
+fields, but avoid unrelated words or invented products. Return ONLY matching
+IDs from the list, separated by commas, or NONE. No explanation.
+Query: $query
+Products:
 $productLines
-
-Return only matching Firestore IDs separated by commas.
-Return NONE when there is no reasonable match.
-Do not explain.
 ''';
 
       final stopwatch = Stopwatch()..start();
-
-      final response = await model.generateContent([Content.text(prompt)]);
-
+      final response = await model.generateContent(<Content>[
+        Content.text(prompt),
+      ]);
       stopwatch.stop();
-
       final aiResponseTimeMs = stopwatch.elapsedMilliseconds;
+      debugPrint(
+        'AI model response: ${aiResponseTimeMs}ms; '
+        'candidates: ${aiCandidates.length}',
+      );
 
-      setState(() {
-        _aiResponseTimeMs = aiResponseTimeMs;
-      });
+      if (!isCurrentQuery()) return;
 
-      debugPrint('🤖 AI RESPONSE TIME: ${aiResponseTimeMs}ms');
-
-      final text = (response.text ?? '').trim();
-
-      if (text.isEmpty || text.toUpperCase().contains('NONE')) {
-        setState(() {
-          _aiSearchMessage = 'AI found no relevant product.';
-        });
+      final responseText = (response.text ?? '').trim();
+      if (responseText.isEmpty || responseText.toUpperCase() == 'NONE') {
+        showMatches(
+          const <String>[],
+          'AI found no relevant product.',
+          aiResponseTimeMs: aiResponseTimeMs,
+        );
         return;
       }
 
-      final validIds = aiCandidates.map((item) => item.id).toSet();
-
-      final ids = text
+      final candidatesById =
+          <String, QueryDocumentSnapshot<Map<String, dynamic>>>{
+            for (final document in aiCandidates) document.id: document,
+          };
+      final ids = responseText
           .split(RegExp(r'[,\s]+'))
           .map((value) => value.trim())
-          .where(validIds.contains)
+          .where(candidatesById.containsKey)
           .where((id) {
-            final product = aiCandidates.firstWhere((item) => item.id == id);
+            final product = candidatesById[id]!;
             final localScore = _localProductSearchScore(product);
-
             if (localScore >= 20) return true;
 
-            // AI may correctly identify a product from a misspelled or
-            // incomplete query that the stricter local scorer did not accept.
-            // Keep that suggestion only when the product name itself still
-            // has a close local word match with every typed query word.
+            // Retain the existing relevance gate for AI-suggested IDs.
             final productName = _normalizeSearchText(
               product.data()['productName'],
             );
-            final queryWords = _normalizeSearchText(
-              query,
-            ).split(RegExp(r'\s+')).where((word) => word.length >= 3).toList();
-
+            final queryWords = normalizedQuery
+                .split(RegExp(r'\s+'))
+                .where((word) => word.length >= 3)
+                .toList();
             return queryWords.isNotEmpty &&
                 queryWords.every((word) => _hasCloseWord(productName, word));
           })
-          .toSet();
+          .toSet()
+          .toList();
 
-      setState(() {
-        _aiMatchedProductIds.addAll(ids);
-        _aiSearchMessage = ids.isEmpty
-            ? 'AI found no relevant product.'
-            : 'AI suggested ${ids.length} product(s).';
-
-        if (ids.isNotEmpty) {
-          _visibleProducts = ids
-              .map((id) => _productsById[id])
-              .whereType<QueryDocumentSnapshot<Map<String, dynamic>>>()
-              .take(_maxVisibleProducts)
-              .toList();
+      if (ids.isNotEmpty) {
+        if (_aiSearchCache.length >= _maxAiCachedQueries) {
+          _aiSearchCache.remove(_aiSearchCache.keys.first);
         }
-      });
-    } catch (e, st) {
-      debugPrint('🔥 AI SEARCH ERROR: $e');
-      debugPrint('🔥 AI SEARCH STACK: $st');
+        _aiSearchCache[normalizedQuery] = ids;
+      }
 
-      final errorText = e.toString().toLowerCase();
+      showMatches(
+        ids,
+        ids.isEmpty
+            ? 'AI found no relevant product.'
+            : 'AI suggested ${ids.length} product(s).',
+        aiResponseTimeMs: aiResponseTimeMs,
+      );
+    } catch (error, stackTrace) {
+      debugPrint('AI search request failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!isCurrentQuery()) return;
 
+      final errorText = error.toString().toLowerCase();
       final isTemporaryAiIssue =
           errorText.contains('500') ||
           errorText.contains('high demand') ||
@@ -853,27 +911,29 @@ Do not explain.
           errorText.contains('unavailable') ||
           errorText.contains('temporarily');
 
-      final fallbackProducts =
-          List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(products)
-            ..sort(
-              (a, b) => _localProductSearchScore(
-                b,
-              ).compareTo(_localProductSearchScore(a)),
-            );
-
-      final localMatches = fallbackProducts
-          .where((product) => _localProductSearchScore(product) > 0)
+      // Keep the existing standard-search fallback, with scores computed
+      // only once rather than repeatedly during sorting and filtering.
+      final scored =
+          products
+              .map(
+                (product) => (
+                  score: _localProductSearchScore(product),
+                  product: product,
+                ),
+              )
+              .where((entry) => entry.score > 0)
+              .toList()
+            ..sort((a, b) => b.score.compareTo(a.score));
+      final localMatches = scored
           .take(_maxVisibleProducts)
+          .map((entry) => entry.product)
           .toList();
 
-      if (!mounted) return;
-
+      if (!isCurrentQuery()) return;
       setState(() {
         _aiMatchedProductIds.clear();
-
         if (localMatches.isNotEmpty) {
           _visibleProducts = localMatches;
-
           _aiSearchMessage = isTemporaryAiIssue
               ? 'AI Search is temporarily unavailable. '
                     'Showing possible matches using standard search.'
@@ -882,9 +942,9 @@ Do not explain.
         } else {
           _aiSearchMessage = isTemporaryAiIssue
               ? 'AI Search is temporarily unavailable due to high demand. '
-                    'Please try again in a few moments or use standard product search.'
+                    'Please try again later or use standard product search.'
               : 'AI Search is currently unavailable. '
-                    'Please use standard product search and try AI Search again later.';
+                    'Please use standard product search and try again later.';
         }
       });
     } finally {
@@ -3506,6 +3566,7 @@ Do not explain.
           ..clear()
           ..addAll(byBarcode);
         _visibleProducts = active.take(_maxVisibleProducts).toList();
+        _aiSearchCache.clear();
         _productsLoading = false;
       });
     } catch (error) {
