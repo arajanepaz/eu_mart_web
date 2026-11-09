@@ -32,6 +32,16 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 
   final _searchController = TextEditingController();
   final _searchFocusNode = FocusNode();
+
+  // Hardware scanners usually type into the focused field like a keyboard.
+  // Wait briefly for the complete barcode, including scanners without ENTER.
+  Timer? _hardwareScanTimer;
+  String? _lastHardwareBarcode;
+  DateTime? _lastHardwareScanAt;
+  static const Duration _scanQuietPeriod = Duration(milliseconds: 140);
+  static const Duration _scanDuplicateWindow = Duration(milliseconds: 450);
+  // Keep the last receipt width during this POS session (58mm or 80mm).
+  int _receiptPaperWidthMm = 58;
   final _cashController = TextEditingController();
   final Map<String, _CartItem> _cart = {};
 
@@ -306,9 +316,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         });
       }
 
-      _addProduct(product);
-      _rememberScannedProduct(product);
-      _refocusSearchBar(delay: const Duration(milliseconds: 120));
+      // Only display the match here. The unified hardware-scan handler
+      // performs the add once, after ENTER/TAB or the short quiet period.
       return;
     }
 
@@ -326,6 +335,13 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     _aiSearchMessage = '';
     _aiResponseTimeMs = null;
 
+    // A partial numeric barcode should not trigger a full product-name search
+    // on every scanner keystroke (which causes visible lag on large catalogs).
+    if (RegExp(r'^\d+$').hasMatch(normalized)) {
+      if (mounted) setState(() => _visibleProducts = []);
+      return;
+    }
+
     final scored = <(int, QueryDocumentSnapshot<Map<String, dynamic>>)>[];
     for (final product in _activeProducts) {
       final score = _localProductSearchScore(product);
@@ -339,6 +355,62 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
           .take(_maxVisibleProducts)
           .map((entry) => entry.$2)
           .toList();
+    });
+  }
+
+  // Single entry point for keyboard-wedge USB/Bluetooth barcode scans.
+  // Covers ENTER, TAB and no-suffix scanners without double-adding.
+  void _commitHardwareBarcode(String value) {
+    _hardwareScanTimer?.cancel();
+    final barcode = value.trim();
+    if (!mounted || barcode.isEmpty) return;
+
+    final matches = _productsByBarcode[barcode.toLowerCase()] ?? const [];
+    if (matches.length != 1) return;
+
+    final now = DateTime.now();
+    if (_lastHardwareBarcode == barcode.toLowerCase() &&
+        _lastHardwareScanAt != null &&
+        now.difference(_lastHardwareScanAt!) < _scanDuplicateWindow) {
+      return;
+    }
+
+    _lastHardwareBarcode = barcode.toLowerCase();
+    _lastHardwareScanAt = now;
+    final product = matches.single;
+
+    // The lookup uses the in-memory product map; no network round trip.
+    setState(() {
+      _query = barcode.toLowerCase();
+      _scannedBarcodeProductId = product.id;
+      _aiMatchedProductIds.clear();
+      _aiSearchMessage = 'Scanned barcode: $barcode';
+      _visibleProducts = [product];
+    });
+    _addProduct(product);
+    _rememberScannedProduct(product);
+    _refocusSearchBar(delay: Duration.zero);
+  }
+
+  // A scanner with no ENTER/TAB still adds automatically after its last key.
+  void _onHardwareSearchChanged(
+    String value,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
+  ) {
+    _hardwareScanTimer?.cancel();
+    _handleSearchInput(value, products);
+
+    final barcode = value.trim().toLowerCase();
+    // Require a complete, unique catalog barcode before auto-processing.
+    if (barcode.length < 6 || (_productsByBarcode[barcode]?.length ?? 0) != 1) {
+      return;
+    }
+
+    _hardwareScanTimer = Timer(_scanQuietPeriod, () {
+      if (!mounted || _searchController.text.trim().toLowerCase() != barcode) {
+        return;
+      }
+      _commitHardwareBarcode(barcode);
     });
   }
 
@@ -1385,6 +1457,7 @@ $productLines
     required double total,
     required double cash,
     required double change,
+    required int paperWidthMm,
   }) async {
     final settingsSnapshot = await FirebaseFirestore.instance
         .collection('settings')
@@ -1403,12 +1476,21 @@ $productLines
     final cashier = FirebaseAuth.instance.currentUser;
     final now = DateTime.now();
 
+    final isNarrow = paperWidthMm == 58;
+    // Receipt width is in millimetres. Height follows the roll content.
+    final receiptFormat = PdfPageFormat(
+      paperWidthMm * PdfPageFormat.mm,
+      double.infinity,
+    );
     final document = pw.Document();
 
     document.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.roll80,
-        margin: const pw.EdgeInsets.all(18),
+        pageFormat: receiptFormat,
+        margin: pw.EdgeInsets.symmetric(
+          horizontal: isNarrow ? 9 : 13,
+          vertical: 10,
+        ),
         build: (context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -1417,7 +1499,7 @@ $productLines
                 storeName,
                 textAlign: pw.TextAlign.center,
                 style: pw.TextStyle(
-                  fontSize: 18,
+                  fontSize: isNarrow ? 14 : 18,
                   fontWeight: pw.FontWeight.bold,
                 ),
               ),
@@ -1469,17 +1551,19 @@ $productLines
                         ),
                       ),
                       pw.Row(
-                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                         children: [
-                          pw.Text(
-                            item.promoType == 'Buy 1 Take 1'
-                                ? '${item.quantity} item(s), pay ${item.chargedQuantity} × PHP ${item.price.toStringAsFixed(2)}'
-                                : '${item.quantity} × PHP ${item.price.toStringAsFixed(2)}',
-                            style: const pw.TextStyle(fontSize: 8),
+                          pw.Expanded(
+                            child: pw.Text(
+                              item.promoType == 'Buy 1 Take 1'
+                                  ? '${item.quantity} item(s), pay ${item.chargedQuantity} x PHP ${item.price.toStringAsFixed(2)}'
+                                  : '${item.quantity} x PHP ${item.price.toStringAsFixed(2)}',
+                              style: pw.TextStyle(fontSize: isNarrow ? 7 : 8),
+                            ),
                           ),
+                          pw.SizedBox(width: 4),
                           pw.Text(
                             'PHP ${item.subtotal.toStringAsFixed(2)}',
-                            style: const pw.TextStyle(fontSize: 8),
+                            style: pw.TextStyle(fontSize: isNarrow ? 7 : 8),
                           ),
                         ],
                       ),
@@ -1489,10 +1573,15 @@ $productLines
               ),
               pw.Divider(),
               if (_totalSavings > 0)
-                _pdfMoneyRow('YOU SAVED', _totalSavings, bold: true),
-              _pdfMoneyRow('TOTAL', total, bold: true),
-              _pdfMoneyRow('CASH', cash),
-              _pdfMoneyRow('CHANGE', change, bold: true),
+                _pdfMoneyRow(
+                  'YOU SAVED',
+                  _totalSavings,
+                  bold: true,
+                  isNarrow: isNarrow,
+                ),
+              _pdfMoneyRow('TOTAL', total, bold: true, isNarrow: isNarrow),
+              _pdfMoneyRow('CASH', cash, isNarrow: isNarrow),
+              _pdfMoneyRow('CHANGE', change, bold: true, isNarrow: isNarrow),
               pw.SizedBox(height: 12),
               pw.Text(
                 receiptFooter,
@@ -1504,8 +1593,8 @@ $productLines
                 child: pw.BarcodeWidget(
                   barcode: pw.Barcode.qrCode(),
                   data: _feedbackUrl,
-                  width: 82,
-                  height: 82,
+                  width: isNarrow ? 72 : 82,
+                  height: isNarrow ? 72 : 82,
                 ),
               ),
               pw.SizedBox(height: 5),
@@ -1536,18 +1625,23 @@ $productLines
   }
 
   // Handles the pdf money row logic used by this module.
-  pw.Widget _pdfMoneyRow(String label, double value, {bool bold = false}) {
+  pw.Widget _pdfMoneyRow(
+    String label,
+    double value, {
+    bool bold = false,
+    bool isNarrow = false,
+  }) {
     final style = pw.TextStyle(
-      fontSize: 10,
+      fontSize: isNarrow ? 9 : 10,
       fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
     );
 
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 2),
       child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text(label, style: style),
+          pw.Expanded(child: pw.Text(label, style: style)),
+          pw.SizedBox(width: 4),
           pw.Text('PHP ${value.toStringAsFixed(2)}', style: style),
         ],
       ),
@@ -2512,12 +2606,59 @@ $productLines
                                   child: OutlinedButton.icon(
                                     onPressed: () async {
                                       // Builds the printable POS receipt, including store information, purchased items, totals, and customer-feedback QR code.
+                                      // Ask before printing, so cashiers can match
+                                      // the PDF to the store's actual receipt roll.
+                                      final chosenWidth = await showDialog<int>(
+                                        context: context,
+                                        builder: (sizeDialogContext) => SimpleDialog(
+                                          title: const Text(
+                                            'Receipt paper size',
+                                          ),
+                                          children: [
+                                            for (final width in const [58, 80])
+                                              SimpleDialogOption(
+                                                onPressed: () => Navigator.of(
+                                                  sizeDialogContext,
+                                                ).pop(width),
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        vertical: 7,
+                                                      ),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(
+                                                        _receiptPaperWidthMm ==
+                                                                width
+                                                            ? Icons
+                                                                  .radio_button_checked
+                                                            : Icons
+                                                                  .radio_button_unchecked,
+                                                        color: const Color(
+                                                          0xFF1565C0,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 12),
+                                                      Text(
+                                                        '$width mm receipt paper',
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      );
+                                      if (chosenWidth == null || !mounted)
+                                        return;
+                                      _receiptPaperWidthMm = chosenWidth;
                                       await _printReceipt(
                                         receiptNumber: receiptNumber,
                                         items: items,
                                         total: total,
                                         cash: cash,
                                         change: change,
+                                        paperWidthMm: chosenWidth,
                                       );
                                     },
                                     icon: const Icon(
@@ -2650,7 +2791,8 @@ $productLines
             final searchField = TextField(
               controller: _searchController,
               focusNode: _searchFocusNode,
-              onChanged: (value) => _handleSearchInput(value, allProducts),
+              onChanged: (value) =>
+                  _onHardwareSearchChanged(value, allProducts),
               onSubmitted: (value) async {
                 final normalized = value.trim();
                 if (normalized.isEmpty) return;
@@ -2659,18 +2801,7 @@ $productLines
                     _productsByBarcode[normalized.toLowerCase()] ?? const [];
 
                 if (exactBarcodeMatches.length == 1) {
-                  final product = exactBarcodeMatches.first;
-                  if (mounted) {
-                    setState(() {
-                      _query = normalized.toLowerCase();
-                      _scannedBarcodeProductId = product.id;
-                      _aiMatchedProductIds.clear();
-                      _aiSearchMessage = 'Scanned barcode: $normalized';
-                    });
-                  }
-                  _addProduct(product);
-                  _rememberScannedProduct(product);
-                  _refocusSearchBar(delay: const Duration(milliseconds: 120));
+                  _commitHardwareBarcode(normalized);
                   return;
                 }
 
@@ -2696,6 +2827,7 @@ $productLines
                     ? null
                     : IconButton(
                         onPressed: () {
+                          _hardwareScanTimer?.cancel();
                           _searchController.clear();
                           setState(() {
                             _query = '';
@@ -3613,9 +3745,9 @@ $productLines
   // Handles the search key event user or system event and updates state as required.
   KeyEventResult _handleSearchKeyEvent(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.tab) {
-      // Many hardware barcode scanners send TAB after ENTER.
-      // Keep the POS search field focused so the next scan is ready immediately.
-      _refocusSearchBar(delay: const Duration(milliseconds: 20));
+      // TAB-suffix scanners submit the barcode instead of moving focus away.
+      _commitHardwareBarcode(_searchController.text);
+      _refocusSearchBar(delay: Duration.zero);
       return KeyEventResult.handled;
     }
 
@@ -3632,6 +3764,7 @@ $productLines
 
   @override
   void dispose() {
+    _hardwareScanTimer?.cancel();
     _durationTimer?.cancel();
     _searchFocusNode.dispose();
     _searchController.dispose();
