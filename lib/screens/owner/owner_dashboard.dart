@@ -83,6 +83,11 @@ class OwnerDashboard extends StatefulWidget {
 class _OwnerDashboardState extends State<OwnerDashboard> {
   int _selectedIndex = 0;
 
+  // Local sidebar-only search. Does not change the selected page or Firestore.
+  String _sidebarSearchQuery = '';
+  final TextEditingController _sidebarSearchController =
+      TextEditingController();
+
   // Shared realtime streams: the dashboard uses product/settings data in
 
   // more than one widget. Broadcasting these streams prevents separate
@@ -551,8 +556,21 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  @override
+  void dispose() {
+    _sidebarSearchController.dispose();
+    super.dispose();
+  }
+
   // Builds the sidebar UI from the current data and screen state.
   Widget _buildSidebar({required bool compact, bool drawerMode = false}) {
+    // Keep original _menuItems indices for page routing and badges.
+    final query = compact ? '' : _sidebarSearchQuery.trim().toLowerCase();
+    final visibleMenuIndices = <int>[
+      for (var i = 0; i < _menuItems.length; i++)
+        if (query.isEmpty || _menuItems[i].label.toLowerCase().contains(query))
+          i,
+    ];
     // Handles the animated container logic used by this module.
     return AnimatedContainer(
       duration: const Duration(milliseconds: 280),
@@ -668,133 +686,205 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               ),
             ),
 
+            // Sidebar module finder. Only expanded sidebar has enough space
+            // for the text field; compact mode keeps its existing icon navigation.
+            if (!compact)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 2, 14, 10),
+                child: TextField(
+                  controller: _sidebarSearchController,
+                  onChanged: (value) {
+                    setState(() => _sidebarSearchQuery = value);
+                  },
+                  style: const TextStyle(
+                    color: Color(0xFF17345A),
+                    fontSize: 13,
+                  ),
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Search modules...',
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF71829B),
+                      fontSize: 12.5,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF1565C0),
+                      size: 20,
+                    ),
+                    suffixIcon: _sidebarSearchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear module search',
+                            icon: const Icon(Icons.close_rounded, size: 18),
+                            color: const Color(0xFF66788E),
+                            onPressed: () {
+                              _sidebarSearchController.clear();
+                              setState(() => _sidebarSearchQuery = '');
+                            },
+                          ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+
             Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-
-                itemCount: _menuItems.length,
-
-                itemBuilder: (context, index) {
-                  final item = _menuItems[index];
-
-                  final selected = _selectedIndex == index;
-
-                  Widget tile = Padding(
-                    padding: const EdgeInsets.only(bottom: 5),
-
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 210),
-
-                      decoration: BoxDecoration(
-                        color: selected ? Colors.white : Colors.transparent,
-
-                        borderRadius: BorderRadius.circular(13),
-
-                        boxShadow: selected
-                            ? const [
-                                BoxShadow(
-                                  color: Color(0x20000000),
-
-                                  blurRadius: 10,
-
-                                  offset: Offset(0, 4),
-                                ),
-                              ]
-                            : const [],
+              child: visibleMenuIndices.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'No modules found',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
                       ),
 
-                      child: Material(
-                        color: Colors.transparent,
+                      itemCount: visibleMenuIndices.length,
 
-                        borderRadius: BorderRadius.circular(13),
+                      itemBuilder: (context, filteredIndex) {
+                        final index = visibleMenuIndices[filteredIndex];
+                        final item = _menuItems[index];
 
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(13),
+                        final selected = _selectedIndex == index;
 
-                          hoverColor: Colors.white.withValues(alpha: 0.12),
+                        Widget tile = Padding(
+                          padding: const EdgeInsets.only(bottom: 5),
 
-                          onTap: () {
-                            setState(() {
-                              _selectedIndex = index;
-                            });
-                            if (drawerMode && Navigator.of(context).canPop()) {
-                              Navigator.of(context).pop();
-                            }
-                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 210),
 
-                          child: SizedBox(
-                            height: 48,
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? Colors.white
+                                  : Colors.transparent,
 
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: compact ? 10 : 13,
-                              ),
+                              borderRadius: BorderRadius.circular(13),
 
-                              child: Row(
-                                mainAxisAlignment: compact
-                                    ? MainAxisAlignment.center
-                                    : MainAxisAlignment.start,
+                              boxShadow: selected
+                                  ? const [
+                                      BoxShadow(
+                                        color: Color(0x20000000),
 
-                                children: [
-                                  Icon(
-                                    item.icon,
+                                        blurRadius: 10,
 
-                                    size: 21,
-
-                                    color: selected
-                                        ? const Color(0xFF1565C0)
-                                        : Colors.white,
-                                  ),
-
-                                  if (!compact) ...[
-                                    // Handles the sized box logic used by this module.
-                                    const SizedBox(width: 12),
-
-                                    Expanded(
-                                      child: Text(
-                                        item.label,
-
-                                        overflow: TextOverflow.ellipsis,
-
-                                        style: TextStyle(
-                                          color: selected
-                                              ? const Color(0xFF18324F)
-                                              : Colors.white,
-
-                                          fontSize: 13,
-
-                                          fontWeight: selected
-                                              ? FontWeight.w800
-                                              : FontWeight.w500,
-                                        ),
+                                        offset: Offset(0, 4),
                                       ),
+                                    ]
+                                  : const [],
+                            ),
+
+                            child: Material(
+                              color: Colors.transparent,
+
+                              borderRadius: BorderRadius.circular(13),
+
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(13),
+
+                                hoverColor: Colors.white.withValues(
+                                  alpha: 0.12,
+                                ),
+
+                                onTap: () {
+                                  setState(() {
+                                    _selectedIndex = index;
+                                  });
+                                  if (drawerMode &&
+                                      Navigator.of(context).canPop()) {
+                                    Navigator.of(context).pop();
+                                  }
+                                },
+
+                                child: SizedBox(
+                                  height: 48,
+
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: compact ? 10 : 13,
                                     ),
-                                  ],
-                                ],
+
+                                    child: Row(
+                                      mainAxisAlignment: compact
+                                          ? MainAxisAlignment.center
+                                          : MainAxisAlignment.start,
+
+                                      children: [
+                                        Icon(
+                                          item.icon,
+
+                                          size: 21,
+
+                                          color: selected
+                                              ? const Color(0xFF1565C0)
+                                              : Colors.white,
+                                        ),
+
+                                        if (!compact) ...[
+                                          // Handles the sized box logic used by this module.
+                                          const SizedBox(width: 12),
+
+                                          Expanded(
+                                            child: Text(
+                                              item.label,
+
+                                              overflow: TextOverflow.ellipsis,
+
+                                              style: TextStyle(
+                                                color: selected
+                                                    ? const Color(0xFF18324F)
+                                                    : Colors.white,
+
+                                                fontSize: 13,
+
+                                                fontWeight: selected
+                                                    ? FontWeight.w800
+                                                    : FontWeight.w500,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ),
+                        );
+
+                        if (compact) {
+                          tile = Tooltip(message: item.label, child: tile);
+                        }
+
+                        if (item.label == 'Notifications') {
+                          // Calculates and displays the owner sidebar unread badge while matching the same notification ID rules used by the Notifications screen.
+                          return _buildNotificationBadge(
+                            compact: compact,
+
+                            child: tile,
+                          );
+                        }
+
+                        return tile;
+                      },
                     ),
-                  );
-
-                  if (compact) {
-                    tile = Tooltip(message: item.label, child: tile);
-                  }
-
-                  if (item.label == 'Notifications') {
-                    // Calculates and displays the owner sidebar unread badge while matching the same notification ID rules used by the Notifications screen.
-                    return _buildNotificationBadge(
-                      compact: compact,
-
-                      child: tile,
-                    );
-                  }
-
-                  return tile;
-                },
-              ),
             ),
 
             Padding(

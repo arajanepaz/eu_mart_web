@@ -6,6 +6,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Screen widget for builds unified operational alerts from stock, expiration, permit, and price-update data and tracks per-user read status.
 class NotificationsScreen extends StatefulWidget {
@@ -47,6 +48,188 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   int _expirationAlertDays = 30;
   bool _enableLowStockAlerts = true;
   bool _enableExpirationAlerts = true;
+
+  // Opens a Google Shopping search directly. No Cloud Functions, API keys,
+  // automated price retrieval, or Firestore price changes are involved.
+  Future<void> _openGoogleShoppingForProduct(
+    QueryDocumentSnapshot<Map<String, dynamic>> product,
+  ) async {
+    final data = product.data();
+    final name = (data['productName'] ?? '').toString().trim();
+    final brand = (data['brand'] ?? '').toString().trim();
+    final unit = (data['unit'] ?? '').toString().trim();
+
+    if (name.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('This product has no name to search.')),
+        );
+      }
+      return;
+    }
+
+    // Avoid repeating the brand or unit when already present in the name.
+    final queryParts = <String>[name];
+    final normalizedName = name.toLowerCase();
+    if (brand.isNotEmpty && !normalizedName.contains(brand.toLowerCase())) {
+      queryParts.add(brand);
+    }
+    if (unit.isNotEmpty && !normalizedName.contains(unit.toLowerCase())) {
+      queryParts.add(unit);
+    }
+    queryParts.add('Philippines');
+
+    final uri = Uri.https('www.google.com', '/search', {
+      'tbm': 'shop',
+      'gl': 'ph',
+      'hl': 'en',
+      'q': queryParts.join(' '),
+    });
+
+    try {
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.platformDefault,
+        webOnlyWindowName: '_blank',
+      );
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not open Google Shopping. Check your browser pop-up settings.',
+            ),
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open Google Shopping. Please try again.'),
+          ),
+        );
+      }
+    }
+  }
+
+  // Owner manually selects an existing Firestore product before searching.
+  Future<void> _chooseProductForPriceCheck() async {
+    final search = TextEditingController();
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> allProducts;
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .get();
+      allProducts = snapshot.docs;
+      allProducts.sort(
+        (a, b) =>
+            (a.data()['productName'] ?? '').toString().toLowerCase().compareTo(
+              (b.data()['productName'] ?? '').toString().toLowerCase(),
+            ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to load products. Please try again.'),
+          ),
+        );
+      }
+      search.dispose();
+      return;
+    }
+    if (!mounted) {
+      search.dispose();
+      return;
+    }
+
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            final query = search.text.trim().toLowerCase();
+            final choices = allProducts
+                .where((doc) {
+                  final data = doc.data();
+                  return query.isEmpty ||
+                      '${data['productName'] ?? ''} ${data['brand'] ?? ''} ${data['barcode'] ?? ''}'
+                          .toLowerCase()
+                          .contains(query);
+                })
+                .take(40)
+                .toList();
+            return AlertDialog(
+              title: const Text('Check Online Prices'),
+              content: SizedBox(
+                width: 570,
+                height: 430,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Select a product to open its Google Shopping results. '
+                      'Online prices may differ by store, size and promotion; '
+                      'no EÜ MART prices will be changed.',
+                      style: TextStyle(fontSize: 12, color: Colors.deepOrange),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: search,
+                      autofocus: true,
+                      onChanged: (_) => setDialogState(() {}),
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: 'Search product name, brand or barcode',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: choices.isEmpty
+                          ? const Center(
+                              child: Text('No matching products found.'),
+                            )
+                          : ListView.builder(
+                              itemCount: choices.length,
+                              itemBuilder: (context, index) {
+                                final document = choices[index];
+                                final data = document.data();
+                                return ListTile(
+                                  title: Text(
+                                    (data['productName'] ?? '').toString(),
+                                  ),
+                                  subtitle: Text(
+                                    '${data['brand'] ?? ''} • ${data['unit'] ?? ''} • '
+                                    'EÜ MART ₱${_readDouble(data['sellingPrice']).toStringAsFixed(2)}',
+                                  ),
+                                  trailing: const Icon(Icons.open_in_new),
+                                  onTap: () {
+                                    // Launch inside the user gesture to avoid browser
+                                    // pop-up blockers; the selection dialog remains open.
+                                    _openGoogleShoppingForProduct(document);
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Close'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      WidgetsBinding.instance.addPostFrameCallback((_) => search.dispose());
+    }
+  }
 
   Future<
     ({
@@ -1379,6 +1562,30 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ),
                     ),
                   ),
+
+                  // Optional owner-initiated web price research. Does not edit any product price.
+                  if (_selectedFilter == 'Price Update')
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+                      sliver: SliverToBoxAdapter(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: OutlinedButton.icon(
+                            onPressed: _chooseProductForPriceCheck,
+                            icon: const Icon(Icons.travel_explore),
+                            label: const Text('CHECK ONLINE PRICES'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF1565C0),
+                              side: const BorderSide(color: Color(0xFF1565C0)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
 
                   if (filteredAlerts.isEmpty)
                     // Handles the sliver padding logic used by this module.

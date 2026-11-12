@@ -21,6 +21,64 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
 
   String _searchQuery = '';
   String _selectedFilter = 'All';
+  String _selectedCategory = 'All';
+
+  // Category labels come directly from the current Firestore product snapshot.
+  // This is display-only filtering and does not change product documents.
+  String _categoryOf(Map<String, dynamic> data) {
+    final value = (data['category'] ?? '').toString().trim();
+    return value.isEmpty ? 'Uncategorized' : value;
+  }
+
+  List<String> _categoriesFor(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
+  ) {
+    final unique = <String, String>{};
+    for (final product in products) {
+      final category = _categoryOf(product.data());
+      unique.putIfAbsent(category.toLowerCase(), () => category);
+    }
+    final categories = unique.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return [
+      'All',
+      ...categories.where((value) => value.toLowerCase() != 'all'),
+    ];
+  }
+
+  Widget _categoryFilterRow(List<String> categories, String activeCategory) {
+    return SizedBox(
+      height: 43,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: categories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final category = categories[index];
+          final isSelected = activeCategory == category;
+          return ChoiceChip(
+            label: Text(category),
+            selected: isSelected,
+            onSelected: (_) => setState(() => _selectedCategory = category),
+            showCheckmark: false,
+            selectedColor: const Color(0xFFD9EAFE),
+            backgroundColor: Colors.white,
+            side: BorderSide(
+              color: isSelected
+                  ? const Color(0xFF1565C0)
+                  : const Color(0xFFDDE6F1),
+            ),
+            labelStyle: TextStyle(
+              color: isSelected
+                  ? const Color(0xFF0D47A1)
+                  : const Color(0xFF48566A),
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   // Checks whether the current value satisfies the matches search rule used by this module.
   bool _matchesSearch(Map<String, dynamic> data) {
@@ -126,10 +184,23 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
           return first.compareTo(second);
         });
 
+        final categories = _categoriesFor(products);
+        // A category removed from Firestore should not leave an empty filter.
+        final activeCategory =
+            categories.any(
+              (category) =>
+                  category.toLowerCase() == _selectedCategory.toLowerCase(),
+            )
+            ? _selectedCategory
+            : 'All';
         final filtered = products.where((document) {
           final data = document.data();
-          // Checks whether the current value satisfies the matches search rule used by this module.
-          return _matchesSearch(data) && _matchesFilter(data);
+          final matchesCategory =
+              activeCategory == 'All' ||
+              _categoryOf(data).toLowerCase() == activeCategory.toLowerCase();
+          return _matchesSearch(data) &&
+              _matchesFilter(data) &&
+              matchesCategory;
         }).toList();
 
         int availableCount = 0;
@@ -242,8 +313,10 @@ class _CashierProductsScreenState extends State<CashierProductsScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              _categoryFilterRow(categories, activeCategory),
               // Handles the sized box logic used by this module.
-              const SizedBox(height: 18),
+              const SizedBox(height: 12),
               Expanded(
                 child: filtered.isEmpty
                     ? const Center(

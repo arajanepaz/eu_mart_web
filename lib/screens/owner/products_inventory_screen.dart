@@ -287,6 +287,7 @@ class ProductsInventoryScreen extends StatefulWidget {
 class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  String _selectedCategory = 'All';
 
   static const int _productsPerPage = 25;
   int _currentPage = 0;
@@ -579,6 +580,72 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     }
   }
 
+  // Suggestions come from existing products, so the owner can reuse values
+  // without maintaining a separate Firestore categories/brands collection.
+  List<String> _existingFieldValues(
+    String field, {
+    List<String> defaults = const [],
+  }) {
+    final unique = <String, String>{};
+    for (final value in defaults) {
+      final clean = value.trim();
+      if (clean.isNotEmpty)
+        unique.putIfAbsent(clean.toLowerCase(), () => clean);
+    }
+    for (final document in _allProducts) {
+      final clean = (document.data()[field] ?? '').toString().trim();
+      if (clean.isNotEmpty)
+        unique.putIfAbsent(clean.toLowerCase(), () => clean);
+    }
+    return unique.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
+  // Searchable dropdown: choose an existing value OR type a new one.
+  // The existing form controller remains the source of truth when saving.
+  Widget _suggestionField({
+    required TextEditingController controller,
+    required String label,
+    required List<String> options,
+    required double width,
+    String? Function(String?)? validator,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Autocomplete<String>(
+        initialValue: TextEditingValue(text: controller.text),
+        optionsBuilder: (textEditingValue) {
+          final typed = textEditingValue.text.trim().toLowerCase();
+          return options
+              .where(
+                (value) => typed.isEmpty || value.toLowerCase().contains(typed),
+              )
+              .take(15);
+        },
+        onSelected: (selection) => controller.text = selection,
+        fieldViewBuilder:
+            (context, fieldController, focusNode, onFieldSubmitted) {
+              return TextFormField(
+                controller: fieldController,
+                focusNode: focusNode,
+                validator: validator,
+                onChanged: (value) => controller.text = value,
+                decoration: InputDecoration(
+                  labelText: label,
+                  helperText: 'Choose a suggestion or type a new value',
+                  suffixIcon: IconButton(
+                    tooltip: 'Show suggestions',
+                    icon: const Icon(Icons.arrow_drop_down),
+                    onPressed: () => focusNode.requestFocus(),
+                  ),
+                  border: const OutlineInputBorder(),
+                ),
+              );
+            },
+      ),
+    );
+  }
+
   // ------------------------------------------------------------
   // ADD / EDIT PRODUCT DIALOG
   // ------------------------------------------------------------
@@ -848,16 +915,18 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           label: 'Manufacturer Barcode (optional)',
                           width: 310,
                         ),
-                        _dialogField(
+                        _suggestionField(
                           controller: categoryController,
                           label: 'Category',
                           width: 310,
+                          options: _existingFieldValues('category'),
                           validator: _requiredValidator,
                         ),
-                        _dialogField(
+                        _suggestionField(
                           controller: brandController,
                           label: 'Brand (optional)',
                           width: 310,
+                          options: _existingFieldValues('brand'),
                         ),
                         _dialogField(
                           controller: buyingPriceController,
@@ -884,15 +953,30 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           keyboardType: TextInputType.number,
                           validator: _integerValidator,
                         ),
-                        _dialogField(
+                        _suggestionField(
                           controller: supplierController,
                           label: 'Supplier',
                           width: 310,
+                          options: _existingFieldValues('supplier'),
                         ),
-                        _dialogField(
+                        _suggestionField(
                           controller: unitController,
                           label: 'Unit (piece, kg, liter, pack)',
                           width: 310,
+                          options: _existingFieldValues(
+                            'unit',
+                            defaults: const [
+                              'piece',
+                              'pack',
+                              'box',
+                              'bottle',
+                              'sachet',
+                              'kg',
+                              'liter',
+                              'can',
+                              'set',
+                            ],
+                          ),
                           validator: _requiredValidator,
                         ),
                         SizedBox(
@@ -1233,6 +1317,14 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
       setState(() {
         _allProducts = documents;
+        if (_selectedCategory != 'All' &&
+            !documents.any(
+              (doc) =>
+                  _productCategory(doc.data()).toLowerCase() ==
+                  _selectedCategory.toLowerCase(),
+            )) {
+          _selectedCategory = 'All';
+        }
         _activeCount = activeCount;
         _totalStock = totalStock;
         _productsLoading = false;
@@ -1272,12 +1364,69 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
     return combined.contains(_searchQuery);
   }
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> get _filteredProducts {
-    if (_searchQuery.isEmpty) return _allProducts;
+  String _productCategory(Map<String, dynamic> data) {
+    final category = (data['category'] ?? '').toString().trim();
+    return category.isEmpty ? 'Uncategorized' : category;
+  }
 
-    return _allProducts
-        .where((document) => _matchesSearch(document.data()))
-        .toList();
+  List<String> get _productCategories {
+    final categories = <String, String>{};
+    for (final product in _allProducts) {
+      final category = _productCategory(product.data());
+      categories.putIfAbsent(category.toLowerCase(), () => category);
+    }
+    final sorted = categories.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return ['All', ...sorted.where((name) => name.toLowerCase() != 'all')];
+  }
+
+  Widget _categoryChips() {
+    final categories = _productCategories;
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: categories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final category = categories[index];
+          final selected = _selectedCategory == category;
+          return ChoiceChip(
+            label: Text(category),
+            selected: selected,
+            onSelected: (_) => setState(() {
+              _selectedCategory = category;
+              _currentPage = 0;
+            }),
+            selectedColor: const Color(0xFFD9EAFE),
+            labelStyle: TextStyle(
+              color: selected
+                  ? const Color(0xFF0D47A1)
+                  : const Color(0xFF48566A),
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            ),
+            side: BorderSide(
+              color: selected
+                  ? const Color(0xFF1565C0)
+                  : const Color(0xFFDDE6F1),
+            ),
+            backgroundColor: Colors.white,
+            showCheckmark: false,
+          );
+        },
+      ),
+    );
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> get _filteredProducts {
+    return _allProducts.where((document) {
+      final data = document.data();
+      final matchesCategory =
+          _selectedCategory == 'All' ||
+          _productCategory(data).toLowerCase() ==
+              _selectedCategory.toLowerCase();
+      return matchesCategory && _matchesSearch(data);
+    }).toList();
   }
 
   // ------------------------------------------------------------
@@ -1338,299 +1487,312 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       color: const Color(0xFFF2F6FC),
       child: Padding(
         padding: const EdgeInsets.all(22),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(22),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-                ),
-                borderRadius: BorderRadius.circular(22),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x291565C0),
-                    blurRadius: 22,
-                    offset: Offset(0, 10),
+        // Let the entire inventory page scroll on shorter laptop screens.
+        // A bounded product-list area below prevents the table from collapsing
+        // when the header, summary tiles, search, and categories take space.
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
                   ),
-                ],
-              ),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 900;
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x291565C0),
+                      blurRadius: 22,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 900;
 
-                  final title = Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Handles the row logic used by this module.
-                      const Row(
-                        children: [
-                          Icon(
-                            Icons.inventory_2_outlined,
-                            color: Colors.white,
-                            size: 26,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Products & Inventory',
-                            style: TextStyle(
+                    final title = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Handles the row logic used by this module.
+                        const Row(
+                          children: [
+                            Icon(
+                              Icons.inventory_2_outlined,
                               color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
+                              size: 26,
+                            ),
+                            SizedBox(width: 10),
+                            Text(
+                              'Products & Inventory',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(height: 7),
+                        Text(
+                          'Manage products, stock, pricing, '
+                          'barcodes, and expiration details.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.82),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    );
+
+                    final actions = Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            // Handles the import products from csv logic used by this module.
+                            await _importProductsFromCsv();
+                            // Loads active product records into local caches used by fast POS search and barcode lookup.
+                            await _loadProducts();
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.65),
+                            ),
+                            minimumSize: const Size(150, 48),
+                          ),
+                          icon: const Icon(Icons.upload_file_outlined),
+                          label: const Text('IMPORT CSV'),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            // Opens the product dialog interface using the current record or screen state.
+                            await _showProductDialog();
+                            // Loads active product records into local caches used by fast POS search and barcode lookup.
+                            await _loadProducts();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF1565C0),
+                            minimumSize: const Size(180, 48),
+                            elevation: 0,
+                          ),
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text(
+                            'ADD PRODUCT',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    );
+
+                    if (compact) {
+                      // Handles the column logic used by this module.
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [title, const SizedBox(height: 18), actions],
+                      );
+                    }
+
+                    // Handles the row logic used by this module.
+                    return Row(
+                      children: [
+                        Expanded(child: title),
+                        actions,
+                      ],
+                    );
+                  },
+                ),
+              ),
+              // Handles the sized box logic used by this module.
+              const SizedBox(height: 18),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = constraints.maxWidth >= 900
+                      ? 4
+                      : constraints.maxWidth >= 650
+                      ? 2
+                      : 1;
+
+                  return GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: columns,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    mainAxisExtent: columns == 4
+                        ? 112
+                        : columns == 2
+                        ? 122
+                        : 104,
+                    children: [
+                      _inventorySummaryCard(
+                        label: 'Total Products',
+                        value: '${_allProducts.length}',
+                        icon: Icons.category_outlined,
+                        color: const Color(0xFF1565C0),
+                      ),
+                      _inventorySummaryCard(
+                        label: 'Active Products',
+                        value: '$_activeCount',
+                        icon: Icons.check_circle_outline,
+                        color: const Color(0xFF159447),
+                      ),
+                      _inventorySummaryCard(
+                        label: 'Low Stock',
+                        value: '$_lowStockCount',
+                        icon: Icons.warning_amber_rounded,
+                        color: const Color(0xFFF59E0B),
+                      ),
+                      _inventorySummaryCard(
+                        label: 'Total Units',
+                        value: '$_totalStock',
+                        icon: Icons.stacked_bar_chart_rounded,
+                        color: const Color(0xFF7B1FA2),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              // Handles the sized box logic used by this module.
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE1E9F3)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x0F16395C),
+                      blurRadius: 12,
+                      offset: Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value.trim().toLowerCase();
+                      _currentPage = 0;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText:
+                        'Search product, barcode, category, brand, or supplier',
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: Color(0xFF1565C0),
+                    ),
+                    suffixIcon: _searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _searchQuery = '';
+                                _currentPage = 0;
+                              });
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              _categoryChips(),
+              // Handles the sized box logic used by this module.
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 520,
+                child: filtered.isEmpty
+                    ? const _InventoryEmptyState()
+                    : Column(
+                        children: [
+                          Expanded(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                if (constraints.maxWidth >= 980) {
+                                  // Builds the product table UI from the current data and screen state.
+                                  return _buildProductTable(visibleProducts);
+                                }
+
+                                // Builds the product cards UI from the current data and screen state.
+                                return _buildProductCards(visibleProducts);
+                              },
+                            ),
+                          ),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFFE1E9F3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Previous page',
+                                  onPressed: safeCurrentPage > 0
+                                      ? () {
+                                          setState(() {
+                                            _currentPage = safeCurrentPage - 1;
+                                          });
+                                        }
+                                      : null,
+                                  icon: const Icon(Icons.chevron_left_rounded),
+                                ),
+                                // Handles the sized box logic used by this module.
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Page ${safeCurrentPage + 1} of $totalPages'
+                                  '  •  ${filtered.length} product(s)',
+                                  style: const TextStyle(
+                                    color: Color(0xFF4B5563),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                // Handles the sized box logic used by this module.
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  tooltip: 'Next page',
+                                  onPressed: safeCurrentPage < totalPages - 1
+                                      ? () {
+                                          setState(() {
+                                            _currentPage = safeCurrentPage + 1;
+                                          });
+                                        }
+                                      : null,
+                                  icon: const Icon(Icons.chevron_right_rounded),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(height: 7),
-                      Text(
-                        'Manage products, stock, pricing, '
-                        'barcodes, and expiration details.',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.82),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  );
-
-                  final actions = Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          // Handles the import products from csv logic used by this module.
-                          await _importProductsFromCsv();
-                          // Loads active product records into local caches used by fast POS search and barcode lookup.
-                          await _loadProducts();
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.65),
-                          ),
-                          minimumSize: const Size(150, 48),
-                        ),
-                        icon: const Icon(Icons.upload_file_outlined),
-                        label: const Text('IMPORT CSV'),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () async {
-                          // Opens the product dialog interface using the current record or screen state.
-                          await _showProductDialog();
-                          // Loads active product records into local caches used by fast POS search and barcode lookup.
-                          await _loadProducts();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF1565C0),
-                          minimumSize: const Size(180, 48),
-                          elevation: 0,
-                        ),
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text(
-                          'ADD PRODUCT',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
-                  );
-
-                  if (compact) {
-                    // Handles the column logic used by this module.
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [title, const SizedBox(height: 18), actions],
-                    );
-                  }
-
-                  // Handles the row logic used by this module.
-                  return Row(
-                    children: [
-                      Expanded(child: title),
-                      actions,
-                    ],
-                  );
-                },
               ),
-            ),
-            // Handles the sized box logic used by this module.
-            const SizedBox(height: 18),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final columns = constraints.maxWidth >= 900
-                    ? 4
-                    : constraints.maxWidth >= 650
-                    ? 2
-                    : 1;
-
-                return GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: columns,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  mainAxisExtent: columns == 4
-                      ? 112
-                      : columns == 2
-                      ? 122
-                      : 104,
-                  children: [
-                    _inventorySummaryCard(
-                      label: 'Total Products',
-                      value: '${_allProducts.length}',
-                      icon: Icons.category_outlined,
-                      color: const Color(0xFF1565C0),
-                    ),
-                    _inventorySummaryCard(
-                      label: 'Active Products',
-                      value: '$_activeCount',
-                      icon: Icons.check_circle_outline,
-                      color: const Color(0xFF159447),
-                    ),
-                    _inventorySummaryCard(
-                      label: 'Low Stock',
-                      value: '$_lowStockCount',
-                      icon: Icons.warning_amber_rounded,
-                      color: const Color(0xFFF59E0B),
-                    ),
-                    _inventorySummaryCard(
-                      label: 'Total Units',
-                      value: '$_totalStock',
-                      icon: Icons.stacked_bar_chart_rounded,
-                      color: const Color(0xFF7B1FA2),
-                    ),
-                  ],
-                );
-              },
-            ),
-            // Handles the sized box logic used by this module.
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE1E9F3)),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x0F16395C),
-                    blurRadius: 12,
-                    offset: Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value.trim().toLowerCase();
-                    _currentPage = 0;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText:
-                      'Search product, barcode, category, brand, or supplier',
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    color: Color(0xFF1565C0),
-                  ),
-                  suffixIcon: _searchQuery.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                              _currentPage = 0;
-                            });
-                          },
-                          icon: const Icon(Icons.close_rounded),
-                        ),
-                  border: InputBorder.none,
-                ),
-              ),
-            ),
-            // Handles the sized box logic used by this module.
-            const SizedBox(height: 16),
-            Expanded(
-              child: filtered.isEmpty
-                  ? const _InventoryEmptyState()
-                  : Column(
-                      children: [
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              if (constraints.maxWidth >= 980) {
-                                // Builds the product table UI from the current data and screen state.
-                                return _buildProductTable(visibleProducts);
-                              }
-
-                              // Builds the product cards UI from the current data and screen state.
-                              return _buildProductCards(visibleProducts);
-                            },
-                          ),
-                        ),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFE1E9F3)),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              IconButton(
-                                tooltip: 'Previous page',
-                                onPressed: safeCurrentPage > 0
-                                    ? () {
-                                        setState(() {
-                                          _currentPage = safeCurrentPage - 1;
-                                        });
-                                      }
-                                    : null,
-                                icon: const Icon(Icons.chevron_left_rounded),
-                              ),
-                              // Handles the sized box logic used by this module.
-                              const SizedBox(width: 8),
-                              Text(
-                                'Page ${safeCurrentPage + 1} of $totalPages'
-                                '  •  ${filtered.length} product(s)',
-                                style: const TextStyle(
-                                  color: Color(0xFF4B5563),
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              // Handles the sized box logic used by this module.
-                              const SizedBox(width: 8),
-                              IconButton(
-                                tooltip: 'Next page',
-                                onPressed: safeCurrentPage < totalPages - 1
-                                    ? () {
-                                        setState(() {
-                                          _currentPage = safeCurrentPage + 1;
-                                        });
-                                      }
-                                    : null,
-                                icon: const Icon(Icons.chevron_right_rounded),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

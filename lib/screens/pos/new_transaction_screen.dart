@@ -49,6 +49,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   Timer? _durationTimer;
 
   String _query = '';
+  String _selectedCategory = 'All';
   bool _processing = false;
   bool _aiSearching = false;
   final Set<String> _aiMatchedProductIds = <String>{};
@@ -278,6 +279,14 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         item.quantity--;
       }
     });
+  }
+
+  // Updates a cart item's typed quantity without bypassing stock rules.
+  void _setCartQuantity(_CartItem item, int quantity) {
+    if (!_cart.containsKey(item.productId)) return;
+    if (quantity < 1 || quantity > item.availableStock) return;
+    if (item.quantity == quantity) return;
+    setState(() => item.quantity = quantity);
   }
 
   // Processes cashier search input, prioritizing exact barcode matches before local text-search scoring.
@@ -2776,11 +2785,83 @@ $productLines
     );
   }
 
+  // Dynamic category filters are derived from existing product records.
+  // No additional Firestore collection or schema change is required.
+  String _productCategory(Map<String, dynamic> data) {
+    final category = (data['category'] ?? '').toString().trim();
+    return category.isEmpty ? 'Uncategorized' : category;
+  }
+
+  List<String> get _productCategories {
+    final categories = <String, String>{};
+    for (final product in _activeProducts) {
+      final category = _productCategory(product.data());
+      categories.putIfAbsent(category.toLowerCase(), () => category);
+    }
+    final sorted = categories.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return ['All', ...sorted.where((name) => name.toLowerCase() != 'all')];
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _categoryFilteredProducts(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> searchResults,
+  ) {
+    // An exact scanned barcode remains visible regardless of category.
+    if (_scannedBarcodeProductId != null) return searchResults;
+
+    // For category browsing, filter the whole active catalog BEFORE the
+    // display limit; otherwise products beyond the first 80 are hidden.
+    final source = _query.trim().isEmpty ? _activeProducts : searchResults;
+    final filtered = _selectedCategory == 'All'
+        ? source
+        : source.where(
+            (document) =>
+                _productCategory(document.data()).toLowerCase() ==
+                _selectedCategory.toLowerCase(),
+          );
+    return filtered.take(_maxVisibleProducts).toList();
+  }
+
+  Widget _categoryChips(List<String> categories) {
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: categories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final category = categories[index];
+          final selected = _selectedCategory == category;
+          return ChoiceChip(
+            label: Text(category),
+            selected: selected,
+            onSelected: (_) => setState(() => _selectedCategory = category),
+            selectedColor: const Color(0xFFD9EAFE),
+            labelStyle: TextStyle(
+              color: selected
+                  ? const Color(0xFF0D47A1)
+                  : const Color(0xFF48566A),
+              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+            ),
+            side: BorderSide(
+              color: selected
+                  ? const Color(0xFF1565C0)
+                  : const Color(0xFFDDE6F1),
+            ),
+            backgroundColor: Colors.white,
+            showCheckmark: false,
+          );
+        },
+      ),
+    );
+  }
+
   // Handles the product panel logic used by this module.
   Widget _productPanel(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
     List<QueryDocumentSnapshot<Map<String, dynamic>>> allProducts,
   ) {
+    final displayedProducts = _categoryFilteredProducts(products);
     // Handles the column logic used by this module.
     return Column(
       children: [
@@ -2958,8 +3039,10 @@ $productLines
             ),
           ],
         ],
+        const SizedBox(height: 10),
+        _categoryChips(_productCategories),
         // Handles the sized box logic used by this module.
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3017,10 +3100,10 @@ $productLines
                 const SizedBox(height: 16),
               ],
               Expanded(
-                child: products.isEmpty
+                child: displayedProducts.isEmpty
                     ? const Center(child: Text('No matching products found.'))
                     : GridView.builder(
-                        itemCount: products.length,
+                        itemCount: displayedProducts.length,
                         gridDelegate:
                             // Handles the sliver grid delegate with max cross axis extent logic used by this module.
                             const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -3030,7 +3113,7 @@ $productLines
                               mainAxisSpacing: 14,
                             ),
                         itemBuilder: (context, index) {
-                          final document = products[index];
+                          final document = displayedProducts[index];
                           final data = document.data();
                           final name =
                               (data['productName'] ?? 'Unknown Product')
@@ -3302,7 +3385,15 @@ $productLines
                                 color: Colors.red,
                               ),
                             ),
-                            Text('${item.quantity}'),
+                            _EditableCartQuantity(
+                              key: ValueKey(item.productId),
+                              quantity: item.quantity,
+                              availableStock: item.availableStock,
+                              onChanged: (quantity) =>
+                                  _setCartQuantity(item, quantity),
+                              onInvalid: (message) =>
+                                  _message(message, Colors.orange),
+                            ),
                             IconButton(
                               onPressed: () => _increase(item),
                               icon: const Icon(
@@ -3691,6 +3782,14 @@ $productLines
       if (!mounted) return;
       setState(() {
         _activeProducts = active;
+        if (_selectedCategory != 'All' &&
+            !active.any(
+              (doc) =>
+                  _productCategory(doc.data()).toLowerCase() ==
+                  _selectedCategory.toLowerCase(),
+            )) {
+          _selectedCategory = 'All';
+        }
         _productsById
           ..clear()
           ..addAll(byId);
@@ -3954,6 +4053,116 @@ class _PosProductCardState extends State<_PosProductCard> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// Editable quantity for a single cart item. It retains text-input focus while
+// the POS timer, subtotal, and stock controls rebuild the cart.
+class _EditableCartQuantity extends StatefulWidget {
+  final int quantity;
+  final int availableStock;
+  final ValueChanged<int> onChanged;
+  final ValueChanged<String> onInvalid;
+
+  const _EditableCartQuantity({
+    super.key,
+    required this.quantity,
+    required this.availableStock,
+    required this.onChanged,
+    required this.onInvalid,
+  });
+
+  @override
+  State<_EditableCartQuantity> createState() => _EditableCartQuantityState();
+}
+
+class _EditableCartQuantityState extends State<_EditableCartQuantity> {
+  late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: '${widget.quantity}');
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus) _finishEditing();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _EditableCartQuantity oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Keep the typed value stable during timer rebuilds, but reflect changes
+    // made with +/- and restored held-cart quantities.
+    if (widget.quantity != oldWidget.quantity &&
+        _controller.text != '${widget.quantity}') {
+      final text = '${widget.quantity}';
+      _controller.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+  }
+
+  void _onChanged(String raw) {
+    final parsed = int.tryParse(raw);
+    // Empty or partial input is allowed while typing, but never persisted.
+    if (parsed != null && parsed >= 1 && parsed <= widget.availableStock) {
+      widget.onChanged(parsed);
+    }
+  }
+
+  void _finishEditing() {
+    if (!mounted) return;
+    final typed = int.tryParse(_controller.text);
+    if (typed == null || typed < 1) {
+      widget.onInvalid('Quantity must be at least 1.');
+    } else if (typed > widget.availableStock) {
+      widget.onInvalid('Only ${widget.availableStock} stock available.');
+    } else {
+      widget.onChanged(typed);
+    }
+    final corrected = '${widget.quantity}';
+    _controller.value = TextEditingValue(
+      text: corrected,
+      selection: TextSelection.collapsed(offset: corrected.length),
+    );
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 54,
+      height: 39,
+      child: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        textAlign: TextAlign.center,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        onChanged: _onChanged,
+        onSubmitted: (_) {
+          _finishEditing();
+          _focusNode.unfocus();
+        },
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 4,
+            vertical: 10,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
       ),
     );
   }
