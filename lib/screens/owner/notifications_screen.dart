@@ -6,7 +6,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:html' as html;
+import 'package:flutter/services.dart';
 
 // Screen widget for builds unified operational alerts from stock, expiration, permit, and price-update data and tracks per-user read status.
 class NotificationsScreen extends StatefulWidget {
@@ -49,67 +50,79 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _enableLowStockAlerts = true;
   bool _enableExpirationAlerts = true;
 
-  // Opens a Google Shopping search directly. No Cloud Functions, API keys,
-  // automated price retrieval, or Firestore price changes are involved.
-  Future<void> _openGoogleShoppingForProduct(
-    QueryDocumentSnapshot<Map<String, dynamic>> product,
-  ) async {
+  // Create a public shopping-search URL. This never edits Firestore prices.
+  Uri? _googleShoppingUri(QueryDocumentSnapshot<Map<String, dynamic>> product) {
     final data = product.data();
     final name = (data['productName'] ?? '').toString().trim();
     final brand = (data['brand'] ?? '').toString().trim();
     final unit = (data['unit'] ?? '').toString().trim();
+    if (name.isEmpty) return null;
 
-    if (name.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This product has no name to search.')),
-        );
-      }
-      return;
+    final parts = <String>[name];
+    final lowerName = name.toLowerCase();
+    if (brand.isNotEmpty && !lowerName.contains(brand.toLowerCase())) {
+      parts.add(brand);
     }
+    if (unit.isNotEmpty && !lowerName.contains(unit.toLowerCase())) {
+      parts.add(unit);
+    }
+    parts.add('Philippines');
 
-    // Avoid repeating the brand or unit when already present in the name.
-    final queryParts = <String>[name];
-    final normalizedName = name.toLowerCase();
-    if (brand.isNotEmpty && !normalizedName.contains(brand.toLowerCase())) {
-      queryParts.add(brand);
-    }
-    if (unit.isNotEmpty && !normalizedName.contains(unit.toLowerCase())) {
-      queryParts.add(unit);
-    }
-    queryParts.add('Philippines');
-
-    final uri = Uri.https('www.google.com', '/search', {
+    return Uri.https('www.google.com', '/search', {
       'tbm': 'shop',
       'gl': 'ph',
       'hl': 'en',
-      'q': queryParts.join(' '),
+      'q': parts.join(' '),
     });
+  }
+
+  void _notifyShoppingIssue(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 6)),
+    );
+  }
+
+  Future<void> _copyGoogleShoppingLink(
+    QueryDocumentSnapshot<Map<String, dynamic>> product,
+  ) async {
+    final uri = _googleShoppingUri(product);
+    if (uri == null) {
+      _notifyShoppingIssue('This product has no name to search.');
+      return;
+    }
+    try {
+      await Clipboard.setData(ClipboardData(text: uri.toString()));
+      _notifyShoppingIssue(
+        'Google Shopping link copied. Paste it into Chrome.',
+      );
+    } catch (error) {
+      debugPrint('Copy Google Shopping link failed: $error');
+      _notifyShoppingIssue('Could not copy the link. Please try again.');
+    }
+  }
+
+  // IMPORTANT: Keep window.open synchronous inside the product click callback.
+  // Awaiting a plugin before window.open can lose the browser's user gesture.
+  void _openGoogleShoppingForProduct(
+    QueryDocumentSnapshot<Map<String, dynamic>> product,
+  ) {
+    final uri = _googleShoppingUri(product);
+    if (uri == null) {
+      _notifyShoppingIssue('This product has no name to search.');
+      return;
+    }
 
     try {
-      final opened = await launchUrl(
-        uri,
-        mode: LaunchMode.platformDefault,
-        webOnlyWindowName: '_blank',
-      );
-      if (!opened && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not open Google Shopping. Check your browser pop-up settings.',
-            ),
-          ),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open Google Shopping. Please try again.'),
-          ),
-        );
-      }
+      final openedWindow = html.window.open(uri.toString(), '_blank');
+      if (openedWindow != null) return;
+      debugPrint('Google Shopping window was blocked by the browser.');
+    } catch (error) {
+      debugPrint('Opening Google Shopping failed: $error');
     }
+
+    // A blocked pop-up must not prevent the cashier/owner from checking prices.
+    _copyGoogleShoppingLink(product);
   }
 
   // Owner manually selects an existing Firestore product before searching.
@@ -203,12 +216,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     '${data['brand'] ?? ''} • ${data['unit'] ?? ''} • '
                                     'EÜ MART ₱${_readDouble(data['sellingPrice']).toStringAsFixed(2)}',
                                   ),
-                                  trailing: const Icon(Icons.open_in_new),
-                                  onTap: () {
-                                    // Launch inside the user gesture to avoid browser
-                                    // pop-up blockers; the selection dialog remains open.
-                                    _openGoogleShoppingForProduct(document);
-                                  },
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Copy Google Shopping link',
+                                        icon: const Icon(
+                                          Icons.copy_outlined,
+                                          size: 19,
+                                        ),
+                                        onPressed: () =>
+                                            _copyGoogleShoppingLink(document),
+                                      ),
+                                      const Icon(Icons.open_in_new),
+                                    ],
+                                  ),
+                                  onTap: () =>
+                                      _openGoogleShoppingForProduct(document),
                                 );
                               },
                             ),
