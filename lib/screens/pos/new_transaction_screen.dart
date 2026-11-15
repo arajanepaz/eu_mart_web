@@ -1238,7 +1238,9 @@ $productLines
     _rememberScannedProduct(matchedProduct);
   }
 
-  // Opens the POS camera scanner and supports automatic or manual barcode entry.
+  // Opens a price-lookup scanner. Scanning shows product details first;
+  // the product is added to the cart only after explicit confirmation.
+  // Hardware barcode scanning in the main search field is unchanged.
   Future<void> _openPosBarcodeScanner(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) async {
@@ -1260,188 +1262,347 @@ $productLines
     bool processing = false;
     bool detected = false;
     bool scannerIssueLogged = false;
+    String? lookupMessage;
+    QueryDocumentSnapshot<Map<String, dynamic>>? lookedUpProduct;
 
-    final scannedBarcode = await showDialog<String>(
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        // Handles the stateful builder logic used by this module.
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            // Handles the process barcode logic used by this module.
-            Future<void> processBarcode(String value) async {
-              final cleanedValue = value.trim();
-
-              if (processing || cleanedValue.isEmpty) return;
+            // Resolve a scan using the already loaded catalog. Do not edit the
+            // cart, start the transaction timer, or deduct any stock here.
+            Future<void> lookUpBarcode(String value) async {
+              final barcode = value.trim();
+              if (processing || barcode.isEmpty) return;
 
               setDialogState(() {
                 processing = true;
                 detected = true;
+                lookupMessage = null;
+                lookedUpProduct = null;
               });
 
-              // Process the detected barcode immediately while the scanner
-              // dialog is still open. This avoids waiting for the web camera
-              // dialog/lifecycle before updating the POS.
-              await _findAndAddByBarcode(cleanedValue, products);
-
+              final matches =
+                  _productsByBarcode[barcode.toLowerCase()] ?? const [];
               if (!dialogContext.mounted) return;
 
-              // Close automatically only after the product has been processed.
-              Navigator.of(dialogContext).pop();
-
-              // Camera cleanup is background-only.
-              unawaited(scannerController.stop().catchError((_) {}));
+              if (matches.length == 1) {
+                // Stop camera detection so the displayed product stays stable
+                // while the customer decides whether to buy it.
+                setDialogState(() {
+                  lookedUpProduct = matches.single;
+                  manualController.text = barcode;
+                  processing = false;
+                });
+                unawaited(scannerController.stop().catchError((_) {}));
+              } else {
+                final isDuplicate = matches.length > 1;
+                setDialogState(() {
+                  lookupMessage = isDuplicate
+                      ? 'This barcode belongs to multiple products. '
+                            'Please correct the duplicate barcode first.'
+                      : 'No product found for barcode $barcode.';
+                  processing = false;
+                  detected = false;
+                });
+                // Preserve the existing automatic service-issue reporting for
+                // duplicate and unrecognized barcodes.
+                unawaited(
+                  _logAutomaticServiceIssue(
+                    issueType: isDuplicate
+                        ? 'Duplicate Barcode'
+                        : 'Barcode Not Recognized',
+                    severity: 'Moderate',
+                    description: isDuplicate
+                        ? 'The POS found multiple active products using the same barcode $barcode.'
+                        : 'The POS could not find a product for barcode $barcode.',
+                    details: {
+                      'barcode': barcode,
+                      'searchMethod': 'barcode price lookup',
+                      if (isDuplicate)
+                        'matchingProductIds': matches
+                            .map((product) => product.id)
+                            .toList(),
+                    },
+                  ).catchError((_) {}),
+                );
+              }
             }
 
-            // Handles the close dialog logic used by this module.
+            Future<void> scanAnother() async {
+              if (processing) return;
+              setDialogState(() {
+                lookedUpProduct = null;
+                lookupMessage = null;
+                detected = false;
+                manualController.clear();
+              });
+              try {
+                await scannerController.start();
+              } catch (_) {
+                // Manual lookup stays available when the camera is unavailable.
+              }
+            }
+
             Future<void> closeDialog() async {
               if (processing) return;
-
               try {
                 await scannerController.stop();
               } catch (_) {
-                // The scanner may already be stopped or unavailable.
+                // Camera may already be stopped after a successful lookup.
               }
-
-              if (!dialogContext.mounted) return;
-              Navigator.of(dialogContext).pop();
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
             }
 
-            // Handles the alert dialog logic used by this module.
+            final product = lookedUpProduct;
+            final productData = product?.data();
+            final productName =
+                (productData?['productName'] ?? 'Unknown Product').toString();
+            final sellingPrice =
+                (productData?['sellingPrice'] as num?)?.toDouble() ?? 0;
+            final stock = (productData?['stock'] as num?)?.toInt() ?? 0;
+            final isActive = productData?['isActive'] != false;
+            final canAdd = product != null && isActive && stock > 0;
+            final promoActive = productData == null
+                ? false
+                : _isPromoCurrentlyActive(productData);
+            final promoType = promoActive
+                ? (productData?['promoType'] ?? '').toString()
+                : '';
+            final promoPrice = promoActive
+                ? (productData?['promoPrice'] as num?)?.toDouble()
+                : null;
+            final displayPrice =
+                promoActive &&
+                    promoType != 'Buy 1 Take 1' &&
+                    promoPrice != null &&
+                    promoPrice > 0 &&
+                    promoPrice < sellingPrice
+                ? promoPrice
+                : sellingPrice;
+
             return AlertDialog(
               title: const Row(
                 children: [
                   Icon(Icons.qr_code_scanner, color: Color(0xFF1565C0)),
                   SizedBox(width: 10),
-                  Text('Scan Product Barcode'),
+                  Expanded(child: Text('Barcode Price Lookup')),
                 ],
               ),
               content: SizedBox(
                 width: 620,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: SizedBox(
-                        height: 360,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            MobileScanner(
-                              controller: scannerController,
-                              onDetect: (capture) {
-                                if (detected || processing) return;
-
-                                for (final barcode in capture.barcodes) {
-                                  final rawValue = barcode.rawValue;
-
-                                  if (rawValue != null &&
-                                      rawValue.trim().isNotEmpty) {
-                                    processBarcode(rawValue);
-                                    break;
-                                  }
-                                }
-                              },
-                              errorBuilder: (context, error) {
-                                if (!scannerIssueLogged) {
-                                  scannerIssueLogged = true;
-
-                                  unawaited(
-                                    _logAutomaticServiceIssue(
-                                      issueType: 'Scanner Unavailable',
-                                      severity: 'Moderate',
-                                      description:
-                                          'The POS barcode scanner '
-                                          'camera was unavailable or '
-                                          'already in use.',
-                                      details: {
-                                        'scannerError': error.toString(),
-                                      },
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Scan a barcode to check the product price. '
+                        'Nothing will be added to the cart unless you choose Add to Cart.',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                      const SizedBox(height: 12),
+                      if (product == null)
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: SizedBox(
+                            height: (MediaQuery.sizeOf(context).height * 0.40)
+                                .clamp(180.0, 360.0)
+                                .toDouble(),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                MobileScanner(
+                                  controller: scannerController,
+                                  onDetect: (capture) {
+                                    if (detected || processing) return;
+                                    for (final detectedBarcode
+                                        in capture.barcodes) {
+                                      final value = detectedBarcode.rawValue;
+                                      if (value != null &&
+                                          value.trim().isNotEmpty) {
+                                        lookUpBarcode(value);
+                                        break;
+                                      }
+                                    }
+                                  },
+                                  errorBuilder: (context, error) {
+                                    if (!scannerIssueLogged) {
+                                      scannerIssueLogged = true;
+                                      unawaited(
+                                        _logAutomaticServiceIssue(
+                                          issueType: 'Scanner Unavailable',
+                                          severity: 'Moderate',
+                                          description:
+                                              'The POS barcode scanner camera was unavailable or already in use.',
+                                          details: {
+                                            'scannerError': error.toString(),
+                                          },
+                                        ).catchError((_) {}),
+                                      );
+                                    }
+                                    return Container(
+                                      color: Colors.black87,
+                                      padding: const EdgeInsets.all(24),
+                                      alignment: Alignment.center,
+                                      child: const Text(
+                                        'Camera unavailable or already in use.\n'
+                                        'You can enter the barcode manually below.',
+                                        style: TextStyle(color: Colors.white),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    );
+                                  },
+                                ),
+                                IgnorePointer(
+                                  child: Center(
+                                    child: Container(
+                                      width: 330,
+                                      height: 150,
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 3,
+                                        ),
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
                                     ),
-                                  );
-                                }
-
-                                // Handles the container logic used by this module.
-                                return Container(
-                                  color: Colors.black87,
-                                  alignment: Alignment.center,
-                                  padding: const EdgeInsets.all(24),
-                                  child: Text(
-                                    'Camera unavailable or already in use.\n'
-                                    'The issue was automatically recorded.\n'
-                                    'You can still enter the barcode manually below.\n\n'
-                                    '$error',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(color: Colors.white),
                                   ),
-                                );
-                              },
+                                ),
+                                if (processing)
+                                  Container(
+                                    color: Colors.black45,
+                                    alignment: Alignment.center,
+                                    child: const CircularProgressIndicator(),
+                                  ),
+                              ],
                             ),
-                            IgnorePointer(
-                              child: Center(
-                                child: Container(
-                                  width: 330,
-                                  height: 150,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 3,
-                                    ),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
+                          ),
+                        ),
+                      if (product != null)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F7FF),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFCADCF2)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'PRODUCT FOUND',
+                                style: TextStyle(
+                                  color: Color(0xFF1565C0),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                productName,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text('Barcode: ${productData?['barcode'] ?? ''}'),
+                              Text('Stock available: $stock'),
+                              if (!isActive)
+                                const Text(
+                                  'This product is inactive.',
+                                  style: TextStyle(color: Colors.red),
+                                )
+                              else if (stock <= 0)
+                                const Text(
+                                  'Out of stock',
+                                  style: TextStyle(color: Colors.red),
+                                ),
+                              const SizedBox(height: 10),
+                              Text(
+                                'Selling Price: PHP ${displayPrice.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF167D46),
+                                ),
+                              ),
+                              if (displayPrice != sellingPrice)
+                                Text(
+                                  'Regular Price: PHP ${sellingPrice.toStringAsFixed(2)}',
+                                ),
+                              if (promoActive && promoType == 'Buy 1 Take 1')
+                                const Text('Active promotion: Buy 1 Take 1'),
+                            ],
+                          ),
+                        ),
+                      if (lookupMessage != null) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          lookupMessage!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+                      if (product == null)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: manualController,
+                                enabled: !processing,
+                                onSubmitted: lookUpBarcode,
+                                decoration: const InputDecoration(
+                                  labelText: 'Manual Barcode Entry',
+                                  hintText: 'Enter or paste barcode',
+                                  prefixIcon: Icon(Icons.numbers),
+                                  border: OutlineInputBorder(),
                                 ),
                               ),
                             ),
-                            if (processing)
-                              Container(
-                                color: Colors.black45,
-                                alignment: Alignment.center,
-                                child: const CircularProgressIndicator(),
-                              ),
+                            const SizedBox(width: 10),
+                            ElevatedButton.icon(
+                              onPressed: processing
+                                  ? null
+                                  : () => lookUpBarcode(manualController.text),
+                              icon: const Icon(Icons.search),
+                              label: const Text('LOOK UP'),
+                            ),
                           ],
                         ),
-                      ),
-                    ),
-                    // Handles the sized box logic used by this module.
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: manualController,
-                            enabled: !processing,
-                            onSubmitted: processBarcode,
-                            decoration: const InputDecoration(
-                              labelText: 'Manual Barcode Entry',
-                              hintText: 'Enter or paste barcode',
-                              prefixIcon: Icon(Icons.numbers),
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          height: 50,
-                          child: ElevatedButton.icon(
-                            onPressed: processing
-                                ? null
-                                : () => processBarcode(manualController.text),
-                            icon: const Icon(Icons.add_shopping_cart),
-                            label: const Text('ADD PRODUCT'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               actions: [
+                if (product != null)
+                  TextButton.icon(
+                    onPressed: processing ? null : scanAnother,
+                    icon: const Icon(Icons.qr_code_scanner),
+                    label: const Text('Scan Another'),
+                  ),
                 TextButton(
                   onPressed: processing ? null : closeDialog,
-                  child: const Text('Cancel'),
+                  child: const Text('Close'),
                 ),
+                if (product != null)
+                  ElevatedButton.icon(
+                    onPressed: canAdd && !processing
+                        ? () {
+                            // This is the only path that adds a camera/manual
+                            // lookup result to the cart.
+                            _addProduct(product);
+                            _rememberScannedProduct(product);
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                          }
+                        : null,
+                    icon: const Icon(Icons.add_shopping_cart),
+                    label: const Text('Add to Cart'),
+                  ),
               ],
             );
           },
@@ -1449,13 +1610,8 @@ $productLines
       },
     );
 
-    // Successful scans are processed inside processBarcode before the
-    // scanner dialog closes, so there is no second barcode lookup here.
     manualController.dispose();
-
-    // Camera cleanup must not block the product/search-bar update.
     unawaited(scannerController.dispose().catchError((_) {}));
-
     _refocusSearchBar(delay: const Duration(milliseconds: 20));
   }
 
