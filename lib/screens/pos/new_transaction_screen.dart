@@ -79,10 +79,11 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   String? _productsError;
   static const int _maxVisibleProducts = 80;
 
-  double get _total => _cart.values.fold(0, (sum, item) => sum + item.subtotal);
+  double get _total =>
+      _cart.values.fold(0, (total, item) => total + item.subtotal);
 
   double get _totalSavings =>
-      _cart.values.fold(0, (sum, item) => sum + item.savings);
+      _cart.values.fold(0, (total, item) => total + item.savings);
 
   double get _cash => double.tryParse(_cashController.text.trim()) ?? 0;
 
@@ -176,15 +177,46 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return true;
   }
 
+  // Expiration dates are inclusive: an item expires after its stated day.
+  // Missing date means non-expiring; malformed configured dates are blocked.
+  DateTime? _productExpirationDate(Map<String, dynamic> data) {
+    final value = data['expirationDate'];
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value.trim());
+    return null;
+  }
+
+  String? _productSaleBlockReason(Map<String, dynamic> data) {
+    final name = (data['productName'] ?? 'This product').toString();
+    if (data['isActive'] == false) {
+      return '$name is inactive and cannot be sold.';
+    }
+    final rawExpiration = data['expirationDate'];
+    if (rawExpiration == null ||
+        (rawExpiration is String && rawExpiration.trim().isEmpty)) {
+      return null;
+    }
+    final expiry = _productExpirationDate(data);
+    if (expiry == null) {
+      return '$name has an invalid expiration date. Please correct it before selling.';
+    }
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final expiryDay = DateTime(expiry.year, expiry.month, expiry.day);
+    if (expiryDay.isBefore(today)) {
+      return '$name expired on ${expiry.month}/${expiry.day}/${expiry.year} and cannot be sold.';
+    }
+    return null;
+  }
+
   // Adds a validated active product to the cart while enforcing available-stock and promo rules.
   void _addProduct(QueryDocumentSnapshot<Map<String, dynamic>> document) {
     final data = document.data();
 
-    if (data['isActive'] == false) {
-      _message(
-        '${(data['productName'] ?? 'This product')} is inactive and cannot be sold.',
-        Colors.orange,
-      );
+    final saleBlockReason = _productSaleBlockReason(data);
+    if (saleBlockReason != null) {
+      _message(saleBlockReason, Colors.blue);
       return;
     }
 
@@ -258,6 +290,14 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 
   // Adjusts increase while enforcing the current business limits.
   void _increase(_CartItem item) {
+    final product = _productsById[item.productId];
+    if (product != null) {
+      final reason = _productSaleBlockReason(product.data());
+      if (reason != null) {
+        _message(reason, Colors.blue);
+        return;
+      }
+    }
     if (item.quantity >= item.availableStock) {
       _message('Only ${item.availableStock} stock available.', Colors.orange);
       return;
@@ -284,6 +324,14 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   // Updates a cart item's typed quantity without bypassing stock rules.
   void _setCartQuantity(_CartItem item, int quantity) {
     if (!_cart.containsKey(item.productId)) return;
+    final product = _productsById[item.productId];
+    if (product != null) {
+      final reason = _productSaleBlockReason(product.data());
+      if (reason != null) {
+        _message(reason, Colors.blue);
+        return;
+      }
+    }
     if (quantity < 1 || quantity > item.availableStock) return;
     if (item.quantity == quantity) return;
     setState(() => item.quantity = quantity);
@@ -464,19 +512,348 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     }
   }
 
-  // Checks whether the current value satisfies the matches rule used by this module.
-  bool _matches(QueryDocumentSnapshot<Map<String, dynamic>> document) {
-    if (_query.isEmpty) return true;
+  // Search intent for broad categories and ambiguous Filipino descriptions.
+  // Only real catalog entries can be returned; this never invents products.
+  // Semantic category dictionary for cashier Filipino / English requests.
+  // Match whole phrases rather than substrings ("cola" must not match
+  // "chocolate"). A product must actually belong to the requested group.
+  static const Map<String, List<String>> _categoryWords = {
+    'softdrinks': [
+      'softdrinks',
+      'softdrink',
+      'soft drinks',
+      'soda',
+      'cola',
+      'coca cola',
+      'coke',
+      'sprite',
+      'pepsi',
+      'royal',
+      '7up',
+      '7 up',
+      'rc cola',
+      'mountain dew',
+    ],
+    'beverages': [
+      'beverage',
+      'beverages',
+      'drink',
+      'drinks',
+      'inumin',
+      'softdrinks',
+      'softdrink',
+      'soft drinks',
+      'soda',
+      'juice',
+      'water',
+      'tubig',
+      'milk tea',
+      'iced tea',
+      'energy drink',
+      'coffee',
+      'kape',
+      'gatas',
+      'milk',
+    ],
+    'water': [
+      'water',
+      'tubig',
+      'mineral water',
+      'purified water',
+      'drinking water',
+    ],
+    'juice': ['juice', 'fruit juice', 'katas', 'tetrapack'],
+    'coffee': ['coffee', 'kape', 'nescafe', 'kopiko', 'cappuccino', '3 in 1'],
+    'milk': [
+      'milk',
+      'gatas',
+      'powdered milk',
+      'evaporated',
+      'condensed',
+      'condensada',
+      'fresh milk',
+      'bear brand',
+      'birch tree',
+    ],
+    'rice': ['rice', 'bigas', 'kanin', 'sinandomeng', 'dinorado', 'jasponica'],
+    'salt': ['salt', 'asin', 'iodized salt', 'rock salt'],
+    'oil': [
+      'oil',
+      'mantika',
+      'cooking oil',
+      'vegetable oil',
+      'canola',
+      'palm oil',
+    ],
+    'sugar': ['sugar', 'asukal', 'brown sugar', 'white sugar'],
+    'flour': ['flour', 'harina', 'all purpose flour'],
+    'noodles': [
+      'noodles',
+      'pancit canton',
+      'pancit',
+      'instant noodles',
+      'mami',
+      'sotanghon',
+      'bihon',
+    ],
+    'canned': [
+      'canned goods',
+      'de lata',
+      'sardines',
+      'sardinas',
+      'corned beef',
+      'tuna',
+      'meat loaf',
+    ],
+    'snacks': [
+      'snack',
+      'snacks',
+      'chichirya',
+      'chips',
+      'cracker',
+      'biscuit',
+      'biskwit',
+      'cookies',
+      'junk food',
+    ],
+    'bread': ['bread', 'tinapay', 'loaf bread', 'pandesal'],
+    'bathsoap': [
+      'bath soap',
+      'bathsoap',
+      'sabon panligo',
+      'body wash',
+      'body soap',
+      'bar soap',
+      'safeguard',
+      'dove soap',
+    ],
+    'laundry': [
+      'laundry',
+      'panlaba',
+      'detergent',
+      'washing powder',
+      'laundry soap',
+      'fabric conditioner',
+      'fabcon',
+      'downy',
+      'surf',
+      'ariel',
+      'tide',
+    ],
+    'dishwashing': [
+      'dishwashing',
+      'dishwashing liquid',
+      'dish soap',
+      'panghugas',
+      'panghugas ng plato',
+      'joy dishwashing',
+    ],
+    'shampoo': [
+      'shampoo',
+      'shampo',
+      'hair shampoo',
+      'sunsilk',
+      'head and shoulders',
+    ],
+    'toothpaste': ['toothpaste', 'pasta ng ngipin', 'colgate', 'closeup'],
+    'cleaning': [
+      'cleaner',
+      'cleaning',
+      'panglinis',
+      'disinfectant',
+      'bleach',
+      'zonrox',
+      'floor cleaner',
+      'bathroom cleaner',
+    ],
+    'condiments': [
+      'condiment',
+      'condiments',
+      'sawsawan',
+      'toyo',
+      'soy sauce',
+      'suka',
+      'vinegar',
+      'patis',
+      'fish sauce',
+      'ketchup',
+    ],
+    'eggs': ['egg', 'eggs', 'itlog'],
+    'diapers': ['diaper', 'diapers', 'lampin', 'pampers'],
+  };
 
-    // After a barcode scan, show only the exact product that was scanned.
-    if (_scannedBarcodeProductId != null) {
-      return document.id == _scannedBarcodeProductId;
+  static const Map<String, List<String>> _intentPhrases = {
+    'softdrinks': [
+      'softdrinks',
+      'soft drinks',
+      'softdrink',
+      'soda',
+      'cola',
+      'coke',
+      'coca cola',
+      'cocacola',
+      'sprite',
+      'pepsi',
+    ],
+    'beverages': ['inumin', 'drink', 'drinks', 'beverage', 'beverages'],
+    'water': ['tubig', 'water', 'mineral water'],
+    'juice': ['juice', 'fruit juice', 'katas'],
+    'coffee': ['kape', 'coffee', '3 in 1'],
+    'milk': ['gatas', 'milk', 'condensada', 'evaporada'],
+    'rice': ['bigas', 'rice'],
+    'salt': ['asin', 'salt'],
+    'oil': ['mantika', 'cooking oil', 'vegetable oil'],
+    'sugar': ['asukal', 'sugar'],
+    'flour': ['harina', 'flour'],
+    'noodles': ['noodles', 'pancit canton', 'instant noodles', 'pancit'],
+    'canned': [
+      'canned goods',
+      'de lata',
+      'sardinas',
+      'sardines',
+      'corned beef',
+    ],
+    'snacks': ['chichirya', 'snacks', 'snack', 'biskwit', 'biscuits', 'chips'],
+    'bread': ['tinapay', 'bread'],
+    'bathsoap': [
+      'sabon panligo',
+      'sabon pangligo',
+      'bath soap',
+      'body wash',
+      'panligo',
+    ],
+    'laundry': [
+      'panlaba',
+      'panglaba',
+      'laundry',
+      'detergent',
+      'fabcon',
+      'fabric conditioner',
+    ],
+    'dishwashing': [
+      'panghugas',
+      'dishwashing',
+      'dish soap',
+      'panghugas ng plato',
+    ],
+    'shampoo': ['shampoo', 'shampo'],
+    'toothpaste': ['toothpaste', 'pasta ng ngipin'],
+    'cleaning': ['panglinis', 'cleaner', 'disinfectant', 'bleach'],
+    'condiments': ['sawsawan', 'condiments', 'toyo', 'suka', 'patis'],
+    'eggs': ['itlog', 'eggs', 'egg'],
+    'diapers': ['diapers', 'diaper', 'lampin'],
+  };
+
+  bool _containsSearchPhrase(String text, String phrase) {
+    final p = _normalizeSearchText(phrase);
+    return p.isNotEmpty && (' $text ').contains(' $p ');
+  }
+
+  // Meaningful request categories: choose the most specific group to avoid
+  // "sabon panligo" accidentally showing detergent as "sabon".
+  String? _requestedCategory(String query) {
+    final q = _normalizeSearchText(query);
+    if (q.isEmpty) return null;
+    // Specific request first; otherwise generic beverage is appropriate.
+    for (final entry in _intentPhrases.entries) {
+      if (entry.value.any((word) => _containsSearchPhrase(q, word))) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  // Volumes are taken only from explicit product name/unit fields. Unknown
+  // sizes are shown as possible options, never falsely claimed to be large.
+  double? _productVolumeMl(Map<String, dynamic> data) {
+    final text = '${data['productName'] ?? ''} ${data['unit'] ?? ''}'
+        .toLowerCase();
+    final matches = RegExp(
+      r'(\d+(?:[.,]\d+)?)\s*(ml|milliliter|millilitre|l|liter|litre|liters|litres)\b',
+    ).allMatches(text);
+    double? largest;
+    for (final match in matches) {
+      final number = double.tryParse(
+        (match.group(1) ?? '').replaceAll(',', '.'),
+      );
+      if (number == null) continue;
+      final unit = match.group(2)!;
+      final ml = (unit == 'ml' || unit.startsWith('milli'))
+          ? number
+          : number * 1000;
+      if (largest == null || ml > largest) largest = ml;
+    }
+    return largest;
+  }
+
+  // EÜ MART's local matching complements Gemini; the cashier chooses the
+  // final product. Returns 0 when category/size contradict the request.
+  int _intentSearchScore(Map<String, dynamic> data, String rawQuery) {
+    final query = _normalizeSearchText(rawQuery);
+    final group = _requestedCategory(query);
+    if (group == null) return 0;
+
+    final searchable = _normalizeSearchText(
+      '${data['productName'] ?? ''} ${data['category'] ?? ''} '
+      '${data['brand'] ?? ''} ${data['unit'] ?? ''} '
+      '${data['aliases'] ?? data['searchAliases'] ?? ''}',
+    );
+    final terms = _categoryWords[group] ?? const <String>[];
+    if (!terms.any((term) => _containsSearchPhrase(searchable, term))) {
+      return 0;
     }
 
-    // AI suggestions are still required to pass the same local relevance
-    // gate. This prevents an unrelated AI suggestion from appearing beside
-    // a specific cashier search.
-    return _localProductSearchScore(document) >= 20;
+    // Additional brand constraint: "malaking coke" must not show Pepsi.
+    final asksForCoke =
+        _containsSearchPhrase(query, 'coke') ||
+        _containsSearchPhrase(query, 'coca cola') ||
+        _containsSearchPhrase(query, 'cocacola');
+    if (asksForCoke &&
+        !_containsSearchPhrase(searchable, 'coke') &&
+        !_containsSearchPhrase(searchable, 'coca cola') &&
+        !_containsSearchPhrase(searchable, 'cocacola')) {
+      return 0;
+    }
+
+    final asksLarge = <String>[
+      'malaki',
+      'malaking',
+      'large',
+      'big',
+      'family size',
+      'litro',
+    ].any((phrase) => _containsSearchPhrase(query, phrase));
+    final asksSmall = <String>[
+      'maliit',
+      'maliiting',
+      'small',
+      'mini',
+      'sachet',
+    ].any((phrase) => _containsSearchPhrase(query, phrase));
+    final volume = _productVolumeMl(data);
+    if (asksLarge && volume != null && volume < 750) return 0;
+    if (asksSmall && volume != null && volume > 500) return 0;
+
+    // Exact size requests are restrictive, not just a soft ranking hint.
+    final sizeQuery = RegExp(
+      r'(\d+(?:[.,]\d+)?)\s*(ml|l|liter|litre|liters|litres)\b',
+    ).firstMatch(query);
+    if (sizeQuery != null) {
+      final amount = double.tryParse(
+        (sizeQuery.group(1) ?? '').replaceAll(',', '.'),
+      );
+      final unit = sizeQuery.group(2)!;
+      final wantedMl = amount == null
+          ? null
+          : (unit == 'ml' ? amount : amount * 1000);
+      if (wantedMl != null &&
+          (volume == null || (volume - wantedMl).abs() > 1)) {
+        return 0;
+      }
+    }
+    return (asksLarge || asksSmall || sizeQuery != null)
+        ? (volume == null ? 45 : 125)
+        : 100;
   }
 
   // Scores local product relevance using exact matches, aliases, incomplete words, and conservative typo tolerance.
@@ -486,6 +863,12 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     final data = document.data();
     final query = _normalizeSearchText(_query);
     if (query.isEmpty) return 0;
+
+    final intentScore = _intentSearchScore(data, query);
+    if (intentScore > 0) return intentScore;
+    // A recognized category request must not fall through to fuzzy matches
+    // from unrelated departments or contradictory sizes/brands.
+    if (_requestedCategory(query) != null) return 0;
 
     final productName = _normalizeSearchText(data['productName']);
     final brand = _normalizeSearchText(data['brand']);
@@ -730,6 +1113,9 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     QueryDocumentSnapshot<Map<String, dynamic>> document,
     String rawQuery,
   ) {
+    final intentScore = _intentSearchScore(document.data(), rawQuery);
+    if (intentScore > 0) return 1500 + intentScore;
+    if (_requestedCategory(rawQuery) != null) return 0;
     final localScore = _localProductSearchScore(document);
     if (localScore > 0) return 1000 + localScore;
 
@@ -805,13 +1191,11 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         _aiSearchMessage = message;
         // Null means Gemini was not called (instant local or cached result).
         _aiResponseTimeMs = aiResponseTimeMs;
-        if (ids.isNotEmpty) {
-          _visibleProducts = ids
-              .map((id) => _productsById[id])
-              .whereType<QueryDocumentSnapshot<Map<String, dynamic>>>()
-              .take(_maxVisibleProducts)
-              .toList();
-        }
+        _visibleProducts = ids
+            .map((id) => _productsById[id])
+            .whereType<QueryDocumentSnapshot<Map<String, dynamic>>>()
+            .take(_maxVisibleProducts)
+            .toList();
       });
     }
 
@@ -907,9 +1291,12 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
           '''
 You identify matching store products for a cashier. The list below uses:
 ID=Firestore ID; N=name; B=brand; C=category; U=unit; BC=barcode; A=aliases.
-Understand incomplete names, minor typos and abbreviations. Consider all
-fields, but avoid unrelated words or invented products. Return ONLY matching
-IDs from the list, separated by commas, or NONE. No explanation.
+Understand Filipino descriptions, category searches (e.g. softdrinks),
+large-size requests (e.g. malaki na inumin), incomplete names and typos.
+For ambiguous queries, return multiple genuinely relevant product IDs,
+not one guessed item. Consider category, unit and product size, and prefer
+larger sizes for large-size requests. NEVER invent items outside this list.
+Return ONLY IDs from the list, separated by commas, or NONE. No explanation.
 Query: $query
 Products:
 $productLines
@@ -930,9 +1317,16 @@ $productLines
 
       final responseText = (response.text ?? '').trim();
       if (responseText.isEmpty || responseText.toUpperCase() == 'NONE') {
+        final categoryFallback = aiCandidates
+            .where((product) => _intentSearchScore(product.data(), query) > 0)
+            .map((product) => product.id)
+            .take(_maxVisibleProducts)
+            .toList();
         showMatches(
-          const <String>[],
-          'AI found no relevant product.',
+          categoryFallback,
+          categoryFallback.isNotEmpty
+              ? 'Showing local category matches (AI returned no IDs). Choose the exact product and size.'
+              : 'AI found no relevant product.',
           aiResponseTimeMs: aiResponseTimeMs,
         );
         return;
@@ -948,6 +1342,8 @@ $productLines
           .where(candidatesById.containsKey)
           .where((id) {
             final product = candidatesById[id]!;
+            final intentScore = _intentSearchScore(product.data(), query);
+            if (intentScore > 0) return true;
             final localScore = _localProductSearchScore(product);
             if (localScore >= 20) return true;
 
@@ -964,6 +1360,23 @@ $productLines
           })
           .toSet()
           .toList();
+
+      // Semantic category queries may be broader than the model's response.
+      // If the model returns NONE, keep locally validated real candidates.
+      if (ids.isEmpty &&
+          aiCandidates.any((p) => _intentSearchScore(p.data(), query) > 0)) {
+        final fallback = aiCandidates
+            .where((p) => _intentSearchScore(p.data(), query) > 0)
+            .map((p) => p.id)
+            .take(_maxVisibleProducts)
+            .toList();
+        showMatches(
+          fallback,
+          'Showing local category matches. Please choose the exact product and size.',
+          aiResponseTimeMs: aiResponseTimeMs,
+        );
+        return;
+      }
 
       if (ids.isNotEmpty) {
         if (_aiSearchCache.length >= _maxAiCachedQueries) {
@@ -1042,99 +1455,134 @@ $productLines
     required DateTime completedAt,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
-
     if (user == null) throw Exception('No logged-in cashier.');
     if (_cart.isEmpty) throw Exception('The cart is empty.');
-    if (_cash < _total) throw Exception('Insufficient cash.');
+    if (!_cash.isFinite || _cash < _total || _total <= 0) {
+      throw Exception('Invalid payment amount or insufficient cash.');
+    }
 
-    final reference = FirebaseFirestore.instance
-        .collection('transactions')
-        .doc();
-
+    final firestore = FirebaseFirestore.instance;
+    final reference = firestore.collection('transactions').doc();
     final now = DateTime.now();
     final receiptNumber =
         'EU-${now.millisecondsSinceEpoch}-${reference.id.substring(0, 6).toUpperCase()}';
-
     final durationSeconds = completedAt
         .difference(startedAt)
         .inSeconds
         .clamp(0, 86400)
         .toInt();
-
     final serviceSpeed = _serviceSpeedLabel(durationSeconds);
+    final cartItems = _cart.values.map((item) => item.copy()).toList();
+    final cashPaid = _cash;
 
-    final firestore = FirebaseFirestore.instance;
-    final batch = firestore.batch();
-    final items = <Map<String, dynamic>>[];
-
-    for (final item in _cart.values) {
-      final productReference = firestore
-          .collection('products')
-          .doc(item.productId);
-
-      final productSnapshot = await productReference.get();
-
-      if (!productSnapshot.exists) {
-        // Handles the exception logic used by this module.
-        throw Exception('${item.productName} no longer exists.');
+    // Read *all* product snapshots within one Firestore transaction before
+    // writing any stock updates. Concurrent checkouts retry against new stock.
+    await firestore.runTransaction<void>((transaction) async {
+      final references = [
+        for (final item in cartItems)
+          firestore.collection('products').doc(item.productId),
+      ];
+      final snapshots = <DocumentSnapshot<Map<String, dynamic>>>[];
+      for (final productReference in references) {
+        snapshots.add(await transaction.get(productReference));
       }
 
-      final productData = productSnapshot.data() ?? <String, dynamic>{};
+      final purchasedItems = <Map<String, dynamic>>[];
+      double verifiedTotal = 0;
+      double verifiedSavings = 0;
+      for (var index = 0; index < cartItems.length; index++) {
+        final item = cartItems[index];
+        final snapshot = snapshots[index];
+        if (!snapshot.exists) {
+          throw Exception('${item.productName} no longer exists.');
+        }
+        final data = snapshot.data() ?? <String, dynamic>{};
+        final reason = _productSaleBlockReason(data);
+        if (reason != null) throw Exception(reason);
+        final stock = (data['stock'] as num?)?.toInt() ?? 0;
+        if (item.quantity < 1 || stock < item.quantity) {
+          throw Exception(
+            'Not enough stock for ${item.productName}. Available: $stock.',
+          );
+        }
 
-      final currentStock = (productData['stock'] as num?)?.toInt() ?? 0;
-
-      if (currentStock < item.quantity) {
-        // Handles the exception logic used by this module.
-        throw Exception(
-          'Not enough stock for ${item.productName}. '
-          'Available: $currentStock.',
-        );
+        // A held/stale cart must not charge an outdated price or promotion.
+        final regularPrice = (data['sellingPrice'] as num?)?.toDouble() ?? 0;
+        final promoActive = _isPromoCurrentlyActive(data);
+        final promoType = promoActive
+            ? (data['promoType'] ?? '').toString()
+            : '';
+        final promoPrice = promoActive
+            ? (data['promoPrice'] as num?)?.toDouble()
+            : null;
+        final effectivePrice =
+            promoActive &&
+                promoType != 'Buy 1 Take 1' &&
+                promoPrice != null &&
+                promoPrice > 0 &&
+                promoPrice < regularPrice
+            ? promoPrice
+            : regularPrice;
+        if (regularPrice <= 0 ||
+            !regularPrice.isFinite ||
+            (item.price - effectivePrice).abs() > 0.001 ||
+            item.promoActive != promoActive ||
+            (promoActive && item.promoType != promoType)) {
+          throw Exception(
+            'Price or promotion changed for ${item.productName}. '
+            'Please remove and re-add the product before payment.',
+          );
+        }
+        verifiedTotal += item.subtotal;
+        verifiedSavings += item.savings;
+        purchasedItems.add({
+          'productId': item.productId,
+          'productName': item.productName,
+          'barcode': item.barcode,
+          'unit': item.unit,
+          'price': item.price,
+          'regularPrice': item.regularPrice,
+          'buyingPrice': (data['buyingPrice'] as num?)?.toDouble() ?? 0,
+          'quantity': item.quantity,
+          'chargedQuantity': item.chargedQuantity,
+          'subtotal': item.subtotal,
+          'promoApplied': item.promoActive,
+          'promoType': item.promoType,
+          'promoLabel': item.promoLabel,
+        });
       }
-
-      batch.update(productReference, {
-        'stock': currentStock - item.quantity,
-        'updatedAt': FieldValue.serverTimestamp(),
+      if (verifiedTotal <= 0 || cashPaid < verifiedTotal) {
+        throw Exception('Insufficient cash or invalid total.');
+      }
+      // All reads have completed; writes are now atomic.
+      for (var index = 0; index < cartItems.length; index++) {
+        final item = cartItems[index];
+        final stock = (snapshots[index].data()?['stock'] as num?)?.toInt() ?? 0;
+        transaction.update(references[index], {
+          'stock': stock - item.quantity,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      transaction.set(reference, {
+        'receiptNumber': receiptNumber,
+        'transactionNumber': receiptNumber,
+        'items': purchasedItems,
+        'total': verifiedTotal,
+        'totalSavings': verifiedSavings,
+        'cash': cashPaid,
+        'change': cashPaid - verifiedTotal,
+        'createdAt': FieldValue.serverTimestamp(),
+        'transactionStartedAt': Timestamp.fromDate(startedAt),
+        'transactionCompletedAt': Timestamp.fromDate(completedAt),
+        'transactionDurationSeconds': durationSeconds,
+        'serviceSpeed': serviceSpeed,
+        'processedById': user.uid,
+        'processedByEmail': user.email ?? '',
+        'processedByName': user.displayName ?? user.email ?? 'Cashier',
+        'status': 'completed',
+        'isViewedByOwner': false,
       });
-
-      items.add({
-        'productId': item.productId,
-        'productName': item.productName,
-        'barcode': item.barcode,
-        'unit': item.unit,
-        'price': item.price,
-        'regularPrice': item.regularPrice,
-        'buyingPrice': (productData['buyingPrice'] as num?)?.toDouble() ?? 0,
-        'quantity': item.quantity,
-        'chargedQuantity': item.chargedQuantity,
-        'subtotal': item.subtotal,
-        'promoApplied': item.promoActive,
-        'promoType': item.promoType,
-        'promoLabel': item.promoLabel,
-      });
-    }
-
-    batch.set(reference, {
-      'receiptNumber': receiptNumber,
-      'transactionNumber': receiptNumber,
-      'items': items,
-      'total': _total,
-      'totalSavings': _totalSavings,
-      'cash': _cash,
-      'change': _change,
-      'createdAt': FieldValue.serverTimestamp(),
-      'transactionStartedAt': Timestamp.fromDate(startedAt),
-      'transactionCompletedAt': Timestamp.fromDate(completedAt),
-      'transactionDurationSeconds': durationSeconds,
-      'serviceSpeed': serviceSpeed,
-      'processedById': user.uid,
-      'processedByEmail': user.email ?? '',
-      'processedByName': user.displayName ?? user.email ?? 'Cashier',
-      'status': 'completed',
-      'isViewedByOwner': false,
     });
-
-    await batch.commit();
-
     return receiptNumber;
   }
 
@@ -1151,91 +1599,6 @@ $productLines
         _recentScannedProductIds.removeLast();
       }
     });
-  }
-
-  // Matches a scanned barcode to an active product, logs scanner-related service issues when needed, and adds the product to the cart.
-  Future<void> _findAndAddByBarcode(
-    String barcode,
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
-  ) async {
-    final cleanedBarcode = barcode.trim();
-
-    if (cleanedBarcode.isEmpty) {
-      _message('No barcode was detected.', Colors.orange);
-      return;
-    }
-
-    final matches =
-        _productsByBarcode[cleanedBarcode.toLowerCase()] ?? const [];
-
-    if (matches.length > 1) {
-      // Writes automatically detected POS/service problems to the service_issues collection for owner monitoring.
-      await _logAutomaticServiceIssue(
-        issueType: 'Duplicate Barcode',
-        severity: 'Moderate',
-        description:
-            'The POS found multiple active products using the same barcode $cleanedBarcode.',
-        details: {
-          'barcode': cleanedBarcode,
-          'matchingProductIds': matches.map((product) => product.id).toList(),
-          'searchMethod': 'exact barcode lookup',
-        },
-      );
-
-      _message(
-        'Barcode $cleanedBarcode is assigned to multiple products. Fix the duplicate barcode before selling.',
-        Colors.red,
-      );
-      return;
-    }
-
-    final matchedProduct = matches.isEmpty ? null : matches.first;
-
-    if (matchedProduct == null) {
-      // Writes automatically detected POS/service problems to the service_issues collection for owner monitoring.
-      await _logAutomaticServiceIssue(
-        issueType: 'Barcode Not Recognized',
-        severity: 'Moderate',
-        description:
-            'The POS could not find a product for barcode '
-            '$cleanedBarcode.',
-        details: {'barcode': cleanedBarcode, 'searchMethod': 'barcode scanner'},
-      );
-
-      _message(
-        'No product found for barcode $cleanedBarcode. '
-        'The issue was automatically recorded.',
-        Colors.red,
-      );
-      return;
-    }
-
-    final stock = (matchedProduct.data()['stock'] as num?)?.toInt() ?? 0;
-
-    if (stock <= 0) {
-      _message(
-        '${(matchedProduct.data()['productName'] ?? 'Product')} is out of stock.',
-        Colors.red,
-      );
-      return;
-    }
-
-    if (mounted) {
-      setState(() {
-        _searchController.value = TextEditingValue(
-          text: cleanedBarcode,
-          selection: TextSelection.collapsed(offset: cleanedBarcode.length),
-        );
-        _query = cleanedBarcode.toLowerCase();
-        _scannedBarcodeProductId = matchedProduct.id;
-        _aiMatchedProductIds.clear();
-        _aiSearchMessage = 'Scanned barcode: $cleanedBarcode';
-        _visibleProducts = [matchedProduct];
-      });
-    }
-
-    _addProduct(matchedProduct);
-    _rememberScannedProduct(matchedProduct);
   }
 
   // Opens a price-lookup scanner. Scanning shows product details first;
@@ -1364,15 +1727,19 @@ $productLines
                 (productData?['sellingPrice'] as num?)?.toDouble() ?? 0;
             final stock = (productData?['stock'] as num?)?.toInt() ?? 0;
             final isActive = productData?['isActive'] != false;
-            final canAdd = product != null && isActive && stock > 0;
+            final saleBlockReason = productData == null
+                ? null
+                : _productSaleBlockReason(productData);
+            final canAdd =
+                product != null && saleBlockReason == null && stock > 0;
             final promoActive = productData == null
                 ? false
                 : _isPromoCurrentlyActive(productData);
             final promoType = promoActive
-                ? (productData?['promoType'] ?? '').toString()
+                ? (productData['promoType'] ?? '').toString()
                 : '';
             final promoPrice = promoActive
-                ? (productData?['promoPrice'] as num?)?.toDouble()
+                ? (productData['promoPrice'] as num?)?.toDouble()
                 : null;
             final displayPrice =
                 promoActive &&
@@ -1510,7 +1877,14 @@ $productLines
                               const SizedBox(height: 5),
                               Text('Barcode: ${productData?['barcode'] ?? ''}'),
                               Text('Stock available: $stock'),
-                              if (!isActive)
+                              if (saleBlockReason != null)
+                                Text(
+                                  saleBlockReason,
+                                  style: const TextStyle(
+                                    color: Color(0xFF1565C0),
+                                  ),
+                                )
+                              else if (!isActive)
                                 const Text(
                                   'This product is inactive.',
                                   style: TextStyle(color: Colors.red),
@@ -2005,7 +2379,8 @@ $productLines
 
                 return ListView.separated(
                   itemCount: held.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final document = held[index];
                     final data = document.data();
@@ -2162,6 +2537,11 @@ $productLines
       }
 
       final currentData = currentProduct.data();
+      final reason = _productSaleBlockReason(currentData);
+      if (reason != null) {
+        unavailable.add(reason);
+        continue;
+      }
       final currentStock = (currentData['stock'] as num?)?.toInt() ?? 0;
 
       final requestedQuantity = (item['quantity'] as num?)?.toInt() ?? 1;
@@ -2170,6 +2550,34 @@ $productLines
         unavailable.add(
           '${(item['productName'] ?? 'Unknown Product')} '
           '(needs $requestedQuantity, stock $currentStock)',
+        );
+        continue;
+      }
+
+      final regularPrice =
+          (currentData['sellingPrice'] as num?)?.toDouble() ?? 0;
+      final promoActive = _isPromoCurrentlyActive(currentData);
+      final promoType = promoActive
+          ? (currentData['promoType'] ?? '').toString()
+          : '';
+      final promoPrice = promoActive
+          ? (currentData['promoPrice'] as num?)?.toDouble()
+          : null;
+      final currentPrice =
+          promoActive &&
+              promoType != 'Buy 1 Take 1' &&
+              promoPrice != null &&
+              promoPrice > 0 &&
+              promoPrice < regularPrice
+          ? promoPrice
+          : regularPrice;
+      final savedPrice = (item['price'] as num?)?.toDouble() ?? 0;
+      if (regularPrice <= 0 ||
+          (currentPrice - savedPrice).abs() > 0.001 ||
+          (item['promoActive'] == true) != promoActive ||
+          (promoActive && (item['promoType'] ?? '').toString() != promoType)) {
+        unavailable.add(
+          '${(item['productName'] ?? 'Product')} (price/promo changed; add again)',
         );
         continue;
       }
@@ -2268,13 +2676,14 @@ $productLines
 
   // Coordinates payment validation, transaction saving, receipt handling, and transaction-state reset.
   Future<void> _payNow() async {
+    if (_processing) return;
     if (_cart.isEmpty) {
       _message('The cart is empty.', Colors.orange);
       return;
     }
 
-    if (_cash < _total) {
-      _message('Insufficient cash.', Colors.red);
+    if (!_cash.isFinite || _total <= 0 || _cash < _total) {
+      _message('Invalid payment or insufficient cash.', Colors.red);
       return;
     }
 
@@ -2426,7 +2835,7 @@ $productLines
                                 vertical: 7,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.16),
+                                color: Colors.white.withValues(alpha: 0.16),
                                 borderRadius: BorderRadius.circular(30),
                               ),
                               child: const Row(
@@ -2814,8 +3223,9 @@ $productLines
                                           ],
                                         ),
                                       );
-                                      if (chosenWidth == null || !mounted)
+                                      if (chosenWidth == null || !mounted) {
                                         return;
+                                      }
                                       _receiptPaperWidthMm = chosenWidth;
                                       await _printReceipt(
                                         receiptNumber: receiptNumber,
@@ -2984,7 +3394,7 @@ $productLines
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: categories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final category = categories[index];
           final selected = _selectedCategory == category;
@@ -3220,7 +3630,8 @@ $productLines
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _recentScannedProductIds.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 14),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 14),
                     itemBuilder: (context, index) {
                       final id = _recentScannedProductIds[index];
                       final document = _productsById[id];
@@ -3244,9 +3655,7 @@ $productLines
                           price: price,
                           stock: stock,
                           highlighted: true,
-                          onTap: stock > 0
-                              ? () => _addProduct(document!)
-                              : null,
+                          onTap: stock > 0 ? () => _addProduct(document) : null,
                         ),
                       );
                     },
@@ -3482,7 +3891,8 @@ $productLines
                   )
                 : ListView.separated(
                     itemCount: _cart.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final item = _cart.values.elementAt(index);
 
@@ -4263,11 +4673,30 @@ class _EditableCartQuantityState extends State<_EditableCartQuantity> {
   }
 
   void _onChanged(String raw) {
+    // Allow temporarily clearing the field while entering a new number.
+    // An invalid quantity is never passed to the cart calculation.
+    if (raw.isEmpty) return;
+
     final parsed = int.tryParse(raw);
-    // Empty or partial input is allowed while typing, but never persisted.
-    if (parsed != null && parsed >= 1 && parsed <= widget.availableStock) {
-      widget.onChanged(parsed);
+    if (parsed == null || parsed < 1) return;
+
+    if (parsed > widget.availableStock) {
+      // Warn IMMEDIATELY, instead of waiting for focus loss or PAY NOW.
+      // Restore the last accepted quantity so the displayed cart and total
+      // can never disagree with the number shown in this field.
+      widget.onInvalid(
+        'Only ${widget.availableStock} stock available. '
+        'You cannot enter $parsed.',
+      );
+      final valid = '${widget.quantity}';
+      _controller.value = TextEditingValue(
+        text: valid,
+        selection: TextSelection.collapsed(offset: valid.length),
+      );
+      return;
     }
+
+    widget.onChanged(parsed);
   }
 
   void _finishEditing() {
@@ -4296,16 +4725,27 @@ class _EditableCartQuantityState extends State<_EditableCartQuantity> {
 
   @override
   Widget build(BuildContext context) {
+    // Grow with the quantity length. On narrow screens, the input itself
+    // scrolls horizontally and keeps the caret visible while editing.
+    final digits = _controller.text.length > '${widget.availableStock}'.length
+        ? _controller.text.length
+        : '${widget.availableStock}'.length;
+    final maxWidth = MediaQuery.sizeOf(context).width < 650 ? 110.0 : 200.0;
+    final fieldWidth = (digits * 12.0 + 34.0).clamp(76.0, maxWidth);
     return SizedBox(
-      width: 54,
+      width: fieldWidth,
       height: 39,
       child: TextField(
         controller: _controller,
         focusNode: _focusNode,
+        scrollPhysics: const ClampingScrollPhysics(),
         textAlign: TextAlign.center,
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        onChanged: _onChanged,
+        onChanged: (value) {
+          _onChanged(value);
+          if (mounted) setState(() {});
+        },
         onSubmitted: (_) {
           _finishEditing();
           _focusNode.unfocus();

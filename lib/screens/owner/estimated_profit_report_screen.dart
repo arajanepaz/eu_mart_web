@@ -5,6 +5,12 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+// Keep currency and unit totals readable across cards and summaries.
+final NumberFormat _profitMoney = NumberFormat('#,##0.00', 'en_US');
+final NumberFormat _profitCount = NumberFormat('#,##0', 'en_US');
+String _peso(num amount) => '₱${_profitMoney.format(amount)}';
 
 // Private UI/data helper used only inside this module.
 class _ProfitHoverCard extends StatefulWidget {
@@ -157,28 +163,28 @@ class _ProfitProductCardState extends State<_ProfitProductCard> {
               children: [
                 _ProfitMetricBox(
                   label: 'Sold',
-                  value: '${widget.quantitySold}',
+                  value: _profitCount.format(widget.quantitySold),
                   color: const Color(0xFF1565C0),
                 ),
                 _ProfitMetricBox(
                   label: 'Sales',
-                  value: '₱${widget.sales.toStringAsFixed(2)}',
-                  color: const Color(0xFF159447),
+                  value: _peso(widget.sales),
+                  color: const Color(0xFF1565C0),
                 ),
                 _ProfitMetricBox(
                   label: 'Cost',
-                  value: '₱${widget.cost.toStringAsFixed(2)}',
-                  color: const Color(0xFFF59E0B),
+                  value: _peso(widget.cost),
+                  color: const Color(0xFF1976D2),
                 ),
                 _ProfitMetricBox(
                   label: 'Profit',
-                  value: '₱${widget.profit.toStringAsFixed(2)}',
+                  value: _peso(widget.profit),
                   color: widget.profitColor,
                 ),
                 _ProfitMetricBox(
                   label: 'Margin',
                   value: '${widget.margin.toStringAsFixed(1)}%',
-                  color: const Color(0xFF7B1FA2),
+                  color: const Color(0xFF1565C0),
                 ),
               ],
             );
@@ -316,6 +322,69 @@ class EstimatedProfitReportScreen extends StatefulWidget {
 class _EstimatedProfitReportScreenState
     extends State<EstimatedProfitReportScreen> {
   String _selectedFilter = 'This Month';
+  // Stable Firestore subscriptions avoid unnecessary re-listening after UI changes.
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _productsStream;
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _transactionsStream;
+  int _visibleProducts = 24;
+
+  @override
+  void initState() {
+    super.initState();
+    _productsStream = FirebaseFirestore.instance
+        .collection('products')
+        .snapshots();
+    _transactionsStream = _transactionStreamForFilter();
+  }
+
+  // Query only the relevant date range for normal reports. All Time remains
+  // available on demand; changing the date filter replaces the stream.
+  Stream<QuerySnapshot<Map<String, dynamic>>> _transactionStreamForFilter() {
+    final today = DateTime.now();
+    late final DateTime start;
+    late final DateTime end;
+    if (_selectedFilter == 'Today') {
+      start = DateTime(today.year, today.month, today.day);
+      end = start.add(const Duration(days: 1));
+    } else if (_selectedFilter == 'This Week') {
+      start = DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).subtract(Duration(days: today.weekday - 1));
+      end = start.add(const Duration(days: 7));
+    } else if (_selectedFilter == 'This Month') {
+      start = DateTime(today.year, today.month);
+      end = DateTime(today.year, today.month + 1);
+    } else {
+      return FirebaseFirestore.instance.collection('transactions').snapshots();
+    }
+    return FirebaseFirestore.instance
+        .collection('transactions')
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .where('createdAt', isLessThan: Timestamp.fromDate(end))
+        .snapshots();
+  }
+
+  double _safeAmount(dynamic value) {
+    if (value is num) return value.toDouble().isFinite ? value.toDouble() : 0;
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double? _optionalNonnegativeAmount(dynamic value) {
+    if (value == null) return null;
+    final amount = value is num
+        ? value.toDouble()
+        : double.tryParse(value.toString().trim());
+    if (amount == null || !amount.isFinite || amount < 0) return null;
+    return amount;
+  }
+
+  int _safeQuantity(dynamic value) {
+    final parsed = value is num
+        ? value.toInt()
+        : int.tryParse(value?.toString() ?? '') ?? 0;
+    return parsed > 0 ? parsed : 0;
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -366,6 +435,8 @@ class _EstimatedProfitReportScreenState
       onSelected: (_) {
         setState(() {
           _selectedFilter = label;
+          _transactionsStream = _transactionStreamForFilter();
+          _visibleProducts = 24;
         });
       },
     );
@@ -450,12 +521,20 @@ class _EstimatedProfitReportScreenState
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('products').snapshots(),
+      stream: _productsStream,
       builder: (context, productSnapshot) {
         if (productSnapshot.connectionState == ConnectionState.waiting &&
             !productSnapshot.hasData) {
           // Handles the center logic used by this module.
           return const Center(child: CircularProgressIndicator());
+        }
+
+        if (productSnapshot.hasError) {
+          return Center(
+            child: Text(
+              'Unable to load product costs: ${productSnapshot.error}',
+            ),
+          );
         }
 
         final productsById = <String, Map<String, dynamic>>{
@@ -474,9 +553,7 @@ class _EstimatedProfitReportScreenState
         };
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('transactions')
-              .snapshots(),
+          stream: _transactionsStream,
           builder: (context, transactionSnapshot) {
             if (transactionSnapshot.connectionState ==
                     ConnectionState.waiting &&
@@ -492,7 +569,7 @@ class _EstimatedProfitReportScreenState
                   'Unable to load estimated profit report.\n'
                   '${transactionSnapshot.error}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red),
+                  style: const TextStyle(color: Colors.blue),
                 ),
               );
             }
@@ -512,78 +589,122 @@ class _EstimatedProfitReportScreenState
 
             double totalSales = 0;
             double estimatedCost = 0;
+            double knownCostSales = 0;
             int totalItemsSold = 0;
             int unmatchedItemCount = 0;
+            int missingItemsCount = 0;
+            int unreconciledTransactionCount = 0;
+            int fallbackCostCount = 0;
+            int adjustedTransactionCount = 0;
 
             final Map<String, _ProfitProduct> productProfit = {};
 
-            for (final transaction in transactions) {
-              final data = transaction.data();
-
-              totalSales += (data['total'] as num?)?.toDouble() ?? 0;
+            for (final sale in transactions) {
+              final data = sale.data();
+              final rawTotal = _safeAmount(data['total']);
+              final transactionTotal = rawTotal < 0 ? 0.0 : rawTotal;
+              totalSales += transactionTotal;
 
               final items = data['items'] as List<dynamic>? ?? <dynamic>[];
-
+              final normalizedItems = <Map<String, dynamic>>[];
               for (final rawItem in items) {
-                if (rawItem is! Map) continue;
+                if (rawItem is Map) {
+                  normalizedItems.add(Map<String, dynamic>.from(rawItem));
+                }
+              }
+              if (normalizedItems.isEmpty && transactionTotal > 0) {
+                missingItemsCount++;
+                continue;
+              }
 
-                final item = Map<String, dynamic>.from(rawItem);
+              // Item subtotals can be pre-discount. Scale down their revenue
+              // proportionally so summed item sales never exceed the amount
+              // actually charged on a discounted transaction.
+              final itemSubtotalSum = normalizedItems.fold<double>(0, (
+                sum,
+                item,
+              ) {
+                final subtotal = _safeAmount(item['subtotal']);
+                return sum + (subtotal > 0 ? subtotal : 0);
+              });
+              final allocationFactor =
+                  itemSubtotalSum > 0 && transactionTotal < itemSubtotalSum
+                  ? transactionTotal / itemSubtotalSum
+                  : 1.0;
+              if (allocationFactor < 1.0) adjustedTransactionCount++;
+              if (itemSubtotalSum <= 0 && transactionTotal > 0) {
+                unreconciledTransactionCount++;
+              } else if (itemSubtotalSum > 0 &&
+                  transactionTotal > itemSubtotalSum + 0.01) {
+                unreconciledTransactionCount++;
+              }
 
-                final productId = (item['productId'] ?? '').toString();
-
+              for (final item in normalizedItems) {
+                final productId = (item['productId'] ?? '').toString().trim();
                 final productName = (item['productName'] ?? 'Unknown Product')
                     .toString();
+                final quantity = _safeQuantity(item['quantity']);
+                if (quantity <= 0) continue;
 
-                final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
-
-                final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0;
-
+                final lineSubtotal = _safeAmount(item['subtotal']);
+                final revenue =
+                    (lineSubtotal < 0 ? 0.0 : lineSubtotal) * allocationFactor;
                 final matchedProduct =
                     productsById[productId] ??
-                    productsByName[productName.toLowerCase()];
-
-                final itemBuyingPrice = (item['buyingPrice'] as num?)
-                    ?.toDouble();
-
-                final currentBuyingPrice =
-                    (matchedProduct?['buyingPrice'] as num?)?.toDouble();
-
-                final buyingPrice = itemBuyingPrice ?? currentBuyingPrice ?? 0;
-
-                if (buyingPrice <= 0) {
-                  unmatchedItemCount += quantity;
+                    (productId.isEmpty
+                        ? productsByName[productName.toLowerCase()]
+                        : null);
+                final itemBuyingPrice = _optionalNonnegativeAmount(
+                  item['buyingPrice'],
+                );
+                final currentBuyingPrice = _optionalNonnegativeAmount(
+                  matchedProduct?['buyingPrice'],
+                );
+                final costPerUnit = itemBuyingPrice ?? currentBuyingPrice;
+                if (itemBuyingPrice == null && currentBuyingPrice != null) {
+                  fallbackCostCount += quantity;
                 }
+                if (costPerUnit == null) unmatchedItemCount += quantity;
 
-                final cost = buyingPrice * quantity;
-                final profit = subtotal - cost;
-
+                final cost = (costPerUnit ?? 0) * quantity;
+                // Unknown-cost revenue is not counted toward gross profit.
+                final knownRevenue = costPerUnit == null ? 0.0 : revenue;
+                final profit = knownRevenue - cost;
                 totalItemsSold += quantity;
                 estimatedCost += cost;
+                knownCostSales += knownRevenue;
 
-                final existing = productProfit[productName];
-
+                final productKey = productId.isNotEmpty
+                    ? 'id:$productId'
+                    : 'name:${productName.trim().toLowerCase()}';
+                final existing = productProfit[productKey];
                 if (existing == null) {
-                  productProfit[productName] = _ProfitProduct(
+                  productProfit[productKey] = _ProfitProduct(
                     productName: productName,
                     quantitySold: quantity,
-                    sales: subtotal,
+                    sales: knownRevenue,
                     estimatedCost: cost,
                     estimatedProfit: profit,
                   );
                 } else {
                   existing.quantitySold += quantity;
-                  existing.sales += subtotal;
+                  existing.sales += knownRevenue;
                   existing.estimatedCost += cost;
                   existing.estimatedProfit += profit;
                 }
               }
             }
 
-            final estimatedGrossProfit = totalSales - estimatedCost;
-
-            final profitMargin = totalSales <= 0
+            // This is a gross-profit estimate only for sales with known costs.
+            // Unknown costs cannot safely be treated as a zero-cost purchase.
+            final estimatedGrossProfit = knownCostSales - estimatedCost;
+            final profitMargin = knownCostSales <= 0
                 ? 0.0
-                : (estimatedGrossProfit / totalSales) * 100;
+                : (estimatedGrossProfit / knownCostSales) * 100;
+            final incomplete =
+                unmatchedItemCount > 0 ||
+                missingItemsCount > 0 ||
+                unreconciledTransactionCount > 0;
 
             final productRows = productProfit.values.toList()
               ..sort((a, b) => b.estimatedProfit.compareTo(a.estimatedProfit));
@@ -710,28 +831,34 @@ class _EstimatedProfitReportScreenState
                               children: [
                                 _summaryCard(
                                   title: 'Total Sales',
-                                  value: '₱${totalSales.toStringAsFixed(2)}',
+                                  value: _peso(totalSales),
                                   icon: Icons.payments_outlined,
-                                  color: const Color(0xFF159447),
+                                  color: const Color(0xFF1565C0),
                                 ),
                                 _summaryCard(
-                                  title: 'Estimated Cost',
-                                  value: '₱${estimatedCost.toStringAsFixed(2)}',
+                                  title: incomplete
+                                      ? 'Known Buying Costs (Partial)'
+                                      : 'Estimated Cost',
+                                  value: _peso(estimatedCost),
                                   icon: Icons.shopping_cart_outlined,
-                                  color: const Color(0xFFF59E0B),
+                                  color: const Color(0xFF1976D2),
                                 ),
                                 _summaryCard(
-                                  title: 'Estimated Gross Profit',
-                                  value:
-                                      '₱${estimatedGrossProfit.toStringAsFixed(2)}',
+                                  title: incomplete
+                                      ? 'Known-Cost Gross Profit (Partial)'
+                                      : 'Estimated Gross Profit',
+                                  value: _peso(estimatedGrossProfit),
                                   icon: Icons.trending_up,
                                   color: const Color(0xFF1565C0),
                                 ),
                                 _summaryCard(
-                                  title: 'Profit Margin',
-                                  value: '${profitMargin.toStringAsFixed(1)}%',
+                                  title: incomplete
+                                      ? 'Known-Cost Margin (Partial)'
+                                      : 'Profit Margin',
+                                  value:
+                                      '${_profitMoney.format(profitMargin)}%',
                                   icon: Icons.percent,
-                                  color: const Color(0xFF7B1FA2),
+                                  color: const Color(0xFF1565C0),
                                 ),
                               ],
                             );
@@ -745,10 +872,10 @@ class _EstimatedProfitReportScreenState
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
-                                colors: unmatchedItemCount > 0
+                                colors: incomplete
                                     ? const [
-                                        Color(0xFFFFF3E0),
-                                        Color(0xFFFFFBF5),
+                                        Color(0xFFF3F8FF),
+                                        Color(0xFFF8FBFF),
                                       ]
                                     : const [
                                         Color(0xFFEAF3FF),
@@ -757,8 +884,8 @@ class _EstimatedProfitReportScreenState
                               ),
                               borderRadius: BorderRadius.circular(17),
                               border: Border.all(
-                                color: unmatchedItemCount > 0
-                                    ? const Color(0xFFF4D3A0)
+                                color: incomplete
+                                    ? const Color(0xFFE8F2FF)
                                     : const Color(0xFFD7E7FA),
                               ),
                             ),
@@ -767,15 +894,15 @@ class _EstimatedProfitReportScreenState
                               children: [
                                 CircleAvatar(
                                   radius: 22,
-                                  backgroundColor: unmatchedItemCount > 0
-                                      ? const Color(0x1FF59E0B)
+                                  backgroundColor: incomplete
+                                      ? const Color(0x1F1976D2)
                                       : const Color(0x1F1565C0),
                                   child: Icon(
-                                    unmatchedItemCount > 0
+                                    incomplete
                                         ? Icons.warning_amber_outlined
                                         : Icons.info_outline,
-                                    color: unmatchedItemCount > 0
-                                        ? const Color(0xFFF59E0B)
+                                    color: incomplete
+                                        ? const Color(0xFF1976D2)
                                         : const Color(0xFF1565C0),
                                   ),
                                 ),
@@ -783,16 +910,22 @@ class _EstimatedProfitReportScreenState
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    unmatchedItemCount > 0
-                                        ? 'Estimated profit uses current product buying prices. '
-                                              '$unmatchedItemCount sold item(s) have no buying price, '
-                                              'so their estimated cost is ₱0.00.'
-                                        : 'Estimated profit uses the buying price saved in each '
-                                              'transaction item when available; otherwise, it uses '
-                                              'the product’s current buying price.',
+                                    incomplete
+                                        ? 'Partial estimate: ${_profitCount.format(unmatchedItemCount)} item(s) '
+                                              'have no recorded buying cost and $missingItemsCount transaction(s) '
+                                              'have no item details; $unreconciledTransactionCount transaction(s) have '
+                                              'unreconciled item subtotals. Unknown-cost sales are excluded from '
+                                              'estimated gross profit and margin. '
+                                              'Please review the source transactions.'
+                                        : 'Estimated gross profit uses buying prices saved in each '
+                                              'transaction item where available; otherwise, current '
+                                              'product buying prices are used for ${_profitCount.format(fallbackCostCount)} item(s). '
+                                              '${_profitCount.format(adjustedTransactionCount)} discounted transaction(s) '
+                                              'had line revenue adjusted to match the final transaction total. '
+                                              'This is gross profit before other business expenses.',
                                     style: TextStyle(
-                                      color: unmatchedItemCount > 0
-                                          ? const Color(0xFF8A5A12)
+                                      color: incomplete
+                                          ? const Color(0xFF1565C0)
                                           : const Color(0xFF53657C),
                                       fontWeight: FontWeight.w700,
                                       height: 1.4,
@@ -841,7 +974,7 @@ class _EstimatedProfitReportScreenState
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                '$totalItemsSold ITEM(S) SOLD',
+                                '${_profitCount.format(totalItemsSold)} ITEM(S) SOLD',
                                 style: const TextStyle(
                                   color: Color(0xFF1565C0),
                                   fontSize: 10,
@@ -863,7 +996,9 @@ class _EstimatedProfitReportScreenState
                           ListView.separated(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: productRows.length,
+                            itemCount: productRows.length < _visibleProducts
+                                ? productRows.length
+                                : _visibleProducts,
                             separatorBuilder: (_, _) =>
                                 // Handles the sized box logic used by this module.
                                 const SizedBox(height: 12),
@@ -876,8 +1011,8 @@ class _EstimatedProfitReportScreenState
                                         100;
 
                               final profitColor = product.estimatedProfit < 0
-                                  ? const Color(0xFFD32F2F)
-                                  : const Color(0xFF159447);
+                                  ? const Color(0xFF1976D2)
+                                  : const Color(0xFF1565C0);
 
                               // Handles the profit product card logic used by this module.
                               return _ProfitProductCard(
@@ -892,6 +1027,19 @@ class _EstimatedProfitReportScreenState
                               );
                             },
                           ),
+                        if (productRows.length > _visibleProducts) ...[
+                          const SizedBox(height: 14),
+                          Center(
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  setState(() => _visibleProducts += 24),
+                              icon: const Icon(Icons.expand_more),
+                              label: Text(
+                                'Show more (${productRows.length - _visibleProducts} remaining)',
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

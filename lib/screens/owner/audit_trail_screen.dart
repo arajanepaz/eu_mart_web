@@ -113,26 +113,26 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
         normalized.contains('enable') ||
         normalized.contains('import')) {
       // Handles the color logic used by this module.
-      return const Color(0xFF159447);
+      return const Color(0xFF1565C0);
     }
 
     if (normalized.contains('disable') ||
         normalized.contains('void') ||
         normalized.contains('delete')) {
       // Handles the color logic used by this module.
-      return const Color(0xFFD32F2F);
+      return const Color(0xFF1565C0);
     }
 
     if (normalized.contains('update') ||
         normalized.contains('edit') ||
         normalized.contains('renew')) {
       // Handles the color logic used by this module.
-      return const Color(0xFFF59E0B);
+      return const Color(0xFF1565C0);
     }
 
     if (normalized.contains('restore') || normalized.contains('backup')) {
       // Handles the color logic used by this module.
-      return const Color(0xFF7B1FA2);
+      return const Color(0xFF1565C0);
     }
 
     // Handles the color logic used by this module.
@@ -229,7 +229,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
               'Unable to load audit logs.\n'
               '${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -316,7 +316,7 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                    colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                   ),
                   borderRadius: BorderRadius.circular(22),
                   boxShadow: const [
@@ -366,7 +366,11 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final count = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 600 ? 2 : 1;
+                  final count = constraints.maxWidth >= 900
+                      ? 4
+                      : constraints.maxWidth >= 600
+                      ? 2
+                      : 1;
 
                   return GridView.count(
                     shrinkWrap: true,
@@ -386,19 +390,19 @@ class _AuditTrailScreenState extends State<AuditTrailScreen> {
                         label: 'Today',
                         value: '$todayCount',
                         icon: Icons.today_outlined,
-                        color: const Color(0xFF159447),
+                        color: const Color(0xFF1565C0),
                       ),
                       _summaryCard(
                         label: 'Active Users',
                         value: '$uniqueUsers',
                         icon: Icons.group_outlined,
-                        color: const Color(0xFFF59E0B),
+                        color: const Color(0xFF1565C0),
                       ),
                       _summaryCard(
                         label: 'Modules',
                         value: '$moduleCount',
                         icon: Icons.dashboard_customize_outlined,
-                        color: const Color(0xFF7B1FA2),
+                        color: const Color(0xFF1565C0),
                       ),
                     ],
                   );

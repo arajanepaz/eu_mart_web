@@ -131,11 +131,11 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
     final isOwner = widget.role == 'owner';
     final roleColor = isOwner
         ? const Color(0xFF1565C0)
-        : const Color(0xFFF59E0B);
+        : const Color(0xFF1565C0);
     final isClosed = widget.sessionStatus == 'closed';
     final sessionColor = isClosed
-        ? const Color(0xFF159447)
-        : const Color(0xFF7B1FA2);
+        ? const Color(0xFF1565C0)
+        : const Color(0xFF1565C0);
 
     // Handles the mouse region logic used by this module.
     return MouseRegion(
@@ -235,7 +235,7 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
                       ? Icons.restore_outlined
                       : Icons.password_outlined,
                   label: widget.loginMethod,
-                  color: const Color(0xFF7B1FA2),
+                  color: const Color(0xFF1565C0),
                 ),
                 _LoginDetailPill(
                   icon: widget.remembered
@@ -244,7 +244,7 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
                   label: widget.remembered
                       ? 'Remembered Device'
                       : 'Session Only',
-                  color: const Color(0xFF00897B),
+                  color: const Color(0xFF1565C0),
                 ),
               ],
             );
@@ -275,7 +275,7 @@ class _LoginSessionCardState extends State<_LoginSessionCard> {
                     icon: Icons.timer_outlined,
                     label: 'Duration',
                     value: widget.duration!,
-                    color: const Color(0xFFF59E0B),
+                    color: const Color(0xFF1565C0),
                   ),
                 ],
               ],
@@ -651,7 +651,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
               'Unable to load login activity.\n'
               '${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -758,7 +758,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                        colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                       ),
                       borderRadius: BorderRadius.circular(22),
                       boxShadow: const [
@@ -879,7 +879,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                               title: 'Unique Accounts',
                               value: '${users.length}',
                               icon: Icons.groups_outlined,
-                              color: const Color(0xFF7B1FA2),
+                              color: const Color(0xFF1565C0),
                             ),
                           ),
                           SizedBox(
@@ -889,7 +889,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                               title: 'Cashier Logins',
                               value: '$cashierCount',
                               icon: Icons.point_of_sale_outlined,
-                              color: const Color(0xFFF59E0B),
+                              color: const Color(0xFF1565C0),
                             ),
                           ),
                           SizedBox(
@@ -899,7 +899,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                               title: 'Closed Sessions',
                               value: '$closedSessionCount',
                               icon: Icons.logout_outlined,
-                              color: const Color(0xFF159447),
+                              color: const Color(0xFF1565C0),
                             ),
                           ),
                           SizedBox(
@@ -911,7 +911,7 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                                 averageSessionDuration,
                               ),
                               icon: Icons.timer_outlined,
-                              color: const Color(0xFF00897B),
+                              color: const Color(0xFF1565C0),
                             ),
                           ),
                         ],
@@ -945,19 +945,19 @@ class _LoginActivityScreenState extends State<LoginActivityScreen> {
                             label: 'Cashier Logins',
                             value: cashierCount,
                             icon: Icons.point_of_sale_outlined,
-                            color: const Color(0xFFF59E0B),
+                            color: const Color(0xFF1565C0),
                           ),
                           _LoginActivityPill(
                             label: 'Saved Sessions',
                             value: rememberedCount,
                             icon: Icons.devices_outlined,
-                            color: const Color(0xFF7B1FA2),
+                            color: const Color(0xFF1565C0),
                           ),
                           _LoginActivityPill(
                             label: 'Closed Sessions',
                             value: closedSessionCount,
                             icon: Icons.logout_outlined,
-                            color: const Color(0xFF159447),
+                            color: const Color(0xFF1565C0),
                           ),
                         ],
                       ),

@@ -5,6 +5,11 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+// Consistent number formatting across service metrics.
+final NumberFormat _serviceCountFormat = NumberFormat('#,##0');
+String _serviceCount(num value) => _serviceCountFormat.format(value);
 
 // Private UI/data helper used only inside this module.
 class _ServiceMonitorHoverCard extends StatefulWidget {
@@ -80,7 +85,7 @@ class _ServiceStatusPill extends StatelessWidget {
           // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Text(
-            '$label: $value',
+            '$label: ${_serviceCount(value)}',
             style: TextStyle(
               color: color,
               fontSize: 11.5,
@@ -127,7 +132,7 @@ class _ServiceHourCardState extends State<_ServiceHourCard> {
   @override
   Widget build(BuildContext context) {
     final accent = widget.peak
-        ? const Color(0xFF7B1FA2)
+        ? const Color(0xFF1565C0)
         : const Color(0xFF1565C0);
 
     // Handles the mouse region logic used by this module.
@@ -217,28 +222,28 @@ class _ServiceHourCardState extends State<_ServiceHourCard> {
               children: [
                 _HourMetricPill(
                   label: 'Transactions',
-                  value: '${widget.transactionCount}',
+                  value: _serviceCount(widget.transactionCount),
                   color: const Color(0xFF1565C0),
                 ),
                 _HourMetricPill(
                   label: 'Average Time',
                   value: widget.averageTime,
-                  color: const Color(0xFF7B1FA2),
+                  color: const Color(0xFF1565C0),
                 ),
                 _HourMetricPill(
                   label: 'Normal',
-                  value: '${widget.normalCount}',
-                  color: const Color(0xFF159447),
+                  value: _serviceCount(widget.normalCount),
+                  color: const Color(0xFF1565C0),
                 ),
                 _HourMetricPill(
                   label: 'Minor Delay',
-                  value: '${widget.minorDelayCount}',
-                  color: const Color(0xFFF59E0B),
+                  value: _serviceCount(widget.minorDelayCount),
+                  color: const Color(0xFF1565C0),
                 ),
                 _HourMetricPill(
                   label: 'Long Delay',
-                  value: '${widget.longDelayCount}',
-                  color: const Color(0xFFD32F2F),
+                  value: _serviceCount(widget.longDelayCount),
+                  color: const Color(0xFF1565C0),
                 ),
               ],
             );
@@ -420,6 +425,59 @@ class ServiceMonitoringReportScreen extends StatefulWidget {
 class _ServiceMonitoringReportScreenState
     extends State<ServiceMonitoringReportScreen> {
   String _selectedFilter = 'Today';
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _transactionsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _transactionsStream = _makeTransactionsStream();
+  }
+
+  // Firestore-side date filtering avoids loading the whole transaction history
+  // for everyday reports. All Time intentionally includes all records.
+  Stream<QuerySnapshot<Map<String, dynamic>>> _makeTransactionsStream() {
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
+      'transactions',
+    );
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    DateTime? start;
+    DateTime? end;
+    switch (_selectedFilter) {
+      case 'Today':
+        start = today;
+        end = today.add(const Duration(days: 1));
+        break;
+      case 'Yesterday':
+        end = today;
+        start = today.subtract(const Duration(days: 1));
+        break;
+      case 'This Week':
+        start = today.subtract(Duration(days: today.weekday - 1));
+        end = start.add(const Duration(days: 7));
+        break;
+      case 'This Month':
+        start = DateTime(now.year, now.month);
+        end = DateTime(now.year, now.month + 1);
+        break;
+    }
+    if (start != null) {
+      query = query.where(
+        'createdAt',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(start),
+      );
+    }
+    if (end != null) {
+      query = query.where('createdAt', isLessThan: Timestamp.fromDate(end));
+    }
+    return query.snapshots();
+  }
+
+  // Completed sale status is checked consistently with sales reports.
+  bool _isCompletedSale(dynamic statusValue) {
+    final status = (statusValue ?? 'completed').toString().trim().toLowerCase();
+    return status == 'completed' || status == 'paid' || status == 'success';
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -510,6 +568,7 @@ class _ServiceMonitoringReportScreenState
       onSelected: (_) {
         setState(() {
           _selectedFilter = label;
+          _transactionsStream = _makeTransactionsStream();
         });
       },
     );
@@ -591,7 +650,7 @@ class _ServiceMonitoringReportScreenState
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('transactions').snapshots(),
+      stream: _transactionsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -606,7 +665,7 @@ class _ServiceMonitoringReportScreenState
               'Unable to load service monitoring data.\n'
               '${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Color(0xFF1565C0)),
             ),
           );
         }
@@ -622,7 +681,7 @@ class _ServiceMonitoringReportScreenState
                   .toString()
                   .toLowerCase();
 
-              return status != 'voided' &&
+              return _isCompletedSale(status) &&
                   _matchesFilter(
                     _readDate(
                       data['transactionCompletedAt'] ?? data['createdAt'],
@@ -654,8 +713,6 @@ class _ServiceMonitoringReportScreenState
           final durationSeconds = (data['transactionDurationSeconds'] as num?)
               ?.toInt();
 
-          final serviceSpeed = (data['serviceSpeed'] ?? '').toString();
-
           final performance = hourly[completedAt.hour]!;
 
           performance.transactionCount++;
@@ -667,9 +724,10 @@ class _ServiceMonitoringReportScreenState
             totalDurationSeconds += durationSeconds;
             durationRecordCount++;
 
-            final classification = serviceSpeed.isNotEmpty
-                ? serviceSpeed
-                : durationSeconds <= 120
+            // Consistent durations: <= 2 min normal, <= 5 min minor delay.
+            // Classification uses actual recorded seconds rather than labels
+            // which may be inconsistent across transaction versions.
+            final classification = durationSeconds <= 120
                 ? 'Normal Service'
                 : durationSeconds <= 300
                 ? 'Minor Delay'
@@ -709,246 +767,254 @@ class _ServiceMonitoringReportScreenState
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 18,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 18,
                   ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x291565C0),
-                      blurRadius: 20,
-                      offset: Offset(0, 9),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                     ),
-                  ],
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x291565C0),
+                        blurRadius: 20,
+                        offset: Offset(0, 9),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.speed_outlined, color: Colors.white, size: 29),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Service Monitoring',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 23,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Monitor transaction volume, service time, '
+                              'peak hours, and checkout delays.',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: const Row(
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFDDE6F1)),
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _filterChip('Today'),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 8),
+                        _filterChip('Yesterday'),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 8),
+                        _filterChip('This Week'),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 8),
+                        _filterChip('This Month'),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 8),
+                        _filterChip('All Time'),
+                      ],
+                    ),
+                  ),
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    int count = 4;
+
+                    if (constraints.maxWidth < 1050) {
+                      count = 2;
+                    }
+
+                    if (constraints.maxWidth < 620) {
+                      count = 1;
+                    }
+
+                    return GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: count,
+                      crossAxisSpacing: 13,
+                      mainAxisSpacing: 13,
+                      childAspectRatio: count == 4 ? 2.25 : 3.1,
+                      children: [
+                        _summaryCard(
+                          title: 'Transactions',
+                          value: _serviceCount(transactions.length),
+                          icon: Icons.receipt_long_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Peak Hour',
+                          value: peakHour == null
+                              ? 'No data'
+                              : _hourLabel(peakHour.hour),
+                          icon: Icons.schedule_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Average Service Time',
+                          value: durationRecordCount == 0
+                              ? 'N/A'
+                              : _formatDuration(averageDuration),
+                          icon: Icons.timer_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Long Delays',
+                          value: _serviceCount(longDelayCount),
+                          icon: Icons.warning_amber_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                _ServiceMonitorHoverCard(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFEAF3FF), Color(0xFFF8FBFF)],
+                      ),
+                      borderRadius: BorderRadius.circular(17),
+                      border: Border.all(color: const Color(0xFFD7E7FA)),
+                    ),
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 10,
+                      children: [
+                        _ServiceStatusPill(
+                          label: 'Normal Service',
+                          value: normalCount,
+                          color: const Color(0xFF1565C0),
+                          icon: Icons.check_circle_outline,
+                        ),
+                        _ServiceStatusPill(
+                          label: 'Minor Delay',
+                          value: minorDelayCount,
+                          color: const Color(0xFF1565C0),
+                          icon: Icons.schedule_outlined,
+                        ),
+                        _ServiceStatusPill(
+                          label: 'Long Delay',
+                          value: longDelayCount,
+                          color: const Color(0xFF1565C0),
+                          icon: Icons.warning_amber_outlined,
+                        ),
+                        if (missingDurationCount > 0)
+                          _ServiceStatusPill(
+                            label: 'No Duration Data',
+                            value: missingDurationCount,
+                            color: const Color(0xFF7A8494),
+                            icon: Icons.help_outline,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 18),
+                Row(
                   children: [
-                    Icon(Icons.speed_outlined, color: Colors.white, size: 29),
-                    SizedBox(width: 12),
-                    Expanded(
+                    // Handles the expanded logic used by this module.
+                    const Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Service Monitoring',
+                            'Transactions by Hour',
                             style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 23,
+                              color: Color(0xFF172033),
+                              fontSize: 21,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Monitor transaction volume, service time, '
-                            'peak hours, and checkout delays.',
+                            'Compare transaction volume and service delays per hour.',
                             style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12.5,
+                              color: Color(0xFF7D8998),
+                              fontSize: 11.5,
                             ),
                           ),
                         ],
                       ),
                     ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF3FF),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _selectedFilter.toUpperCase(),
+                        style: const TextStyle(
+                          color: Color(0xFF1565C0),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFDDE6F1)),
-                ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _filterChip('Today'),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 8),
-                      _filterChip('Yesterday'),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 8),
-                      _filterChip('This Week'),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 8),
-                      _filterChip('This Month'),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 8),
-                      _filterChip('All Time'),
-                    ],
-                  ),
-                ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  int count = 4;
-
-                  if (constraints.maxWidth < 1050) {
-                    count = 2;
-                  }
-
-                  if (constraints.maxWidth < 620) {
-                    count = 1;
-                  }
-
-                  return GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: count,
-                    crossAxisSpacing: 13,
-                    mainAxisSpacing: 13,
-                    childAspectRatio: count == 4 ? 2.25 : 3.1,
-                    children: [
-                      _summaryCard(
-                        title: 'Transactions',
-                        value: '${transactions.length}',
-                        icon: Icons.receipt_long_outlined,
-                        color: const Color(0xFF1565C0),
-                      ),
-                      _summaryCard(
-                        title: 'Peak Hour',
-                        value: peakHour == null
-                            ? 'No data'
-                            : _hourLabel(peakHour.hour),
-                        icon: Icons.schedule_outlined,
-                        color: const Color(0xFF7B1FA2),
-                      ),
-                      _summaryCard(
-                        title: 'Average Service Time',
-                        value: _formatDuration(averageDuration),
-                        icon: Icons.timer_outlined,
-                        color: const Color(0xFFF59E0B),
-                      ),
-                      _summaryCard(
-                        title: 'Long Delays',
-                        value: '$longDelayCount',
-                        icon: Icons.warning_amber_outlined,
-                        color: const Color(0xFFD32F2F),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              _ServiceMonitorHoverCard(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFEAF3FF), Color(0xFFF8FBFF)],
-                    ),
-                    borderRadius: BorderRadius.circular(17),
-                    border: Border.all(color: const Color(0xFFD7E7FA)),
-                  ),
-                  child: Wrap(
-                    spacing: 12,
-                    runSpacing: 10,
-                    children: [
-                      _ServiceStatusPill(
-                        label: 'Normal Service',
-                        value: normalCount,
-                        color: const Color(0xFF159447),
-                        icon: Icons.check_circle_outline,
-                      ),
-                      _ServiceStatusPill(
-                        label: 'Minor Delay',
-                        value: minorDelayCount,
-                        color: const Color(0xFFF59E0B),
-                        icon: Icons.schedule_outlined,
-                      ),
-                      _ServiceStatusPill(
-                        label: 'Long Delay',
-                        value: longDelayCount,
-                        color: const Color(0xFFD32F2F),
-                        icon: Icons.warning_amber_outlined,
-                      ),
-                      if (missingDurationCount > 0)
-                        _ServiceStatusPill(
-                          label: 'No Duration Data',
-                          value: missingDurationCount,
-                          color: const Color(0xFF7A8494),
-                          icon: Icons.help_outline,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  // Handles the expanded logic used by this module.
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Transactions by Hour',
-                          style: TextStyle(
-                            color: Color(0xFF172033),
-                            fontSize: 21,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          'Compare transaction volume and service delays per hour.',
-                          style: TextStyle(
-                            color: Color(0xFF7D8998),
-                            fontSize: 11.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF3FF),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _selectedFilter.toUpperCase(),
-                      style: const TextStyle(
-                        color: Color(0xFF1565C0),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 12),
-              Expanded(
-                child: activeHours.isEmpty
-                    ? const _ServiceMonitoringEmptyState()
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 12),
+                activeHours.isEmpty
+                    ? const SizedBox(
+                        height: 190,
+                        child: _ServiceMonitoringEmptyState(),
+                      )
                     : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
                         itemCount: activeHours.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
@@ -971,7 +1037,9 @@ class _ServiceMonitoringReportScreenState
                           return _ServiceHourCard(
                             hourLabel: _hourLabel(hour.hour),
                             transactionCount: hour.transactionCount,
-                            averageTime: _formatDuration(averageHourDuration),
+                            averageTime: hour.durationRecordCount == 0
+                                ? 'N/A'
+                                : _formatDuration(averageHourDuration),
                             normalCount: hour.normalCount,
                             minorDelayCount: hour.minorDelayCount,
                             longDelayCount: hour.longDelayCount,
@@ -980,28 +1048,11 @@ class _ServiceMonitoringReportScreenState
                           );
                         },
                       ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
-    );
-  }
-
-  // Handles the metric logic used by this module.
-  Widget _metric(String label, String value, {Color? color}) {
-    // Handles the column logic used by this module.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        // Handles the sized box logic used by this module.
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: TextStyle(fontWeight: FontWeight.bold, color: color),
-        ),
-      ],
     );
   }
 }

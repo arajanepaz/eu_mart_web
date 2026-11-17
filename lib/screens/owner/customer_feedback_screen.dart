@@ -5,6 +5,10 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+// Consistent panel-requested comma separators.
+final NumberFormat _feedbackIntegerFormat = NumberFormat('#,##0');
 
 // Private UI/data helper used only inside this module.
 class _FeedbackHoverCard extends StatefulWidget {
@@ -79,7 +83,7 @@ class _FeedbackCountPill extends StatelessWidget {
           // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Text(
-            '$label: $value',
+            '$label: ${_feedbackIntegerFormat.format(value)}',
             style: TextStyle(
               color: color,
               fontWeight: FontWeight.w900,
@@ -310,6 +314,17 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
 
   String _searchQuery = '';
   String _selectedFilter = 'All';
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _feedbackStream;
+  int _visibleFeedback = 24;
+
+  @override
+  void initState() {
+    super.initState();
+    // Do not recreate the Firestore listener on every keystroke or filter change.
+    _feedbackStream = FirebaseFirestore.instance
+        .collection('customer_feedback')
+        .snapshots();
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -351,19 +366,20 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
         '$hour:$minute $period';
   }
 
-  // Reads and normalizes rating from stored data.
+  // Invalid, absent, NaN, or out-of-range ratings must not count as 1 star.
   int _readRating(Map<String, dynamic> data) {
-    final value =
+    final raw =
         data['rating'] ??
         data['stars'] ??
         data['score'] ??
         data['satisfactionRating'];
-
-    if (value is num) {
-      return value.round().clamp(1, 5);
+    final double? numeric = raw is num
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString().trim() ?? '');
+    if (numeric == null || !numeric.isFinite || numeric < 1 || numeric > 5) {
+      return 0;
     }
-
-    return int.tryParse(value?.toString() ?? '')?.clamp(1, 5) ?? 0;
+    return numeric.round();
   }
 
   // Reads and normalizes comment from stored data.
@@ -418,7 +434,8 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
 
     if (rating >= 4) return 'Satisfied';
     if (rating > 0 && rating <= 2) return 'Not Satisfied';
-    return 'Neutral';
+    if (rating == 3) return 'Neutral';
+    return 'Unrated';
   }
 
   // Checks whether the current value satisfies the matches search rule used by this module.
@@ -451,11 +468,11 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
   Color _sentimentColor(String sentiment) {
     switch (sentiment) {
       case 'Satisfied':
-        return Colors.green;
+        return const Color(0xFF1565C0);
       case 'Not Satisfied':
-        return Colors.red;
+        return const Color(0xFF1565C0);
       default:
-        return Colors.orange;
+        return const Color(0xFF1565C0);
     }
   }
 
@@ -487,6 +504,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
       onSelected: (_) {
         setState(() {
           _selectedFilter = label;
+          _visibleFeedback = 24;
         });
       },
     );
@@ -581,7 +599,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
         // Handles the icon logic used by this module.
         return Icon(
           index < rating ? Icons.star : Icons.star_border,
-          color: Colors.amber.shade700,
+          color: const Color(0xFF1565C0),
           size: 19,
         );
       }),
@@ -591,9 +609,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('customer_feedback')
-          .snapshots(),
+      stream: _feedbackStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -607,7 +623,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
             child: Text(
               'Unable to load customer feedback.\n${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Color(0xFF1565C0)),
             ),
           );
         }
@@ -631,6 +647,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
 
         int satisfiedCount = 0;
         int neutralCount = 0;
+        int unratedCount = 0;
         int notSatisfiedCount = 0;
         int ratingTotal = 0;
         int ratedCount = 0;
@@ -642,6 +659,7 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
 
           if (sentiment == 'Satisfied') satisfiedCount++;
           if (sentiment == 'Neutral') neutralCount++;
+          if (sentiment == 'Unrated') unratedCount++;
           if (sentiment == 'Not Satisfied') {
             notSatisfiedCount++;
           }
@@ -657,10 +675,16 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
         String overallResult = 'No Feedback Yet';
 
         if (documents.isNotEmpty) {
-          if (satisfiedCount > notSatisfiedCount) {
+          if (satisfiedCount > notSatisfiedCount &&
+              satisfiedCount > neutralCount &&
+              satisfiedCount > unratedCount) {
             overallResult = 'Mostly Satisfied';
-          } else if (notSatisfiedCount > satisfiedCount) {
+          } else if (notSatisfiedCount > satisfiedCount &&
+              notSatisfiedCount > neutralCount &&
+              notSatisfiedCount > unratedCount) {
             overallResult = 'Mostly Not Satisfied';
+          } else if (unratedCount == documents.length) {
+            overallResult = 'Unrated Feedback';
           } else {
             overallResult = 'Mixed Feedback';
           }
@@ -677,248 +701,270 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 18,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 18,
                   ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x291565C0),
-                      blurRadius: 20,
-                      offset: Offset(0, 9),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                     ),
-                  ],
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.forum_outlined, color: Colors.white, size: 28),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Customer Feedback',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 23,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Review ratings, customer comments, '
-                            'and overall satisfaction.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  int count = 4;
-                  if (constraints.maxWidth < 1050) {
-                    count = 2;
-                  }
-                  if (constraints.maxWidth < 620) {
-                    count = 1;
-                  }
-
-                  return GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: count,
-                    crossAxisSpacing: 13,
-                    mainAxisSpacing: 13,
-                    childAspectRatio: count == 4 ? 2.25 : 3.0,
-                    children: [
-                      _summaryCard(
-                        title: 'Total Feedback',
-                        value: '${documents.length}',
-                        icon: Icons.reviews_outlined,
-                        color: const Color(0xFF1565C0),
-                      ),
-                      _summaryCard(
-                        title: 'Average Rating',
-                        value: averageRating == 0
-                            ? 'No rating'
-                            : '${averageRating.toStringAsFixed(1)} / 5',
-                        icon: Icons.star_outline,
-                        color: const Color(0xFFF59E0B),
-                      ),
-                      _summaryCard(
-                        title: 'Satisfied',
-                        value: '$satisfiedCount',
-                        icon: Icons.sentiment_satisfied_alt,
-                        color: const Color(0xFF159447),
-                      ),
-                      _summaryCard(
-                        title: 'Overall Result',
-                        value: overallResult,
-                        icon: overallResult == 'Mostly Not Satisfied'
-                            ? Icons.sentiment_dissatisfied
-                            : Icons.insights_outlined,
-                        color: overallResult == 'Mostly Not Satisfied'
-                            ? const Color(0xFFD32F2F)
-                            : const Color(0xFF7B1FA2),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x291565C0),
+                        blurRadius: 20,
+                        offset: Offset(0, 9),
                       ),
                     ],
-                  );
-                },
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFEAF3FF), Color(0xFFF7FAFF)],
                   ),
-                  borderRadius: BorderRadius.circular(17),
-                  border: Border.all(color: const Color(0xFFD7E7FA)),
-                ),
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 10,
-                  children: [
-                    _FeedbackCountPill(
-                      label: 'Satisfied',
-                      value: satisfiedCount,
-                      color: const Color(0xFF159447),
-                      icon: Icons.sentiment_satisfied_alt,
-                    ),
-                    _FeedbackCountPill(
-                      label: 'Neutral',
-                      value: neutralCount,
-                      color: const Color(0xFFF59E0B),
-                      icon: Icons.sentiment_neutral,
-                    ),
-                    _FeedbackCountPill(
-                      label: 'Not Satisfied',
-                      value: notSatisfiedCount,
-                      color: const Color(0xFFD32F2F),
-                      icon: Icons.sentiment_dissatisfied,
-                    ),
-                  ],
-                ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 900;
-
-                  final search = TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value.trim().toLowerCase();
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText:
-                          'Search customer, comment, rating, or sentiment',
-                      prefixIcon: const Icon(
-                        Icons.search_rounded,
-                        color: Color(0xFF1565C0),
-                      ),
-                      suffixIcon: _searchQuery.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _searchQuery = '';
-                                });
-                              },
-                              icon: const Icon(Icons.close_rounded),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.forum_outlined, color: Colors.white, size: 28),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Customer Feedback',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 23,
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: const BorderSide(color: Color(0xFFDDE6F1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: const BorderSide(color: Color(0xFFDDE6F1)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF1565C0),
-                          width: 2,
+                            SizedBox(height: 4),
+                            Text(
+                              'Review ratings, customer comments, '
+                              'and overall satisfaction.',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  );
-
-                  final filters = SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _filterChip('All'),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 8),
-                        _filterChip('Satisfied'),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 8),
-                        _filterChip('Neutral'),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 8),
-                        _filterChip('Not Satisfied'),
-                      ],
-                    ),
-                  );
-
-                  if (compact) {
-                    // Handles the column logic used by this module.
-                    return Column(
-                      children: [search, const SizedBox(height: 12), filters],
-                    );
-                  }
-
-                  // Handles the row logic used by this module.
-                  return Row(
-                    children: [
-                      Expanded(child: search),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 14),
-                      filters,
                     ],
-                  );
-                },
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              Expanded(
-                child: filtered.isEmpty
-                    ? const _FeedbackEmptyState()
+                  ),
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    int count = 4;
+                    if (constraints.maxWidth < 1050) {
+                      count = 2;
+                    }
+                    if (constraints.maxWidth < 620) {
+                      count = 1;
+                    }
+
+                    return GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: count,
+                      crossAxisSpacing: 13,
+                      mainAxisSpacing: 13,
+                      childAspectRatio: count == 4 ? 2.25 : 3.0,
+                      children: [
+                        _summaryCard(
+                          title: 'Total Feedback',
+                          value: _feedbackIntegerFormat.format(
+                            documents.length,
+                          ),
+                          icon: Icons.reviews_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Average Rating',
+                          value: averageRating == 0
+                              ? 'No rating'
+                              : '${averageRating.toStringAsFixed(1)} / 5',
+                          icon: Icons.star_outline,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Satisfied',
+                          value: _feedbackIntegerFormat.format(satisfiedCount),
+                          icon: Icons.sentiment_satisfied_alt,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Overall Result',
+                          value: overallResult,
+                          icon: overallResult == 'Mostly Not Satisfied'
+                              ? Icons.sentiment_dissatisfied
+                              : Icons.insights_outlined,
+                          color: overallResult == 'Mostly Not Satisfied'
+                              ? const Color(0xFF1565C0)
+                              : const Color(0xFF1565C0),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFEAF3FF), Color(0xFFF7FAFF)],
+                    ),
+                    borderRadius: BorderRadius.circular(17),
+                    border: Border.all(color: const Color(0xFFD7E7FA)),
+                  ),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 10,
+                    children: [
+                      _FeedbackCountPill(
+                        label: 'Satisfied',
+                        value: satisfiedCount,
+                        color: const Color(0xFF1565C0),
+                        icon: Icons.sentiment_satisfied_alt,
+                      ),
+                      _FeedbackCountPill(
+                        label: 'Neutral',
+                        value: neutralCount,
+                        color: const Color(0xFF1565C0),
+                        icon: Icons.sentiment_neutral,
+                      ),
+                      _FeedbackCountPill(
+                        label: 'Not Satisfied',
+                        value: notSatisfiedCount,
+                        color: const Color(0xFF1565C0),
+                        icon: Icons.sentiment_dissatisfied,
+                      ),
+                      if (unratedCount > 0)
+                        _FeedbackCountPill(
+                          label: 'Unrated',
+                          value: unratedCount,
+                          color: const Color(0xFF1565C0),
+                          icon: Icons.help_outline,
+                        ),
+                    ],
+                  ),
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 900;
+
+                    final search = TextField(
+                      controller: _searchController,
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value.trim().toLowerCase();
+                          _visibleFeedback = 24;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText:
+                            'Search customer, comment, rating, or sentiment',
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          color: Color(0xFF1565C0),
+                        ),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    _searchQuery = '';
+                                    _visibleFeedback = 24;
+                                  });
+                                },
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFDDE6F1),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFDDE6F1),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF1565C0),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    );
+
+                    final filters = SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _filterChip('All'),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 8),
+                          _filterChip('Satisfied'),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 8),
+                          _filterChip('Neutral'),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 8),
+                          _filterChip('Not Satisfied'),
+                          const SizedBox(width: 8),
+                          _filterChip('Unrated'),
+                        ],
+                      ),
+                    );
+
+                    if (compact) {
+                      // Handles the column logic used by this module.
+                      return Column(
+                        children: [search, const SizedBox(height: 12), filters],
+                      );
+                    }
+
+                    // Handles the row logic used by this module.
+                    return Row(
+                      children: [
+                        Expanded(child: search),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 14),
+                        filters,
+                      ],
+                    );
+                  },
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                filtered.isEmpty
+                    ? const SizedBox(height: 180, child: _FeedbackEmptyState())
                     : ListView.separated(
-                        itemCount: filtered.length,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: filtered.length < _visibleFeedback
+                            ? filtered.length
+                            : _visibleFeedback,
                         separatorBuilder: (_, _) => const SizedBox(height: 11),
                         itemBuilder: (context, index) {
                           final data = filtered[index].data();
@@ -943,8 +989,18 @@ class _CustomerFeedbackScreenState extends State<CustomerFeedbackScreen> {
                           );
                         },
                       ),
-              ),
-            ],
+                if (filtered.length > _visibleFeedback) ...[
+                  const SizedBox(height: 14),
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _visibleFeedback += 24),
+                    icon: const Icon(Icons.expand_more),
+                    label: Text(
+                      'Show more (${_feedbackIntegerFormat.format(filtered.length - _visibleFeedback)} remaining)',
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         );
       },

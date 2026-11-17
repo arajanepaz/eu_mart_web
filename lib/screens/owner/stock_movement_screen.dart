@@ -6,8 +6,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 // Private UI/data helper used only inside this module.
+final NumberFormat _movementCountFormat = NumberFormat('#,##0', 'en_US');
+final NumberFormat _movementMoneyFormat = NumberFormat('#,##0.00', 'en_US');
+
 class _MovementHoverCard extends StatefulWidget {
   final Widget child;
 
@@ -64,6 +69,7 @@ class _StockMovementCard extends StatefulWidget {
   final double buyingCost;
   final String date;
   final String performedBy;
+  final String batchExpirationDetails;
 
   // Handles the stock movement card logic used by this module.
   const _StockMovementCard({
@@ -80,6 +86,7 @@ class _StockMovementCard extends StatefulWidget {
     required this.buyingCost,
     required this.date,
     required this.performedBy,
+    required this.batchExpirationDetails,
   });
 
   @override
@@ -186,29 +193,42 @@ class _StockMovementCardState extends State<_StockMovementCard> {
                         children: [
                           _MovementInfoPill(
                             icon: Icons.inventory_2_outlined,
-                            label: '$sign${widget.quantity}',
+                            label:
+                                '$sign${_movementCountFormat.format(widget.quantity)}',
                             color: widget.color,
                           ),
                           _MovementInfoPill(
                             icon: Icons.compare_arrows_rounded,
                             label:
-                                '${widget.previousStock} → ${widget.newStock}',
+                                '${_movementCountFormat.format(widget.previousStock)} → ${_movementCountFormat.format(widget.newStock)}',
                             color: const Color(0xFF1565C0),
                           ),
                           if (widget.supplier.isNotEmpty)
                             _MovementInfoPill(
                               icon: Icons.local_shipping_outlined,
                               label: widget.supplier,
-                              color: const Color(0xFF7B1FA2),
+                              color: const Color(0xFF1565C0),
                             ),
                           if (widget.buyingCost > 0)
                             _MovementInfoPill(
                               icon: Icons.payments_outlined,
-                              label: '₱${widget.buyingCost.toStringAsFixed(2)}',
-                              color: const Color(0xFF159447),
+                              label:
+                                  '₱${_movementMoneyFormat.format(widget.buyingCost)}',
+                              color: const Color(0xFF1565C0),
                             ),
                         ],
                       ),
+                      if (widget.batchExpirationDetails.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.batchExpirationDetails,
+                          style: const TextStyle(
+                            color: Color(0xFF1565C0),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                       if (widget.reason.isNotEmpty) ...[
                         // Handles the sized box logic used by this module.
                         const SizedBox(height: 10),
@@ -402,6 +422,25 @@ class StockMovementScreen extends StatefulWidget {
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _StockMovementScreenState extends State<StockMovementScreen> {
   String _selectedFilter = 'All';
+  static const int _initialHistoryLimit = 100;
+  int _historyLimit = _initialHistoryLimit;
+
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _recordsStream =
+      _movementQuery();
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _movementQuery() =>
+      FirebaseFirestore.instance
+          .collection('stock_movements')
+          .orderBy('createdAt', descending: true)
+          .limit(_historyLimit)
+          .snapshots();
+
+  void _loadMoreMovements() {
+    setState(() {
+      _historyLimit += _initialHistoryLimit;
+      _recordsStream = _movementQuery();
+    });
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -409,6 +448,17 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     if (value is DateTime) return value;
     if (value is String) return DateTime.tryParse(value);
     return null;
+  }
+
+  // Treat expiration as a calendar date; a product expires only after its
+  // expiration date has passed (consistent with the existing product picker).
+  bool _isExpiredProduct(Map<String, dynamic> product) {
+    final expiration = _readDate(product['expirationDate']);
+    if (expiration == null) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(expiration.year, expiration.month, expiration.day);
+    return date.isBefore(today);
   }
 
   // Formats a date into a consistent display value for the interface.
@@ -435,15 +485,15 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
   Color _movementColor(String type) {
     switch (type) {
       case 'Restock':
-        return Colors.green;
+        return const Color(0xFF1565C0);
       case 'Stock Increase':
         return Colors.blue;
       case 'Damaged':
-        return Colors.orange;
+        return const Color(0xFF1565C0);
       case 'Expired':
-        return Colors.red;
+        return const Color(0xFF1565C0);
       case 'Stock Decrease':
-        return Colors.deepPurple;
+        return const Color(0xFF1565C0);
       default:
         return Colors.grey;
     }
@@ -488,7 +538,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to load products or suppliers: $error'),
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
       return;
@@ -500,7 +550,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No products available. Add a product first.'),
-          backgroundColor: Colors.orange,
+          backgroundColor: Color(0xFF1565C0),
         ),
       );
       return;
@@ -532,6 +582,8 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     String costInput = '';
     String reasonInput = '';
     bool saving = false;
+    String? quantityWarning;
+    DateTime? newBatchExpirationDate;
 
     // No TextEditingControllers are owned outside the dialog, so nothing is
     // disposed prematurely while the Navigator plays its exit animation.
@@ -571,6 +623,29 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
               ? ''
               : (selectedProduct.data()['productName'] ?? 'Unknown Product')
                     .toString();
+          final isIncrease =
+              movementType == 'Restock' || movementType == 'Stock Increase';
+          // A zero-stock product can receive an entirely new dated batch.
+          // Never mix that new date with existing units of an old batch.
+          final isNewBatchRestock =
+              movementType == 'Restock' &&
+              selectedProduct != null &&
+              selectedStock == 0;
+          final selectedExpired =
+              selectedProduct != null &&
+              _isExpiredProduct(selectedProduct.data());
+          final blockedExpiredIncrease =
+              isIncrease && selectedExpired && !isNewBatchRestock;
+          final isDecrease =
+              movementType == 'Stock Decrease' ||
+              movementType == 'Damaged' ||
+              movementType == 'Expired';
+          final enteredQuantity = int.tryParse(quantityInput.trim());
+          final insufficientStock =
+              isDecrease &&
+              selectedProduct != null &&
+              enteredQuantity != null &&
+              enteredQuantity > selectedStock;
 
           Future<void> saveMovement() async {
             if (saving) return;
@@ -579,10 +654,39 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
               ScaffoldMessenger.of(dialogContext).showSnackBar(
                 const SnackBar(
                   content: Text('Select a product from the search results.'),
-                  backgroundColor: Colors.red,
+                  backgroundColor: Color(0xFF1565C0),
                 ),
               );
               return;
+            }
+
+            if (blockedExpiredIncrease) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Cannot add stock to an expired product. Record expired stock disposal instead.',
+                  ),
+                  backgroundColor: Color(0xFF1565C0),
+                ),
+              );
+              return;
+            }
+
+            if (isNewBatchRestock) {
+              final today = DateTime.now();
+              final midnight = DateTime(today.year, today.month, today.day);
+              final expiry = newBatchExpirationDate;
+              if (expiry == null || !expiry.isAfter(midnight)) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Select a future expiration date for the new batch.',
+                    ),
+                    backgroundColor: Color(0xFFB42318),
+                  ),
+                );
+                return;
+              }
             }
 
             final quantity = int.tryParse(quantityInput.trim());
@@ -590,17 +694,54 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
               ScaffoldMessenger.of(dialogContext).showSnackBar(
                 const SnackBar(
                   content: Text('Quantity must be greater than zero.'),
-                  backgroundColor: Colors.red,
+                  backgroundColor: Color(0xFF1565C0),
                 ),
               );
               return;
             }
 
+            if (isDecrease && quantity > selectedStock) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Only ${_movementCountFormat.format(selectedStock)} units available. You entered ${_movementCountFormat.format(quantity)}.',
+                  ),
+                  backgroundColor: const Color(0xFF1565C0),
+                ),
+              );
+              return;
+            }
+            if (movementType != 'Restock' && reasonInput.trim().isEmpty) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Please provide a reason for this stock adjustment.',
+                  ),
+                  backgroundColor: Color(0xFF1565C0),
+                ),
+              );
+              return;
+            }
+            final parsedCost = double.tryParse(costInput.trim());
+            if (movementType == 'Restock' &&
+                (parsedCost == null ||
+                    !parsedCost.isFinite ||
+                    parsedCost < 0)) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Enter a valid non-negative total buying cost.',
+                  ),
+                  backgroundColor: Color(0xFF1565C0),
+                ),
+              );
+              return;
+            }
             if (movementType == 'Restock' && selectedSupplierId == null) {
               ScaffoldMessenger.of(dialogContext).showSnackBar(
                 const SnackBar(
                   content: Text('Select an active supplier for restocking.'),
-                  backgroundColor: Colors.red,
+                  backgroundColor: Color(0xFF1565C0),
                 ),
               );
               return;
@@ -608,8 +749,6 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
 
             final productDocument = selectedProduct;
             final productName = selectedName;
-            final isIncrease =
-                movementType == 'Restock' || movementType == 'Stock Increase';
             final supplierName = selectedSupplierId == null
                 ? ''
                 : (suppliers
@@ -623,6 +762,9 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
             setDialogState(() => saving = true);
             try {
               final user = FirebaseAuth.instance.currentUser;
+              if (user == null) {
+                throw Exception('You must be logged in to record a movement.');
+              }
 
               // Keep the original atomic operation: stock, movement log and
               // audit log either all commit or all fail together.
@@ -632,21 +774,60 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                 final freshProduct = await transaction.get(
                   productDocument.reference,
                 );
+                if (!freshProduct.exists) {
+                  throw Exception('Selected product no longer exists.');
+                }
                 final freshData = freshProduct.data() ?? <String, dynamic>{};
+                // Validate the latest server state: no new batch is allowed
+                // while any previous units remain, even if another user changed
+                // inventory after this dialog was opened.
                 final previousStock =
                     (freshData['stock'] as num?)?.toInt() ?? 0;
+                final newBatch =
+                    movementType == 'Restock' &&
+                    isNewBatchRestock &&
+                    previousStock == 0;
+                if (isNewBatchRestock && previousStock != 0) {
+                  throw Exception(
+                    'Stock changed while recording. Dispose or verify existing stock before receiving a new batch.',
+                  );
+                }
+                if (isIncrease && _isExpiredProduct(freshData) && !newBatch) {
+                  throw Exception(
+                    'Cannot add stock to an expired product. Record expired stock disposal first.',
+                  );
+                }
+                if (newBatch) {
+                  final now = DateTime.now();
+                  final today = DateTime(now.year, now.month, now.day);
+                  if (newBatchExpirationDate == null ||
+                      !newBatchExpirationDate!.isAfter(today)) {
+                    throw Exception(
+                      'New batch expiration date must be in the future.',
+                    );
+                  }
+                }
+                final oldExpirationDate = _readDate(
+                  freshData['expirationDate'],
+                );
                 final newStock = isIncrease
                     ? previousStock + quantity
                     : previousStock - quantity;
 
+                // Re-check against server state because another cashier or
+                // inventory adjustment may have changed the stock meanwhile.
                 if (newStock < 0) {
                   throw Exception(
-                    'Not enough stock. Current stock: $previousStock.',
+                    'Not enough stock. Current stock: ${_movementCountFormat.format(previousStock)}.',
                   );
                 }
 
                 transaction.update(productDocument.reference, {
                   'stock': newStock,
+                  if (newBatch)
+                    'expirationDate': Timestamp.fromDate(
+                      newBatchExpirationDate!,
+                    ),
                   'updatedAt': FieldValue.serverTimestamp(),
                 });
 
@@ -661,12 +842,21 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                   'direction': isIncrease ? 'increase' : 'decrease',
                   'previousStock': previousStock,
                   'newStock': newStock,
+                  'isNewBatch': newBatch,
+                  if (newBatch) ...{
+                    'previousExpirationDate': oldExpirationDate == null
+                        ? null
+                        : Timestamp.fromDate(oldExpirationDate),
+                    'newExpirationDate': Timestamp.fromDate(
+                      newBatchExpirationDate!,
+                    ),
+                  },
                   'supplierId': selectedSupplierId ?? '',
                   'supplier': supplierName,
                   'buyingCost': buyingCost,
                   'reason': reason,
-                  'performedById': user?.uid ?? '',
-                  'performedByEmail': user?.email ?? '',
+                  'performedById': user.uid,
+                  'performedByEmail': user.email ?? '',
                   'createdAt': FieldValue.serverTimestamp(),
                 });
 
@@ -676,11 +866,12 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                 transaction.set(auditReference, {
                   'action': 'Stock Movement',
                   'description':
-                      '$movementType: $productName, quantity $quantity, '
-                      '$previousStock to $newStock',
+                      '$movementType${newBatch ? ' (New Batch)' : ''}: $productName, quantity $quantity, '
+                      '$previousStock to $newStock'
+                      '${newBatch ? ', new expiry ${DateFormat('yyyy-MM-dd').format(newBatchExpirationDate!)}' : ''}',
                   'module': 'Inventory',
-                  'performedById': user?.uid ?? '',
-                  'performedByEmail': user?.email ?? '',
+                  'performedById': user.uid,
+                  'performedByEmail': user.email ?? '',
                   'createdAt': FieldValue.serverTimestamp(),
                 });
               });
@@ -692,7 +883,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('$movementType recorded successfully.'),
-                  backgroundColor: Colors.green,
+                  backgroundColor: const Color(0xFF1565C0),
                 ),
               );
             } catch (error, stackTrace) {
@@ -703,13 +894,17 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
               ScaffoldMessenger.of(dialogContext).showSnackBar(
                 SnackBar(
                   content: Text('Unable to record stock movement: $error'),
-                  backgroundColor: Colors.red,
+                  backgroundColor: const Color(0xFF1565C0),
                 ),
               );
             }
           }
 
           return AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 20,
+            ),
             title: const Text('Record Stock Movement'),
             content: SizedBox(
               width: 560,
@@ -784,8 +979,8 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                                 ),
                                 subtitle: Text(
                                   barcode.isEmpty
-                                      ? 'Stock: $stock'
-                                      : 'Stock: $stock  •  Barcode: $barcode',
+                                      ? 'Stock: ${_movementCountFormat.format(stock)}'
+                                      : 'Stock: ${_movementCountFormat.format(stock)}  •  Barcode: $barcode',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -793,7 +988,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                                     ? const Text(
                                         'Expired',
                                         style: TextStyle(
-                                          color: Colors.red,
+                                          color: Color(0xFF1565C0),
                                           fontWeight: FontWeight.bold,
                                         ),
                                       )
@@ -804,6 +999,8 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                                         FocusScope.of(dialogContext).unfocus();
                                         setDialogState(() {
                                           selectedProductId = product.id;
+                                          newBatchExpirationDate = null;
+                                          quantityWarning = null;
                                         });
                                       },
                               );
@@ -826,13 +1023,13 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEAF8F0),
+                          color: const Color(0xFFEAF3FF),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
-                          'Selected: $selectedName  •  Current stock: $selectedStock',
+                          'Selected: $selectedName  •  Current stock: ${_movementCountFormat.format(selectedStock)}',
                           style: const TextStyle(
-                            color: Color(0xFF168653),
+                            color: Color(0xFF1565C0),
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -871,9 +1068,100 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                           ? null
                           : (value) {
                               if (value == null) return;
-                              setDialogState(() => movementType = value);
+                              setDialogState(() {
+                                movementType = value;
+                                quantityWarning = null;
+                              });
                             },
                     ),
+                    if (isNewBatchRestock) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF3FF),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'NEW BATCH: Current stock is zero. Enter the new delivery expiration date. The previous expiration date is kept in the movement history.',
+                          style: TextStyle(
+                            color: Color(0xFF1565C0),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // Keep the date picker readable even on narrow screens.
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 14,
+                          ),
+                          alignment: Alignment.center,
+                        ),
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final now = DateTime.now();
+                                final today = DateTime(
+                                  now.year,
+                                  now.month,
+                                  now.day,
+                                );
+                                final picked = await showDatePicker(
+                                  context: dialogContext,
+                                  initialDate:
+                                      newBatchExpirationDate ??
+                                      today.add(const Duration(days: 1)),
+                                  firstDate: today.add(const Duration(days: 1)),
+                                  lastDate: DateTime(today.year + 30, 12, 31),
+                                  helpText: 'New batch expiration date',
+                                );
+                                if (picked != null && dialogContext.mounted) {
+                                  setDialogState(
+                                    () => newBatchExpirationDate = picked,
+                                  );
+                                }
+                              },
+                        icon: const Icon(Icons.event_outlined, size: 20),
+                        label: Text(
+                          newBatchExpirationDate == null
+                              ? 'SELECT EXPIRATION DATE *'
+                              : 'EXPIRY: ${DateFormat('yyyy-MM-dd').format(newBatchExpirationDate!)}',
+                          softWrap: true,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (movementType == 'Restock' &&
+                        selectedProduct != null &&
+                        selectedStock > 0 &&
+                        !selectedExpired) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Existing stock remains. Only restock units from the same expiration batch; different expiration dates need separate batch tracking.',
+                        style: TextStyle(
+                          color: Color(0xFF53657C),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    if (blockedExpiredIncrease) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'EXPIRED PRODUCT: Restock and Manual Stock Increase are not allowed. Use Expired Product to record disposal.',
+                        style: TextStyle(
+                          color: Color(0xFFB42318),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     TextFormField(
                       enabled: !saving,
@@ -882,8 +1170,33 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                         labelText: 'Quantity',
                         border: OutlineInputBorder(),
                       ),
-                      onChanged: (value) => quantityInput = value,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      onChanged: (value) {
+                        setDialogState(() {
+                          quantityInput = value;
+                          final parsed = int.tryParse(value);
+                          quantityWarning =
+                              isDecrease &&
+                                  selectedProduct != null &&
+                                  parsed != null &&
+                                  parsed > selectedStock
+                              ? 'Only ${_movementCountFormat.format(selectedStock)} units available. Cannot remove ${_movementCountFormat.format(parsed)} units.'
+                              : null;
+                        });
+                      },
                     ),
+                    if (insufficientStock || quantityWarning != null) ...[
+                      const SizedBox(height: 7),
+                      Text(
+                        quantityWarning ??
+                            'Only ${_movementCountFormat.format(selectedStock)} units available.',
+                        style: const TextStyle(
+                          color: Color(0xFFB42318),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                     if (movementType == 'Restock') ...[
                       const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
@@ -920,7 +1233,10 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                         const SizedBox(height: 8),
                         const Text(
                           'No active suppliers found. Add one in Supplier Management.',
-                          style: TextStyle(color: Colors.orange, fontSize: 12),
+                          style: TextStyle(
+                            color: Color(0xFF1565C0),
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                       const SizedBox(height: 16),
@@ -961,7 +1277,9 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton.icon(
-                onPressed: saving ? null : saveMovement,
+                onPressed: saving || insufficientStock || blockedExpiredIncrease
+                    ? null
+                    : saveMovement,
                 icon: saving
                     ? const SizedBox(
                         width: 18,
@@ -1005,114 +1323,113 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
     return Container(
       color: const Color(0xFFF2F6FC),
       padding: const EdgeInsets.all(22),
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-              ),
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x291565C0),
-                  blurRadius: 20,
-                  offset: Offset(0, 9),
+      child: SingleChildScrollView(
+        primary: true,
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
                 ),
-              ],
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final compact = constraints.maxWidth < 900;
-
-                final title = const Row(
-                  children: [
-                    Icon(
-                      Icons.swap_vert_circle_outlined,
-                      color: Colors.white,
-                      size: 29,
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Stock Movement & Restocking',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 23,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Track every stock increase, decrease, '
-                            'restock, damaged item, and expired product.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-
-                final button = SizedBox(
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    onPressed: _showStockMovementDialog,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF1565C0),
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text(
-                      'NEW MOVEMENT',
-                      style: TextStyle(fontWeight: FontWeight.w900),
-                    ),
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x291565C0),
+                    blurRadius: 20,
+                    offset: Offset(0, 9),
                   ),
-                );
+                ],
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 900;
 
-                if (compact) {
-                  // Handles the column logic used by this module.
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [title, const SizedBox(height: 14), button],
+                  final title = const Row(
+                    children: [
+                      Icon(
+                        Icons.swap_vert_circle_outlined,
+                        color: Colors.white,
+                        size: 29,
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Stock Movement & Restocking',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 23,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Track every stock increase, decrease, '
+                              'restock, damaged item, and expired product.',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   );
-                }
 
-                // Handles the row logic used by this module.
-                return Row(
-                  children: [
-                    Expanded(child: title),
-                    // Handles the sized box logic used by this module.
-                    const SizedBox(width: 16),
-                    button,
-                  ],
-                );
-              },
+                  final button = SizedBox(
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: _showStockMovementDialog,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF1565C0),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text(
+                        'NEW MOVEMENT',
+                        style: TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  );
+
+                  if (compact) {
+                    // Handles the column logic used by this module.
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [title, const SizedBox(height: 14), button],
+                    );
+                  }
+
+                  // Handles the row logic used by this module.
+                  return Row(
+                    children: [
+                      Expanded(child: title),
+                      // Handles the sized box logic used by this module.
+                      const SizedBox(width: 16),
+                      button,
+                    ],
+                  );
+                },
+              ),
             ),
-          ),
-          // Handles the sized box logic used by this module.
-          const SizedBox(height: 16),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('stock_movements')
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
+            // Handles the sized box logic used by this module.
+            const SizedBox(height: 16),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _recordsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
@@ -1127,7 +1444,7 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                       'Unable to load stock movements.\n'
                       '${snapshot.error}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red),
+                      style: const TextStyle(color: Color(0xFF1565C0)),
                     ),
                   );
                 }
@@ -1168,6 +1485,16 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                 // Handles the column logic used by this module.
                 return Column(
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Text(
+                        'Showing the latest ${_movementCountFormat.format(allMovements.length)} movement records. Summary counts reflect loaded records.',
+                        style: const TextStyle(
+                          color: Color(0xFF607086),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                     LayoutBuilder(
                       builder: (context, constraints) {
                         int count = 4;
@@ -1188,27 +1515,27 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                           children: [
                             _movementSummaryCard(
                               title: 'Restocks',
-                              value: '$restockCount',
+                              value: _movementCountFormat.format(restockCount),
                               icon: Icons.add_shopping_cart,
-                              color: const Color(0xFF159447),
+                              color: const Color(0xFF1565C0),
                             ),
                             _movementSummaryCard(
                               title: 'Stock Increases',
-                              value: '$increaseCount',
+                              value: _movementCountFormat.format(increaseCount),
                               icon: Icons.add_circle_outline,
                               color: const Color(0xFF1565C0),
                             ),
                             _movementSummaryCard(
                               title: 'Stock Decreases',
-                              value: '$decreaseCount',
+                              value: _movementCountFormat.format(decreaseCount),
                               icon: Icons.remove_circle_outline,
-                              color: const Color(0xFF7B1FA2),
+                              color: const Color(0xFF1565C0),
                             ),
                             _movementSummaryCard(
                               title: 'Damaged / Expired',
-                              value: '$issueCount',
+                              value: _movementCountFormat.format(issueCount),
                               icon: Icons.warning_amber_rounded,
-                              color: const Color(0xFFF59E0B),
+                              color: const Color(0xFFEAF3FF),
                             ),
                           ],
                         );
@@ -1253,67 +1580,74 @@ class _StockMovementScreenState extends State<StockMovementScreen> {
                     ),
                     // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
-                    Expanded(
-                      child: movements.isEmpty
-                          ? const _StockMovementEmptyState()
-                          : ListView.separated(
-                              itemCount: movements.length,
-                              separatorBuilder: (_, _) =>
-                                  // Handles the sized box logic used by this module.
-                                  const SizedBox(height: 12),
-                              itemBuilder: (context, index) {
-                                final data = movements[index].data();
-                                final type =
-                                    (data['movementType'] ?? 'Adjustment')
-                                        .toString();
-                                final color = _movementColor(type);
-                                final direction = (data['direction'] ?? '')
-                                    .toString();
-                                final quantity =
-                                    (data['quantity'] as num?)?.toInt() ?? 0;
-                                final previousStock =
-                                    (data['previousStock'] as num?)?.toInt() ??
-                                    0;
-                                final newStock =
-                                    (data['newStock'] as num?)?.toInt() ?? 0;
-                                final supplier = (data['supplier'] ?? '')
-                                    .toString();
-                                final reason = (data['reason'] ?? '')
-                                    .toString();
-                                final buyingCost =
-                                    (data['buyingCost'] as num?)?.toDouble() ??
-                                    0;
+                    movements.isEmpty
+                        ? const _StockMovementEmptyState()
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: movements.length,
+                            separatorBuilder: (_, _) =>
+                                // Handles the sized box logic used by this module.
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final data = movements[index].data();
+                              final type =
+                                  (data['movementType'] ?? 'Adjustment')
+                                      .toString();
+                              final color = _movementColor(type);
+                              final direction = (data['direction'] ?? '')
+                                  .toString();
+                              final quantity =
+                                  (data['quantity'] as num?)?.toInt() ?? 0;
+                              final previousStock =
+                                  (data['previousStock'] as num?)?.toInt() ?? 0;
+                              final newStock =
+                                  (data['newStock'] as num?)?.toInt() ?? 0;
+                              final supplier = (data['supplier'] ?? '')
+                                  .toString();
+                              final reason = (data['reason'] ?? '').toString();
+                              final buyingCost =
+                                  (data['buyingCost'] as num?)?.toDouble() ?? 0;
 
-                                // Handles the stock movement card logic used by this module.
-                                return _StockMovementCard(
-                                  productName:
-                                      (data['productName'] ?? 'Unknown Product')
-                                          .toString(),
-                                  type: type,
-                                  color: color,
-                                  icon: _movementIcon(type),
-                                  direction: direction,
-                                  quantity: quantity,
-                                  previousStock: previousStock,
-                                  newStock: newStock,
-                                  supplier: supplier,
-                                  reason: reason,
-                                  buyingCost: buyingCost,
-                                  date: _formatDate(
-                                    _readDate(data['createdAt']),
-                                  ),
-                                  performedBy: (data['performedByEmail'] ?? '')
-                                      .toString(),
-                                );
-                              },
-                            ),
-                    ),
+                              // Handles the stock movement card logic used by this module.
+                              return _StockMovementCard(
+                                productName:
+                                    (data['productName'] ?? 'Unknown Product')
+                                        .toString(),
+                                type: type,
+                                color: color,
+                                icon: _movementIcon(type),
+                                direction: direction,
+                                quantity: quantity,
+                                previousStock: previousStock,
+                                newStock: newStock,
+                                supplier: supplier,
+                                reason: reason,
+                                buyingCost: buyingCost,
+                                date: _formatDate(_readDate(data['createdAt'])),
+                                performedBy: (data['performedByEmail'] ?? '')
+                                    .toString(),
+                                batchExpirationDetails:
+                                    data['isNewBatch'] == true
+                                    ? 'NEW BATCH • Previous expiry: ${_readDate(data['previousExpirationDate']) == null ? 'Not set' : DateFormat('yyyy-MM-dd').format(_readDate(data['previousExpirationDate'])!)} • New expiry: ${_readDate(data['newExpirationDate']) == null ? 'Not set' : DateFormat('yyyy-MM-dd').format(_readDate(data['newExpirationDate'])!)}'
+                                    : '',
+                              );
+                            },
+                          ),
+                    if (allMovements.length >= _historyLimit) ...[
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: _loadMoreMovements,
+                        icon: const Icon(Icons.expand_more),
+                        label: const Text('LOAD 100 MORE MOVEMENTS'),
+                      ),
+                    ],
                   ],
                 );
               },
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

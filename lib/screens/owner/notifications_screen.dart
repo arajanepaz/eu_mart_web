@@ -35,6 +35,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   final Set<String> _locallyReadIds = <String>{};
   bool _markingAllAsRead = false;
+  bool _isRefreshing = false;
 
   late Future<
     ({
@@ -114,15 +115,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     try {
-      final openedWindow = html.window.open(uri.toString(), '_blank');
-      if (openedWindow != null) return;
-      debugPrint('Google Shopping window was blocked by the browser.');
+      // Dart's window.open return type is non-nullable on this Flutter Web SDK.
+      // Browsers may silently block a popup, so the dialog also provides an
+      // explicit Copy link button as a reliable alternative.
+      html.window.open(uri.toString(), '_blank');
     } catch (error) {
       debugPrint('Opening Google Shopping failed: $error');
+      _copyGoogleShoppingLink(product);
     }
-
-    // A blocked pop-up must not prevent the cashier/owner from checking prices.
-    _copyGoogleShoppingLink(product);
   }
 
   // Owner manually selects an existing Firestore product before searching.
@@ -184,7 +184,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       'Select a product to open its Google Shopping results. '
                       'Online prices may differ by store, size and promotion; '
                       'no EÜ MART prices will be changed.',
-                      style: TextStyle(fontSize: 12, color: Colors.deepOrange),
+                      style: TextStyle(fontSize: 12, color: Colors.blue),
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -214,7 +214,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   ),
                                   subtitle: Text(
                                     '${data['brand'] ?? ''} • ${data['unit'] ?? ''} • '
-                                    'EÜ MART ₱${_readDouble(data['sellingPrice']).toStringAsFixed(2)}',
+                                    'EÜ MART ${_formatPrice(_readDouble(data['sellingPrice']))}',
                                   ),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -363,9 +363,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return '${date.year}-$month-$day';
   }
 
-  // Formats price into a user-friendly display value.
+  // Formats non-monetary counts with comma grouping for the panel's reports.
+  String _formatCount(int value) {
+    final digits = value.abs().toString();
+    final grouped = digits.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => ',',
+    );
+    return value < 0 ? '-$grouped' : grouped;
+  }
+
+  // Formats prices with comma separators and two decimal places.
   String _formatPrice(double value) {
-    return '₱${value.toStringAsFixed(2)}';
+    final pieces = value.abs().toStringAsFixed(2).split('.');
+    final whole = pieces.first.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => ',',
+    );
+    return '${value < 0 ? '-' : ''}₱$whole.${pieces.last}';
   }
 
   // Handles the days until logic used by this module.
@@ -452,21 +467,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     switch (type) {
       case 'Out of Stock':
       case 'Permit Expired':
-        return Colors.red;
+        return Colors.blue;
 
       case 'Expired':
-        return Colors.deepOrange;
+        return Colors.blue;
 
       case 'Expiring Soon':
       case 'Permit Due Soon':
-        return Colors.orange;
+        return Colors.blue;
 
       case 'Low Stock':
-        return Colors.amber.shade800;
+        return Colors.blue.shade800;
 
       case 'Price Update':
         // Handles the color logic used by this module.
-        return const Color(0xFF7B1FA2);
+        return const Color(0xFF1565C0);
 
       default:
         return Colors.blueGrey;
@@ -601,7 +616,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('All current alerts marked as read.'),
-          backgroundColor: Colors.green,
+          backgroundColor: Colors.blue,
         ),
       );
     } catch (error) {
@@ -617,7 +632,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Unable to mark all alerts as read. Please try again.'),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.blue,
         ),
       );
     } finally {
@@ -680,9 +695,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final isDecrease = difference < 0;
 
     final changeColor = isIncrease
-        ? Colors.red
+        ? Colors.blue
         : isDecrease
-        ? Colors.green
+        ? Colors.blue
         : Colors.blueGrey;
 
     final changeIcon = isIncrease
@@ -716,13 +731,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         height: 50,
                         decoration: BoxDecoration(
                           color: const Color(
-                            0xFF7B1FA2,
+                            0xFF1565C0,
                           ).withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(15),
                         ),
                         child: const Icon(
                           Icons.compare_arrows_rounded,
-                          color: Color(0xFF7B1FA2),
+                          color: Color(0xFF1565C0),
                           size: 27,
                         ),
                       ),
@@ -816,7 +831,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         child: _PriceComparisonBox(
                           label: 'New Buying Price',
                           value: _formatPrice(newPrice),
-                          color: const Color(0xFF7B1FA2),
+                          color: const Color(0xFF1565C0),
                           icon: Icons.price_change_outlined,
                         ),
                       ),
@@ -959,12 +974,38 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   // Filters chip according to the current user selection or business rule.
-  Widget _filterChip(String label) {
+  Widget _filterChip(String label, {required int unreadCount}) {
     final selected = _selectedFilter == label;
 
-    // Handles the choice chip logic used by this module.
+    // Show a small unread indicator only when this filter has new alerts.
+    // Counts come from the same notification_reads records as the Unread card.
     return ChoiceChip(
-      label: Text(label),
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          if (unreadCount > 0) ...[
+            const SizedBox(width: 7),
+            Container(
+              constraints: const BoxConstraints(minWidth: 19, minHeight: 19),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? Colors.white : const Color(0xFF1565C0),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                unreadCount > 99 ? '99+' : '$unreadCount',
+                style: TextStyle(
+                  color: selected ? const Color(0xFF1565C0) : Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
       selected: selected,
       selectedColor: const Color(0xFF1565C0),
       labelStyle: TextStyle(
@@ -1043,7 +1084,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     // Handles the sized box logic used by this module.
                     const SizedBox(height: 3),
                     Text(
-                      '$value',
+                      _formatCount(value),
                       style: const TextStyle(
                         color: Color(0xFF172033),
                         fontSize: 21,
@@ -1098,7 +1139,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           break;
 
         case 'Low Stock':
-          description = '$productName has only $stock item(s) remaining.';
+          description =
+              '$productName has only ${_formatCount(stock)} item(s) remaining.';
           break;
 
         case 'Expired':
@@ -1122,8 +1164,41 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           type: type,
           description: description,
           relevantDate: expirationDate,
+          activityDate:
+              _readDate(data['updatedAt']) ?? _readDate(data['createdAt']),
         ),
       );
+
+      // A product can be low/out of stock AND near expiry. Previously the
+      // single-type priority hid expiration alerts for those products.
+      // Keep its existing stock alert, and additionally show expiration.
+      if ((type == 'Low Stock' || type == 'Out of Stock') &&
+          _enableExpirationAlerts &&
+          expirationDate != null) {
+        final days = _daysUntil(expirationDate);
+        final expiryType = days < 0
+            ? 'Expired'
+            : days <= _expirationAlertDays
+            ? 'Expiring Soon'
+            : null;
+        if (expiryType != null) {
+          alerts.add(
+            _UnifiedAlert(
+              documentId: document.id,
+              source: 'product',
+              title: productName,
+              subtitle: (data['category'] ?? 'Product Alert').toString(),
+              type: expiryType,
+              description: expiryType == 'Expired'
+                  ? '$productName expired on ${_formatDate(expirationDate)}.'
+                  : '$productName will expire on ${_formatDate(expirationDate)}.',
+              relevantDate: expirationDate,
+              activityDate:
+                  _readDate(data['updatedAt']) ?? _readDate(data['createdAt']),
+            ),
+          );
+        }
+      }
     }
 
     // ============================================================
@@ -1162,6 +1237,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           type: type,
           description: description,
           relevantDate: expirationDate,
+          activityDate:
+              _readDate(data['updatedAt']) ?? _readDate(data['createdAt']),
         ),
       );
     }
@@ -1214,6 +1291,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           type: 'Price Update',
           description: description,
           relevantDate: createdAt,
+          activityDate: _readDate(data['updatedAt']) ?? createdAt,
           oldBuyingPrice: oldBuyingPrice,
           newBuyingPrice: newBuyingPrice,
           currentSellingPrice: currentSellingPrice,
@@ -1222,51 +1300,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       );
     }
 
-    // ============================================================
-    // ALERT PRIORITY
-    // ============================================================
-
-    const priority = {
-      'Price Update': 0,
-      'Permit Expired': 1,
-      'Expired': 2,
-      'Out of Stock': 3,
-      'Permit Due Soon': 4,
-      'Expiring Soon': 5,
-      'Low Stock': 6,
-    };
-
+    // Most recently created/edited records first, not closest expiration date.
+    // Product expiry date remains available as relevantDate for the alert text.
     alerts.sort((a, b) {
-      final typeComparison = (priority[a.type] ?? 99).compareTo(
-        priority[b.type] ?? 99,
-      );
-
-      if (typeComparison != 0) {
-        return typeComparison;
-      }
-
-      final aDate = a.relevantDate;
-
-      final bDate = b.relevantDate;
-
+      final aDate = a.activityDate;
+      final bDate = b.activityDate;
       if (aDate != null && bDate != null) {
-        final dateComparison = bDate.compareTo(aDate);
-
-        if (dateComparison != 0) {
-          return dateComparison;
-        }
+        final comparison = bDate.compareTo(aDate);
+        if (comparison != 0) return comparison;
+      } else if (aDate != null) {
+        return -1;
+      } else if (bDate != null) {
+        return 1;
       }
-
       return a.title.toLowerCase().compareTo(b.title.toLowerCase());
     });
 
     return alerts;
   }
 
-  void _refreshAlerts() {
+  Future<void> _refreshAlerts() async {
+    if (_isRefreshing) return;
+
+    final refreshFuture = _loadAlertData();
     setState(() {
-      _alertDataFuture = _loadAlertData();
+      _isRefreshing = true;
+      _alertDataFuture = refreshFuture;
     });
+
+    try {
+      await refreshFuture;
+    } catch (error) {
+      debugPrint('Unable to refresh notifications: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshing = false);
+      }
+    }
   }
 
   @override
@@ -1292,7 +1362,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             child: Text(
               'Unable to load notifications.\n${alertDataSnapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -1333,9 +1403,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               }
             }
 
+            // Show unread notifications before already-read ones. Within each
+            // group, preserve newest-updated-first ordering from _buildAlerts.
+            filteredAlerts.sort((a, b) {
+              final aUnread = !readIds.contains(_readDocumentId(a));
+              final bUnread = !readIds.contains(_readDocumentId(b));
+              if (aUnread != bUnread) return aUnread ? -1 : 1;
+              return 0;
+            });
+
             final unreadCount = allAlerts
                 .where((alert) => !readIds.contains(_readDocumentId(alert)))
                 .length;
+
+            // Live per-category unread counts for the filter chips.
+            final unreadByType = <String, int>{};
+            for (final alert in allAlerts) {
+              if (readIds.contains(_readDocumentId(alert))) continue;
+              unreadByType.update(
+                alert.type,
+                (count) => count + 1,
+                ifAbsent: () => 1,
+              );
+            }
+            int unreadFor(String type) =>
+                type == 'All' ? unreadCount : (unreadByType[type] ?? 0);
 
             final productAlertCount = allAlerts
                 .where((alert) => alert.source == 'product')
@@ -1365,7 +1457,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           gradient: const LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                            colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                           ),
                           borderRadius: BorderRadius.circular(22),
                           boxShadow: const [
@@ -1407,7 +1499,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                       // Handles the sized box logic used by this module.
                                       const SizedBox(height: 4),
                                       Text(
-                                        '$unreadCount unread alert(s) requiring attention.',
+                                        '${_formatCount(unreadCount)} unread alert(s) requiring attention.',
                                         style: const TextStyle(
                                           color: Colors.white70,
                                           fontSize: 12.5,
@@ -1450,11 +1542,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             );
 
                             final refreshAction = OutlinedButton.icon(
-                              onPressed: _refreshAlerts,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('REFRESH'),
+                              onPressed: _isRefreshing ? null : _refreshAlerts,
+                              icon: _isRefreshing
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                  : const Icon(Icons.refresh),
+                              label: Text(
+                                _isRefreshing ? 'REFRESHING...' : 'REFRESH',
+                              ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.white,
+                                disabledForegroundColor: Colors.white70,
                                 side: const BorderSide(color: Colors.white70),
                                 minimumSize: const Size(120, 46),
                               ),
@@ -1519,19 +1626,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 title: 'Product Alerts',
                                 value: productAlertCount,
                                 icon: Icons.inventory_2_outlined,
-                                color: Colors.orange,
+                                color: Colors.blue,
                               ),
                               _summaryCard(
                                 title: 'Permit Alerts',
                                 value: permitAlertCount,
                                 icon: Icons.description_outlined,
-                                color: Colors.red,
+                                color: Colors.blue,
                               ),
                               _summaryCard(
                                 title: 'Price Updates',
                                 value: priceUpdateCount,
                                 icon: Icons.price_change_outlined,
-                                color: const Color(0xFF7B1FA2),
+                                color: const Color(0xFF1565C0),
                               ),
                               _summaryCard(
                                 title: 'Unread',
@@ -1543,7 +1650,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 title: 'Total Alerts',
                                 value: allAlerts.length,
                                 icon: Icons.notifications_active_outlined,
-                                color: Colors.purple,
+                                color: Colors.blue,
                               ),
                             ],
                           );
@@ -1559,28 +1666,49 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            _filterChip('All'),
+                            _filterChip('All', unreadCount: unreadFor('All')),
                             // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
-                            _filterChip('Price Update'),
+                            _filterChip(
+                              'Price Update',
+                              unreadCount: unreadFor('Price Update'),
+                            ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
-                            _filterChip('Out of Stock'),
+                            _filterChip(
+                              'Out of Stock',
+                              unreadCount: unreadFor('Out of Stock'),
+                            ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
-                            _filterChip('Low Stock'),
+                            _filterChip(
+                              'Low Stock',
+                              unreadCount: unreadFor('Low Stock'),
+                            ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
-                            _filterChip('Expired'),
+                            _filterChip(
+                              'Expired',
+                              unreadCount: unreadFor('Expired'),
+                            ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
-                            _filterChip('Expiring Soon'),
+                            _filterChip(
+                              'Expiring Soon',
+                              unreadCount: unreadFor('Expiring Soon'),
+                            ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
-                            _filterChip('Permit Expired'),
+                            _filterChip(
+                              'Permit Expired',
+                              unreadCount: unreadFor('Permit Expired'),
+                            ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(width: 8),
-                            _filterChip('Permit Due Soon'),
+                            _filterChip(
+                              'Permit Due Soon',
+                              unreadCount: unreadFor('Permit Due Soon'),
+                            ),
                           ],
                         ),
                       ),
@@ -1709,10 +1837,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                                 _showPriceComparison(alert),
                                             style: OutlinedButton.styleFrom(
                                               foregroundColor: const Color(
-                                                0xFF7B1FA2,
+                                                0xFF1565C0,
                                               ),
                                               side: const BorderSide(
-                                                color: Color(0xFF7B1FA2),
+                                                color: Color(0xFF1565C0),
                                               ),
                                               shape: RoundedRectangleBorder(
                                                 borderRadius:
@@ -1736,7 +1864,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                           isRead
                                               ? const Icon(
                                                   Icons.done_all,
-                                                  color: Colors.green,
+                                                  color: Colors.blue,
                                                 )
                                               : const Icon(
                                                   Icons.circle,
@@ -1748,7 +1876,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     : isRead
                                     ? const Icon(
                                         Icons.done_all,
-                                        color: Colors.green,
+                                        color: Colors.blue,
                                       )
                                     : const Icon(
                                         Icons.circle,
@@ -2088,6 +2216,7 @@ class _UnifiedAlert {
   final String type;
   final String description;
   final DateTime? relevantDate;
+  final DateTime? activityDate;
 
   final double? oldBuyingPrice;
   final double? newBuyingPrice;
@@ -2103,6 +2232,7 @@ class _UnifiedAlert {
     required this.type,
     required this.description,
     required this.relevantDate,
+    this.activityDate,
     this.oldBuyingPrice,
     this.newBuyingPrice,
     this.currentSellingPrice,

@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:html' as html;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -24,6 +25,54 @@ class SalesReportsScreen extends StatefulWidget {
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SalesReportsScreenState extends State<SalesReportsScreen> {
   String _selectedFilter = 'This Month';
+
+  // Display-only grouping; raw numeric values are kept in CSV exports.
+  static final NumberFormat _currencyNumber = NumberFormat('#,##0.00', 'en_US');
+  static final NumberFormat _wholeNumber = NumberFormat('#,##0', 'en_US');
+  String _formatMoney(num value) => _currencyNumber.format(value);
+  String _formatCount(num value) => _wholeNumber.format(value);
+
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _transactionsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _transactionsStream = _makeTransactionsStream();
+  }
+
+  // Limit the server query to the selected reporting period. Only the explicit
+  // All filter requests the full history. A stream is created once per filter.
+  Stream<QuerySnapshot<Map<String, dynamic>>> _makeTransactionsStream() {
+    final today = DateTime.now();
+    DateTime? start;
+    if (_selectedFilter == 'Today') {
+      start = DateTime(today.year, today.month, today.day);
+    } else if (_selectedFilter == 'This Week') {
+      final midnight = DateTime(today.year, today.month, today.day);
+      start = midnight.subtract(Duration(days: today.weekday - 1));
+    } else if (_selectedFilter == 'This Month') {
+      start = DateTime(today.year, today.month);
+    }
+    final collection = FirebaseFirestore.instance.collection('transactions');
+    if (start == null) return collection.snapshots();
+    return collection
+        .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+        .snapshots();
+  }
+
+  double _money(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  // Only completed/paid sales count as revenue. Older sales may omit status.
+  bool _isCompletedSale(Map<String, dynamic> transaction) {
+    final status = (transaction['status'] ?? 'completed')
+        .toString()
+        .trim()
+        .toLowerCase();
+    return status == 'completed' || status == 'paid' || status == 'success';
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -72,6 +121,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
       onSelected: (_) {
         setState(() {
           _selectedFilter = label;
+          _transactionsStream = _makeTransactionsStream();
         });
       },
       selectedColor: const Color(0xFF1565C0),
@@ -193,6 +243,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
         _csvEscape('Total'),
         _csvEscape('Cash'),
         _csvEscape('Change'),
+        _csvEscape('Net Cash Received'),
         _csvEscape('Status'),
       ].join(','),
     ];
@@ -212,14 +263,11 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                 data['processedByEmail'] ??
                 'Unknown Cashier',
           ),
+          _csvEscape(_money(data['total']).toStringAsFixed(2)),
+          _csvEscape(_money(data['cash']).toStringAsFixed(2)),
+          _csvEscape(_money(data['change']).toStringAsFixed(2)),
           _csvEscape(
-            ((data['total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2),
-          ),
-          _csvEscape(
-            ((data['cash'] as num?)?.toDouble() ?? 0).toStringAsFixed(2),
-          ),
-          _csvEscape(
-            ((data['change'] as num?)?.toDouble() ?? 0).toStringAsFixed(2),
+            (_money(data['cash']) - _money(data['change'])).toStringAsFixed(2),
           ),
           _csvEscape(data['status'] ?? 'completed'),
         ].join(','),
@@ -246,7 +294,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
       // Handles the snack bar logic used by this module.
       const SnackBar(
         content: Text('Sales CSV downloaded successfully.'),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.blue,
       ),
     );
   }
@@ -299,17 +347,20 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                   children: [
                     _pdfSummaryCell(
                       'Total Sales',
-                      'PHP ${totalSales.toStringAsFixed(2)}',
+                      'PHP ${_formatMoney(totalSales)}',
                     ),
-                    _pdfSummaryCell('Transactions', '${transactions.length}'),
+                    _pdfSummaryCell(
+                      'Transactions',
+                      _formatCount(transactions.length),
+                    ),
                   ],
                 ),
                 pw.TableRow(
                   children: [
-                    _pdfSummaryCell('Items Sold', '$totalItemsSold'),
+                    _pdfSummaryCell('Items Sold', _formatCount(totalItemsSold)),
                     _pdfSummaryCell(
                       'Average Transaction',
-                      'PHP ${averageTransaction.toStringAsFixed(2)}',
+                      'PHP ${_formatMoney(averageTransaction)}',
                     ),
                   ],
                 ),
@@ -329,8 +380,8 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                 return [
                   '${entry.key + 1}',
                   product.productName,
-                  '${product.quantity}',
-                  'PHP ${product.sales.toStringAsFixed(2)}',
+                  _formatCount(product.quantity),
+                  'PHP ${_formatMoney(product.sales)}',
                 ];
               }).toList(),
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
@@ -360,7 +411,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                           data['processedByEmail'] ??
                           'Unknown Cashier')
                       .toString(),
-                  'PHP ${((data['total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                  'PHP ${_formatMoney(_money(data['total']))}',
                 ];
               }).toList(),
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
@@ -401,7 +452,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('transactions').snapshots(),
+      stream: _transactionsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -415,7 +466,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
             child: Text(
               'Unable to load sales reports.\n${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -428,11 +479,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
 
         final filtered = documents.where((document) {
           final data = document.data();
-          final status = (data['status'] ?? 'completed')
-              .toString()
-              .toLowerCase();
-
-          if (status == 'voided') return false;
+          if (!_isCompletedSale(data)) return false;
 
           // Checks whether the current value satisfies the matches filter rule used by this module.
           return _matchesFilter(_readDate(data['createdAt']));
@@ -448,17 +495,21 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
         for (final document in filtered) {
           final data = document.data();
 
-          totalSales += (data['total'] as num?)?.toDouble() ?? 0;
-          totalCash += (data['cash'] as num?)?.toDouble() ?? 0;
+          final saleTotal = _money(data['total']);
+          totalSales += saleTotal;
+          // Cash tendered includes change and is NOT the amount retained.
+          // For cash-only POS sales, retained cash equals the net sale total.
+          final tendered = _money(data['cash']);
+          final change = _money(data['change']);
+          final retained = tendered - change;
+          totalCash += retained >= 0 ? retained : 0;
 
           final date = _readDate(data['createdAt']);
 
           if (date != null) {
             final key =
                 '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-            dailySales[key] =
-                (dailySales[key] ?? 0) +
-                ((data['total'] as num?)?.toDouble() ?? 0);
+            dailySales[key] = (dailySales[key] ?? 0) + _money(data['total']);
           }
 
           final items = data['items'] as List<dynamic>? ?? <dynamic>[];
@@ -469,15 +520,23 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
             final item = Map<String, dynamic>.from(rawItem);
             final productName = (item['productName'] ?? 'Unknown Product')
                 .toString();
-            final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
-            final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0;
+            final quantity =
+                (item['quantity'] as num?)?.toInt() ??
+                int.tryParse(item['quantity']?.toString() ?? '') ??
+                0;
+            final subtotal = _money(item['subtotal']);
+            if (quantity <= 0) continue;
+            final productId = (item['productId'] ?? '').toString().trim();
+            final productKey = productId.isEmpty
+                ? 'name:${productName.toLowerCase()}'
+                : 'id:$productId';
 
             totalItemsSold += quantity;
 
-            final existing = productSales[productName];
+            final existing = productSales[productKey];
 
             if (existing == null) {
-              productSales[productName] = _ProductSales(
+              productSales[productKey] = _ProductSales(
                 productName: productName,
                 quantity: quantity,
                 sales: subtotal,
@@ -689,27 +748,27 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                       children: [
                         _summaryCard(
                           title: 'Total Sales',
-                          value: '₱${totalSales.toStringAsFixed(2)}',
+                          value: '₱${_formatMoney(totalSales)}',
                           icon: Icons.payments_rounded,
-                          color: const Color(0xFF159447),
+                          color: const Color(0xFF1565C0),
                         ),
                         _summaryCard(
                           title: 'Transactions',
-                          value: '${filtered.length}',
+                          value: _formatCount(filtered.length),
                           icon: Icons.receipt_long_outlined,
                           color: const Color(0xFF1565C0),
                         ),
                         _summaryCard(
                           title: 'Items Sold',
-                          value: '$totalItemsSold',
+                          value: _formatCount(totalItemsSold),
                           icon: Icons.shopping_bag_outlined,
-                          color: const Color(0xFFF59E0B),
+                          color: const Color(0xFF1976D2),
                         ),
                         _summaryCard(
                           title: 'Average Transaction',
-                          value: '₱${averageTransaction.toStringAsFixed(2)}',
+                          value: '₱${_formatMoney(averageTransaction)}',
                           icon: Icons.trending_up_rounded,
-                          color: const Color(0xFF7B1FA2),
+                          color: const Color(0xFF1565C0),
                         ),
                       ],
                     );
@@ -756,7 +815,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                                             MainAxisAlignment.end,
                                         children: [
                                           Text(
-                                            '₱${entry.value.toStringAsFixed(0)}',
+                                            '₱${_formatCount(entry.value)}',
                                             style: const TextStyle(
                                               fontSize: 11,
                                               fontWeight: FontWeight.w800,
@@ -834,79 +893,74 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                               ),
                             )
                           : Column(
-                              children: topProducts
-                                  .take(10)
-                                  .toList()
-                                  .asMap()
-                                  .entries
-                                  .map((entry) {
-                                    final rank = entry.key + 1;
-                                    final product = entry.value;
+                              children: topProducts.take(10).toList().asMap().entries.map((
+                                entry,
+                              ) {
+                                final rank = entry.key + 1;
+                                final product = entry.value;
 
-                                    // Handles the container logic used by this module.
-                                    return Container(
-                                      margin: const EdgeInsets.only(bottom: 9),
-                                      padding: const EdgeInsets.all(11),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF8FBFF),
-                                        borderRadius: BorderRadius.circular(13),
-                                        border: Border.all(
-                                          color: const Color(0xFFE6EDF6),
+                                // Handles the container logic used by this module.
+                                return Container(
+                                  margin: const EdgeInsets.only(bottom: 9),
+                                  padding: const EdgeInsets.all(11),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8FBFF),
+                                    borderRadius: BorderRadius.circular(13),
+                                    border: Border.all(
+                                      color: const Color(0xFFE6EDF6),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 18,
+                                        backgroundColor: rank == 1
+                                            ? const Color(0xFFC5DEFA)
+                                            : const Color(0xFFE3F2FD),
+                                        child: Text(
+                                          '$rank',
+                                          style: const TextStyle(
+                                            color: Color(0xFF1565C0),
+                                            fontWeight: FontWeight.w900,
+                                          ),
                                         ),
                                       ),
-                                      child: Row(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 18,
-                                            backgroundColor: rank == 1
-                                                ? const Color(0xFFFFE8A3)
-                                                : const Color(0xFFE3F2FD),
-                                            child: Text(
-                                              '$rank',
+                                      // Handles the sized box logic used by this module.
+                                      const SizedBox(width: 11),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              product.productName,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                               style: const TextStyle(
-                                                color: Color(0xFF1565C0),
-                                                fontWeight: FontWeight.w900,
+                                                fontWeight: FontWeight.w800,
                                               ),
                                             ),
-                                          ),
-                                          // Handles the sized box logic used by this module.
-                                          const SizedBox(width: 11),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  product.productName,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.w800,
-                                                  ),
-                                                ),
-                                                Text(
-                                                  '${product.quantity} item(s) sold',
-                                                  style: const TextStyle(
-                                                    color: Colors.grey,
-                                                    fontSize: 11,
-                                                  ),
-                                                ),
-                                              ],
+                                            Text(
+                                              '${_formatCount(product.quantity)} item(s) sold',
+                                              style: const TextStyle(
+                                                color: Colors.grey,
+                                                fontSize: 11,
+                                              ),
                                             ),
-                                          ),
-                                          Text(
-                                            '₱${product.sales.toStringAsFixed(2)}',
-                                            style: const TextStyle(
-                                              color: Color(0xFF0F8A4B),
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
-                                    );
-                                  })
-                                  .toList(),
+                                      Text(
+                                        '₱${_formatMoney(product.sales)}',
+                                        style: const TextStyle(
+                                          color: Color(0xFF1565C0),
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
                             ),
                     );
 
@@ -961,7 +1015,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                       // Handles the expanded logic used by this module.
                       const Expanded(
                         child: Text(
-                          'TOTAL CASH RECEIVED',
+                          'NET CASH RECEIVED (AFTER CHANGE)',
                           style: TextStyle(
                             color: Color(0xFF53657C),
                             fontWeight: FontWeight.w800,
@@ -969,7 +1023,7 @@ class _SalesReportsScreenState extends State<SalesReportsScreen> {
                         ),
                       ),
                       Text(
-                        '₱${totalCash.toStringAsFixed(2)}',
+                        '₱${_formatMoney(totalCash)}',
                         style: const TextStyle(
                           color: Color(0xFF1565C0),
                           fontSize: 18,

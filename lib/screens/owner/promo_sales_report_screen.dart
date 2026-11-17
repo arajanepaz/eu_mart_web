@@ -5,6 +5,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 // Private UI/data helper used only inside this module.
 class _PromoHoverCard extends StatefulWidget {
@@ -49,6 +50,9 @@ class _PromoHoverCardState extends State<_PromoHoverCard> {
 }
 
 // Private UI/data helper used only inside this module.
+final NumberFormat _promoMoney = NumberFormat('#,##0.00', 'en_US');
+final NumberFormat _promoCount = NumberFormat('#,##0', 'en_US');
+
 class _PromoProductCard extends StatefulWidget {
   final int rank;
   final String productName;
@@ -77,7 +81,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFF7B1FA2);
+    const accent = Color(0xFF1565C0);
 
     // Handles the mouse region logic used by this module.
     return MouseRegion(
@@ -93,7 +97,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
           ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: _hovered ? const Color(0xFFC7A7DE) : const Color(0xFFE1E9F3),
+            color: _hovered ? const Color(0xFFE8F2FF) : const Color(0xFFE1E9F3),
           ),
           boxShadow: [
             BoxShadow(
@@ -116,7 +120,7 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                   height: 54,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFF6A1B9A), Color(0xFF9C27B0)],
+                      colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                     ),
                     borderRadius: BorderRadius.circular(15),
                   ),
@@ -180,18 +184,18 @@ class _PromoProductCardState extends State<_PromoProductCard> {
               children: [
                 _PromoMetricBox(
                   label: 'Sold',
-                  value: '${widget.quantitySold}',
+                  value: _promoCount.format(widget.quantitySold),
                   color: const Color(0xFF1565C0),
                 ),
                 _PromoMetricBox(
                   label: 'Revenue',
-                  value: '₱${widget.revenue.toStringAsFixed(2)}',
-                  color: const Color(0xFF159447),
+                  value: '₱${_promoMoney.format(widget.revenue)}',
+                  color: const Color(0xFF1565C0),
                 ),
                 _PromoMetricBox(
                   label: 'Savings',
-                  value: '₱${widget.savings.toStringAsFixed(2)}',
-                  color: const Color(0xFFF59E0B),
+                  value: '₱${_promoMoney.format(widget.savings)}',
+                  color: const Color(0xFF1976D2),
                 ),
               ],
             );
@@ -323,6 +327,42 @@ class PromoSalesReportScreen extends StatefulWidget {
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
   String _selectedFilter = 'This Month';
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _transactionsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _configureTransactionsStream();
+  }
+
+  void _configureTransactionsStream() {
+    final now = DateTime.now();
+    DateTime? from;
+    DateTime? until;
+    if (_selectedFilter == 'Today') {
+      from = DateTime(now.year, now.month, now.day);
+      until = from.add(const Duration(days: 1));
+    } else if (_selectedFilter == 'This Week') {
+      from = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: now.weekday - 1));
+      until = from.add(const Duration(days: 7));
+    } else if (_selectedFilter == 'This Month') {
+      from = DateTime(now.year, now.month, 1);
+      until = DateTime(now.year, now.month + 1, 1);
+    }
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
+      'transactions',
+    );
+    if (from != null && until != null) {
+      query = query
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(from))
+          .where('createdAt', isLessThan: Timestamp.fromDate(until));
+    }
+    _transactionsStream = query.snapshots();
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -373,6 +413,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
       onSelected: (_) {
         setState(() {
           _selectedFilter = label;
+          _configureTransactionsStream();
         });
       },
     );
@@ -457,7 +498,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('transactions').snapshots(),
+      stream: _transactionsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -471,19 +512,21 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
             child: Text(
               'Unable to load promo sales.\n${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
 
+        // Only finalized sales contribute to promotional revenue. This also
+        // excludes voided, cancelled, held, and unfinished transactions.
         final transactions =
             snapshot.data?.docs.where((document) {
               final data = document.data();
               final status = (data['status'] ?? 'completed')
                   .toString()
+                  .trim()
                   .toLowerCase();
-
-              return status != 'voided' &&
+              return (status == 'completed' || status == 'paid') &&
                   _matchesFilter(_readDate(data['createdAt']));
             }).toList() ??
             <QueryDocumentSnapshot<Map<String, dynamic>>>[];
@@ -492,111 +535,107 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
         int promoItemsSold = 0;
         double promoRevenue = 0;
         double customerSavings = 0;
+        int reconciliationWarnings = 0;
 
         final Map<String, _PromoProductSales> productSales = {};
 
         for (final document in transactions) {
           final data = document.data();
-          final items = data['items'] as List<dynamic>? ?? <dynamic>[];
+          final rawItems = data['items'];
+          if (rawItems is! List) continue;
+          final items = rawItems
+              .whereType<Map>()
+              .map((raw) => Map<String, dynamic>.from(raw))
+              .toList();
+          if (items.isEmpty) continue;
 
-          bool transactionHasPromo = false;
+          final promoItems = items
+              .where((item) => item['promoApplied'] == true)
+              .toList();
+          if (promoItems.isEmpty) continue;
 
-          for (final rawItem in items) {
-            if (rawItem is! Map) continue;
+          // Compute the discount/revenue allocation from the same transaction
+          // snapshot as the Sales Report. The checkout saves line subtotals and
+          // final transaction total; if they differ, allocate the difference
+          // proportionally rather than reporting more promo revenue than sold.
+          final itemSum = items.fold<double>(0, (total, item) {
+            final line = (item['subtotal'] as num?)?.toDouble() ?? 0;
+            return total + (line.isFinite && line > 0 ? line : 0);
+          });
+          final recordedTotal = (data['total'] as num?)?.toDouble();
+          final hasValidTotal =
+              recordedTotal != null &&
+              recordedTotal.isFinite &&
+              recordedTotal >= 0;
+          final allocationFactor =
+              itemSum > 0 && hasValidTotal && recordedTotal < itemSum
+              ? recordedTotal / itemSum
+              : 1.0;
+          if (itemSum > 0 &&
+              hasValidTotal &&
+              (itemSum - recordedTotal).abs() > 0.011) {
+            reconciliationWarnings++;
+          }
 
-            final item = Map<String, dynamic>.from(rawItem);
+          double calculatedPromoSavings = 0;
+          for (final item in promoItems) {
+            final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+            final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0;
+            if (quantity <= 0 || !subtotal.isFinite || subtotal < 0) continue;
 
-            final promoApplied = item['promoApplied'] == true;
-
-            if (!promoApplied) continue;
-
-            transactionHasPromo = true;
-
+            final productId = (item['productId'] ?? '').toString().trim();
             final productName = (item['productName'] ?? 'Unknown Product')
                 .toString();
-
             final promoType = (item['promoType'] ?? 'Promotion').toString();
-
             final promoLabel = (item['promoLabel'] ?? promoType).toString();
-
-            final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
-
-            final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0;
-
             final regularPrice =
                 (item['regularPrice'] as num?)?.toDouble() ??
                 (item['price'] as num?)?.toDouble() ??
                 0;
-
-            final itemSavings = (regularPrice * quantity) - subtotal;
+            final actualRevenue = subtotal * allocationFactor;
+            final baseline = regularPrice.isFinite && regularPrice > 0
+                ? regularPrice * quantity
+                : subtotal;
+            final lineSavings = (baseline - subtotal)
+                .clamp(0.0, double.infinity)
+                .toDouble();
 
             promoItemsSold += quantity;
-            promoRevenue += subtotal;
+            promoRevenue += actualRevenue;
+            calculatedPromoSavings += lineSavings;
 
-            if (itemSavings > 0) {
-              customerSavings += itemSavings;
-            }
-
-            final key = '$productName|$promoType';
-
+            // Prefer a stable ID, not just the visible name, so different
+            // products with identical names are never combined.
+            final key =
+                '${productId.isEmpty ? productName.toLowerCase() : productId}|$promoType';
             final existing = productSales[key];
-
             if (existing == null) {
               productSales[key] = _PromoProductSales(
                 productName: productName,
                 promoType: promoType,
                 promoLabel: promoLabel,
                 quantitySold: quantity,
-                revenue: subtotal,
-                savings: itemSavings > 0 ? itemSavings : 0,
+                revenue: actualRevenue,
+                savings: lineSavings,
               );
             } else {
               existing.quantitySold += quantity;
-              existing.revenue += subtotal;
-
-              if (itemSavings > 0) {
-                existing.savings += itemSavings;
-              }
+              existing.revenue += actualRevenue;
+              existing.savings += lineSavings;
             }
           }
 
+          // The POS records totalSavings as the sum of item-level savings,
+          // including Buy 1 Take 1. Never add the field *on top of* item
+          // savings, which would double-count the same discount.
           final storedSavings = (data['totalSavings'] as num?)?.toDouble();
-
           if (storedSavings != null &&
-              storedSavings > 0 &&
-              transactionHasPromo) {
-            final calculatedTransactionSavings = items.fold<double>(0, (
-              sum,
-              rawItem,
-            ) {
-              if (rawItem is! Map) return sum;
-
-              final item = Map<String, dynamic>.from(rawItem);
-
-              if (item['promoApplied'] != true) {
-                return sum;
-              }
-
-              final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
-
-              final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0;
-
-              final regularPrice =
-                  (item['regularPrice'] as num?)?.toDouble() ??
-                  (item['price'] as num?)?.toDouble() ??
-                  0;
-
-              final savings = (regularPrice * quantity) - subtotal;
-
-              return sum + (savings > 0 ? savings : 0);
-            });
-
-            customerSavings += storedSavings - calculatedTransactionSavings;
+              storedSavings.isFinite &&
+              (storedSavings - calculatedPromoSavings).abs() > 0.011) {
+            reconciliationWarnings++;
           }
-
-          if (transactionHasPromo) {
-            promoTransactionCount++;
-          }
+          customerSavings += calculatedPromoSavings;
+          promoTransactionCount++;
         }
 
         final topPromos = productSales.values.toList()
@@ -726,27 +765,27 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                           children: [
                             _summaryCard(
                               title: 'Promo Transactions',
-                              value: '$promoTransactionCount',
+                              value: _promoCount.format(promoTransactionCount),
                               icon: Icons.receipt_long_outlined,
                               color: const Color(0xFF1565C0),
                             ),
                             _summaryCard(
                               title: 'Promo Items Sold',
-                              value: '$promoItemsSold',
+                              value: _promoCount.format(promoItemsSold),
                               icon: Icons.shopping_bag_outlined,
-                              color: const Color(0xFF7B1FA2),
+                              color: const Color(0xFF1565C0),
                             ),
                             _summaryCard(
                               title: 'Promo Revenue',
-                              value: '₱${promoRevenue.toStringAsFixed(2)}',
+                              value: '₱${_promoMoney.format(promoRevenue)}',
                               icon: Icons.payments_outlined,
-                              color: const Color(0xFF159447),
+                              color: const Color(0xFF1565C0),
                             ),
                             _summaryCard(
                               title: 'Customer Savings',
-                              value: '₱${customerSavings.toStringAsFixed(2)}',
+                              value: '₱${_promoMoney.format(customerSavings)}',
                               icon: Icons.savings_outlined,
-                              color: const Color(0xFFF59E0B),
+                              color: const Color(0xFF1976D2),
                             ),
                           ],
                         );
@@ -800,7 +839,7 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                                       // Handles the sized box logic used by this module.
                                       const SizedBox(height: 3),
                                       Text(
-                                        '₱${averagePromoSale.toStringAsFixed(2)}',
+                                        '₱${_promoMoney.format(averagePromoSale)}',
                                         style: const TextStyle(
                                           color: Color(0xFF1565C0),
                                           fontSize: 21,
@@ -823,9 +862,9 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                '${topPromos.length} PROMO PRODUCT(S)',
+                                '${_promoCount.format(topPromos.length)} PROMO PRODUCT(S)',
                                 style: const TextStyle(
-                                  color: Color(0xFF168653),
+                                  color: Color(0xFF1565C0),
                                   fontSize: 10,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -861,6 +900,24 @@ class _PromoSalesReportScreenState extends State<PromoSalesReportScreen> {
                         ),
                       ),
                     ),
+                    if (reconciliationWarnings > 0) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F7FF),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFB6D5F5)),
+                        ),
+                        child: Text(
+                          '${_promoCount.format(reconciliationWarnings)} reconciliation difference(s) detected. '
+                          'Check transaction totals, line subtotals, and saved promotional savings. '
+                          'Additional transaction-wide discounts may not be attributable to a specific promotion.',
+                          style: const TextStyle(color: Color(0xFF1559A6)),
+                        ),
+                      ),
+                    ],
                     // Handles the sized box logic used by this module.
                     const SizedBox(height: 20),
                     Row(

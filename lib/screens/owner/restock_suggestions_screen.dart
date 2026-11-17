@@ -56,6 +56,7 @@ class _RestockSuggestionCard extends StatefulWidget {
   final int stock;
   final int soldLast30Days;
   final int suggestedQuantity;
+  final String explanation;
   final String priority;
   final Color color;
   final IconData icon;
@@ -68,6 +69,7 @@ class _RestockSuggestionCard extends StatefulWidget {
     required this.stock,
     required this.soldLast30Days,
     required this.suggestedQuantity,
+    required this.explanation,
     required this.priority,
     required this.color,
     required this.icon,
@@ -185,7 +187,7 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
                               _RestockInfoPill(
                                 icon: Icons.local_shipping_outlined,
                                 label: widget.supplier,
-                                color: const Color(0xFF7B1FA2),
+                                color: const Color(0xFF1565C0),
                               ),
                           ],
                         ),
@@ -203,9 +205,7 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
                 _RestockMetricBox(
                   label: 'Current Stock',
                   value: '${widget.stock}',
-                  color: widget.stock <= 0
-                      ? const Color(0xFFD32F2F)
-                      : const Color(0xFFF59E0B),
+                  color: const Color(0xFF1565C0),
                 ),
                 _RestockMetricBox(
                   label: 'Sold in 30 Days',
@@ -215,7 +215,7 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
                 _RestockMetricBox(
                   label: 'Suggested Restock',
                   value: '${widget.suggestedQuantity}',
-                  color: const Color(0xFF159447),
+                  color: const Color(0xFF1565C0),
                 ),
               ],
             );
@@ -224,23 +224,36 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
               // Handles the column logic used by this module.
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [productInfo, const SizedBox(height: 14), metrics],
+                children: [
+                  productInfo,
+                  const SizedBox(height: 14),
+                  metrics,
+                  const SizedBox(height: 10),
+                  _restockExplanation(),
+                ],
               );
             }
 
             // Handles the row logic used by this module.
-            return Row(
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(flex: 4, child: productInfo),
-                // Handles the sized box logic used by this module.
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 3,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: metrics,
-                  ),
+                Row(
+                  children: [
+                    Expanded(flex: 4, child: productInfo),
+                    // Handles the sized box logic used by this module.
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 3,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: metrics,
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 10),
+                _restockExplanation(),
               ],
             );
           },
@@ -248,6 +261,11 @@ class _RestockSuggestionCardState extends State<_RestockSuggestionCard> {
       ),
     );
   }
+
+  Widget _restockExplanation() => Text(
+    widget.explanation,
+    style: const TextStyle(color: Color(0xFF53657C), fontSize: 11.5),
+  );
 }
 
 // Private UI/data helper used only inside this module.
@@ -326,7 +344,7 @@ class _RestockMetricBox extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: color.withValues(alpha: 0.75),
+              color: color.withValues(alpha: 0.95),
               fontSize: 9.5,
               fontWeight: FontWeight.w700,
             ),
@@ -420,6 +438,24 @@ class RestockSuggestionsScreen extends StatefulWidget {
 
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
+  late final Stream<DocumentSnapshot<Map<String, dynamic>>> _settingsStream =
+      FirebaseFirestore.instance
+          .collection('settings')
+          .doc('system')
+          .snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _productsStream =
+      FirebaseFirestore.instance.collection('products').snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>>
+  _recentTransactionsStream = FirebaseFirestore.instance
+      .collection('transactions')
+      .where(
+        'createdAt',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(
+          DateTime.now().subtract(const Duration(days: 30)),
+        ),
+      )
+      .snapshots();
+
   String _selectedFilter = 'All';
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
@@ -430,47 +466,85 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
     return null;
   }
 
-  // Handles the priority logic used by this module.
+  // Policy: 30-day observed demand plus 7 days of safety coverage.
+  // This is a rule-based estimate, not a demand forecast or a purchase order.
+  // A low stock threshold is an alert trigger, NOT an automatic order quantity.
+  static const int _planningDays = 30;
+  static const int _safetyDays = 7;
+
+  int _targetStock(int soldLast30Days) {
+    if (soldLast30Days <= 0) return 0; // No evidence to estimate demand.
+    // ceil(daily demand * 37 days), computed with integer arithmetic.
+    return (soldLast30Days * (_planningDays + _safetyDays) +
+            _planningDays -
+            1) ~/
+        _planningDays;
+  }
+
   String _priority({
     required int stock,
     required int threshold,
     required int soldLast30Days,
   }) {
     if (stock <= 0) return 'Critical';
-    if (stock <= threshold && soldLast30Days >= 10) return 'High';
-    if (stock <= threshold) return 'Medium';
-    if (soldLast30Days >= 20) return 'Monitor';
+    final recommended = _suggestedQuantity(
+      stock: stock,
+      threshold: threshold,
+      soldLast30Days: soldLast30Days,
+    );
+    if (recommended > 0 && stock <= threshold) return 'High';
+    if (recommended > 0) return 'Medium';
+    if (stock <= threshold) return 'Monitor';
     return 'Normal';
   }
 
-  // Handles the suggested quantity logic used by this module.
   int _suggestedQuantity({
     required int stock,
     required int threshold,
     required int soldLast30Days,
   }) {
-    final targetStock = soldLast30Days > 0
-        ? soldLast30Days + threshold
-        : threshold * 2;
+    // "threshold" is intentionally not added to target demand: doing that
+    // produced 5 suggested units for 7 in stock / only 2 sold per month.
+    final target = _targetStock(soldLast30Days);
+    if (target == 0) return 0; // Review manually if out of stock/no demand.
+    final needed = target - (stock > 0 ? stock : 0);
+    return needed > 0 ? needed : 0;
+  }
 
-    final suggestion = targetStock - stock;
-
-    return suggestion > 0 ? suggestion : 0;
+  String _restockReason({
+    required int stock,
+    required int threshold,
+    required int soldLast30Days,
+    required int suggestedQuantity,
+  }) {
+    final target = _targetStock(soldLast30Days);
+    if (soldLast30Days <= 0) {
+      return stock <= 0
+          ? 'Out of stock, but no sales recorded in 30 days. Review demand manually before ordering.'
+          : 'No recorded demand in 30 days. Monitor; no automatic restock recommended.';
+    }
+    if (suggestedQuantity == 0) {
+      return 'Demand-based target: $target units (30 days + 7 safety days). '
+          'Current stock $stock is sufficient; monitor only.';
+    }
+    return 'Demand-based target: $target units (30 days + 7 safety days). '
+        'Current stock: $stock; recommended additional stock: $suggestedQuantity. '
+        'Low-stock alert threshold: $threshold.';
   }
 
   // Handles the priority color logic used by this module.
   Color _priorityColor(String priority) {
     switch (priority) {
       case 'Critical':
-        return Colors.red;
+        return const Color(0xFF1565C0);
       case 'High':
-        return Colors.deepOrange;
+        return const Color(0xFF1565C0);
       case 'Medium':
-        return Colors.orange;
+        return const Color(0xFF1565C0);
       case 'Monitor':
         return Colors.blue;
       default:
-        return Colors.green;
+        return const Color(0xFF1565C0);
     }
   }
 
@@ -523,10 +597,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('settings')
-          .doc('system')
-          .snapshots(),
+      stream: _settingsStream,
       builder: (context, settingsSnapshot) {
         final settings = settingsSnapshot.data?.data() ?? <String, dynamic>{};
 
@@ -534,7 +605,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
             (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
 
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance.collection('products').snapshots(),
+          stream: _productsStream,
           builder: (context, productSnapshot) {
             if (productSnapshot.connectionState == ConnectionState.waiting &&
                 !productSnapshot.hasData) {
@@ -549,7 +620,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                   'Unable to load products.\n'
                   '${productSnapshot.error}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red),
+                  style: const TextStyle(color: Color(0xFF1565C0)),
                 ),
               );
             }
@@ -561,9 +632,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                 );
 
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('transactions')
-                  .snapshots(),
+              stream: _recentTransactionsStream,
               builder: (context, transactionSnapshot) {
                 if (transactionSnapshot.connectionState ==
                         ConnectionState.waiting &&
@@ -619,10 +688,26 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                           (salesByProductId[productId] ?? 0) + quantity;
                     }
 
-                    if (productName.isNotEmpty) {
+                    // Legacy transactions without IDs: name-only fallback.
+                    // Do not also aggregate ID-based sales by name.
+                    if (productId.isEmpty && productName.isNotEmpty) {
                       salesByProductName[productName] =
                           (salesByProductName[productName] ?? 0) + quantity;
                     }
+                  }
+                }
+
+                // Name fallback applies only when exactly one catalog item
+                // has that name; otherwise identifying its SKU is ambiguous.
+                final productNameCounts = <String, int>{};
+                for (final product in products) {
+                  final name = (product.data()['productName'] ?? '')
+                      .toString()
+                      .trim()
+                      .toLowerCase();
+                  if (name.isNotEmpty) {
+                    productNameCounts[name] =
+                        (productNameCounts[name] ?? 0) + 1;
                   }
                 }
 
@@ -635,10 +720,17 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
 
                       final stock = (data['stock'] as num?)?.toInt() ?? 0;
 
+                      final normalizedName = name.trim().toLowerCase();
+                      final legacySales = productNameCounts[normalizedName] == 1
+                          ? (salesByProductName[normalizedName] ?? 0)
+                          : 0;
                       final soldLast30Days =
-                          salesByProductId[document.id] ??
-                          salesByProductName[name.toLowerCase()] ??
-                          0;
+                          (salesByProductId[document.id] ?? 0) + legacySales;
+                      final suggestedQuantity = _suggestedQuantity(
+                        stock: stock,
+                        threshold: lowStockThreshold,
+                        soldLast30Days: soldLast30Days,
+                      );
 
                       final priority = _priority(
                         stock: stock,
@@ -654,10 +746,12 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                         supplier: (data['supplier'] ?? '').toString(),
                         stock: stock,
                         soldLast30Days: soldLast30Days,
-                        suggestedQuantity: _suggestedQuantity(
+                        suggestedQuantity: suggestedQuantity,
+                        explanation: _restockReason(
                           stock: stock,
                           threshold: lowStockThreshold,
                           soldLast30Days: soldLast30Days,
+                          suggestedQuantity: suggestedQuantity,
                         ),
                         priority: priority,
                       );
@@ -797,19 +891,19 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                     title: 'Critical',
                                     value: '$criticalCount',
                                     icon: Icons.error_outline,
-                                    color: const Color(0xFFD32F2F),
+                                    color: const Color(0xFF1565C0),
                                   ),
                                   _summaryCard(
                                     title: 'High Priority',
                                     value: '$highCount',
                                     icon: Icons.priority_high,
-                                    color: const Color(0xFFF57C00),
+                                    color: const Color(0xFF1565C0),
                                   ),
                                   _summaryCard(
                                     title: 'Medium Priority',
                                     value: '$mediumCount',
                                     icon: Icons.warning_amber_rounded,
-                                    color: const Color(0xFFF59E0B),
+                                    color: const Color(0xFF1565C0),
                                   ),
                                   _summaryCard(
                                     title: 'Monitor',
@@ -858,10 +952,10 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Text(
-                                          'Suggestions use completed transactions '
-                                          'from the last 30 days and the current '
-                                          'low-stock threshold of '
-                                          '$lowStockThreshold unit(s).',
+                                          'Based on non-voided sales over 30 days, plus 7 days of safety demand. '
+                                          'Suggested restock = max(0, demand target - current stock). '
+                                          'Low-stock threshold ($lowStockThreshold) is for alerts, not ordering. '
+                                          'No recorded sales means manual review.',
                                           style: const TextStyle(
                                             color: Color(0xFF53657C),
                                             fontWeight: FontWeight.w700,
@@ -878,7 +972,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                       vertical: 7,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFEAF8F0),
+                                      color: const Color(0xFF1565C0),
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: const Row(
@@ -887,13 +981,13 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                         Icon(
                                           Icons.auto_awesome_outlined,
                                           size: 17,
-                                          color: Color(0xFF168653),
+                                          color: Colors.white,
                                         ),
                                         SizedBox(width: 6),
                                         Text(
                                           'AUTO-CALCULATED',
                                           style: TextStyle(
-                                            color: Color(0xFF168653),
+                                            color: Colors.white,
                                             fontSize: 10,
                                             fontWeight: FontWeight.w900,
                                           ),
@@ -1048,6 +1142,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                     soldLast30Days: suggestion.soldLast30Days,
                                     suggestedQuantity:
                                         suggestion.suggestedQuantity,
+                                    explanation: suggestion.explanation,
                                     priority: suggestion.priority,
                                     color: _priorityColor(suggestion.priority),
                                     icon: _priorityIcon(suggestion.priority),
@@ -1149,6 +1244,7 @@ class _RestockSuggestion {
   final int stock;
   final int soldLast30Days;
   final int suggestedQuantity;
+  final String explanation;
   final String priority;
 
   // Handles the restock suggestion logic used by this module.
@@ -1160,6 +1256,7 @@ class _RestockSuggestion {
     required this.stock,
     required this.soldLast30Days,
     required this.suggestedQuantity,
+    required this.explanation,
     required this.priority,
   });
 }

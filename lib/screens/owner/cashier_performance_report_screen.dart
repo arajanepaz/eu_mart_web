@@ -5,6 +5,13 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+final NumberFormat _cashierCurrencyFormat = NumberFormat('#,##0.00', 'en_US');
+final NumberFormat _cashierCountFormat = NumberFormat('#,##0', 'en_US');
+
+String _cashierMoney(num value) => '₱${_cashierCurrencyFormat.format(value)}';
+String _cashierCount(num value) => _cashierCountFormat.format(value);
 
 // Private UI/data helper used only inside this module.
 class _CashierPerformanceHoverCard extends StatefulWidget {
@@ -84,7 +91,7 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
   @override
   Widget build(BuildContext context) {
     final accent = widget.topPerformer
-        ? const Color(0xFFF59E0B)
+        ? const Color(0xFF1976D2)
         : const Color(0xFF1565C0);
 
     // Handles the mouse region logic used by this module.
@@ -174,13 +181,13 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
                                 vertical: 5,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFF3D8),
+                                color: const Color(0xFFF3F8FF),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: const Text(
                                 'TOP',
                                 style: TextStyle(
-                                  color: Color(0xFFF59E0B),
+                                  color: Color(0xFF1976D2),
                                   fontSize: 9.5,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -214,23 +221,23 @@ class _CashierRankingCardState extends State<_CashierRankingCard> {
               children: [
                 _CashierMetricPill(
                   label: 'Transactions',
-                  value: '${widget.transactionCount}',
+                  value: _cashierCount(widget.transactionCount),
                   color: const Color(0xFF1565C0),
                 ),
                 _CashierMetricPill(
                   label: 'Items Sold',
-                  value: '${widget.itemsSold}',
-                  color: const Color(0xFF7B1FA2),
+                  value: _cashierCount(widget.itemsSold),
+                  color: const Color(0xFF1565C0),
                 ),
                 _CashierMetricPill(
                   label: 'Average',
-                  value: '₱${widget.averageTransaction.toStringAsFixed(2)}',
-                  color: const Color(0xFFF59E0B),
+                  value: _cashierMoney(widget.averageTransaction),
+                  color: const Color(0xFF1976D2),
                 ),
                 _CashierMetricPill(
                   label: 'Sales',
-                  value: '₱${widget.totalSales.toStringAsFixed(2)}',
-                  color: const Color(0xFF159447),
+                  value: _cashierMoney(widget.totalSales),
+                  color: const Color(0xFF1565C0),
                 ),
               ],
             );
@@ -389,6 +396,45 @@ class CashierPerformanceReportScreen extends StatefulWidget {
 class _CashierPerformanceReportScreenState
     extends State<CashierPerformanceReportScreen> {
   String _selectedFilter = 'This Month';
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _transactionsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateTransactionStream();
+  }
+
+  // Read only the requested date window. All Time intentionally loads history.
+  // Recreate the subscription only when the selected period changes.
+  void _updateTransactionStream() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    DateTime? start;
+    DateTime? end;
+    switch (_selectedFilter) {
+      case 'Today':
+        start = today;
+        end = today.add(const Duration(days: 1));
+        break;
+      case 'This Week':
+        start = today.subtract(Duration(days: today.weekday - 1));
+        end = start.add(const Duration(days: 7));
+        break;
+      case 'This Month':
+        start = DateTime(now.year, now.month);
+        end = DateTime(now.year, now.month + 1);
+        break;
+    }
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
+      'transactions',
+    );
+    if (start != null && end != null) {
+      query = query
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('createdAt', isLessThan: Timestamp.fromDate(end));
+    }
+    _transactionsStream = query.snapshots();
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -439,6 +485,7 @@ class _CashierPerformanceReportScreenState
       onSelected: (_) {
         setState(() {
           _selectedFilter = label;
+          _updateTransactionStream();
         });
       },
     );
@@ -523,7 +570,7 @@ class _CashierPerformanceReportScreenState
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('transactions').snapshots(),
+      stream: _transactionsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -538,7 +585,7 @@ class _CashierPerformanceReportScreenState
               'Unable to load cashier performance.\n'
               '${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -550,7 +597,15 @@ class _CashierPerformanceReportScreenState
                   .toString()
                   .toLowerCase();
 
-              return status != 'voided' &&
+              // Pending, held, cancelled, failed and voided transactions do
+              // not contribute to cashier performance or recognized sales.
+              const recognizedStatuses = {
+                'completed',
+                'paid',
+                'success',
+                'successful',
+              };
+              return recognizedStatuses.contains(status) &&
                   _matchesFilter(_readDate(data['createdAt']));
             }).toList() ??
             <QueryDocumentSnapshot<Map<String, dynamic>>>[];
@@ -585,7 +640,8 @@ class _CashierPerformanceReportScreenState
 
             final item = Map<String, dynamic>.from(rawItem);
 
-            itemsSold += (item['quantity'] as num?)?.toInt() ?? 0;
+            final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+            if (quantity > 0) itemsSold += quantity;
           }
 
           final key = cashierId.isNotEmpty
@@ -740,27 +796,27 @@ class _CashierPerformanceReportScreenState
                         children: [
                           _summaryCard(
                             title: 'Total Sales',
-                            value: '₱${overallSales.toStringAsFixed(2)}',
+                            value: _cashierMoney(overallSales),
                             icon: Icons.payments_outlined,
-                            color: const Color(0xFF159447),
+                            color: const Color(0xFF1565C0),
                           ),
                           _summaryCard(
                             title: 'Transactions',
-                            value: '$overallTransactions',
+                            value: _cashierCount(overallTransactions),
                             icon: Icons.receipt_long_outlined,
                             color: const Color(0xFF1565C0),
                           ),
                           _summaryCard(
                             title: 'Items Sold',
-                            value: '$overallItemsSold',
+                            value: _cashierCount(overallItemsSold),
                             icon: Icons.shopping_bag_outlined,
-                            color: const Color(0xFF7B1FA2),
+                            color: const Color(0xFF1565C0),
                           ),
                           _summaryCard(
                             title: 'Average Transaction',
-                            value: '₱${averageTransaction.toStringAsFixed(2)}',
+                            value: _cashierMoney(averageTransaction),
                             icon: Icons.analytics_outlined,
-                            color: const Color(0xFFF59E0B),
+                            color: const Color(0xFF1976D2),
                           ),
                         ],
                       );
@@ -782,7 +838,7 @@ class _CashierPerformanceReportScreenState
                         border: Border.all(
                           color: topCashier == null
                               ? const Color(0xFFDDE6F1)
-                              : const Color(0xFFF5D9A8),
+                              : const Color(0xFFE8F2FF),
                         ),
                       ),
                       child: Row(
@@ -793,7 +849,7 @@ class _CashierPerformanceReportScreenState
                             decoration: BoxDecoration(
                               color: topCashier == null
                                   ? const Color(0xFFE5E7EB)
-                                  : const Color(0x1FF59E0B),
+                                  : const Color(0x1F1976D2),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: Icon(
@@ -802,7 +858,7 @@ class _CashierPerformanceReportScreenState
                                   : Icons.emoji_events_outlined,
                               color: topCashier == null
                                   ? const Color(0xFF7A8494)
-                                  : const Color(0xFFF59E0B),
+                                  : const Color(0xFF1976D2),
                             ),
                           ),
                           // Handles the sized box logic used by this module.
@@ -812,11 +868,11 @@ class _CashierPerformanceReportScreenState
                               topCashier == null
                                   ? 'No completed transactions found for this period.'
                                   : 'Top performer: ${topCashier.cashierName} '
-                                        'with ₱${topCashier.totalSales.toStringAsFixed(2)} in sales.',
+                                        'with ${_cashierMoney(topCashier.totalSales)} in sales.',
                               style: TextStyle(
                                 color: topCashier == null
                                     ? const Color(0xFF607086)
-                                    : const Color(0xFF6B5A36),
+                                    : const Color(0xFF0D47A1),
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -912,20 +968,6 @@ class _CashierPerformanceReportScreenState
           ),
         );
       },
-    );
-  }
-
-  // Handles the metric logic used by this module.
-  Widget _metric(String label, String value) {
-    // Handles the column logic used by this module.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        // Handles the sized box logic used by this module.
-        const SizedBox(height: 4),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
-      ],
     );
   }
 }

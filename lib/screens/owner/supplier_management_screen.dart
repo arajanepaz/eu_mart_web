@@ -105,7 +105,7 @@ class _SupplierCardState extends State<_SupplierCard> {
   @override
   Widget build(BuildContext context) {
     final accent = widget.isActive
-        ? const Color(0xFF159447)
+        ? const Color(0xFF1565C0)
         : const Color(0xFF8A95A4);
 
     // Handles the mouse region logic used by this module.
@@ -226,7 +226,10 @@ class _SupplierCardState extends State<_SupplierCard> {
                 IconButton(
                   tooltip: 'Delete supplier',
                   onPressed: widget.onDelete,
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: const Color(0xFF1565C0),
+                  ),
                 ),
               ],
             ),
@@ -294,6 +297,9 @@ class SupplierManagementScreen extends StatefulWidget {
 
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _recordsStream =
+      FirebaseFirestore.instance.collection('suppliers').snapshots();
+
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
@@ -342,7 +348,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                   // Handles the snack bar logic used by this module.
                   const SnackBar(
                     content: Text('Supplier name is required.'),
-                    backgroundColor: Colors.red,
+                    backgroundColor: const Color(0xFF1565C0),
                   ),
                 );
                 return;
@@ -373,7 +379,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                       content: Text(
                         'A supplier with this name already exists.',
                       ),
-                      backgroundColor: Colors.red,
+                      backgroundColor: const Color(0xFF1565C0),
                     ),
                   );
 
@@ -414,7 +420,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                           ? 'Supplier added successfully.'
                           : 'Supplier updated successfully.',
                     ),
-                    backgroundColor: Colors.green,
+                    backgroundColor: const Color(0xFF1565C0),
                   ),
                 );
               } catch (error) {
@@ -423,7 +429,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
                   SnackBar(
                     content: Text('Unable to save supplier: $error'),
-                    backgroundColor: Colors.red,
+                    backgroundColor: const Color(0xFF1565C0),
                   ),
                 );
 
@@ -579,7 +585,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
             ElevatedButton(
               onPressed: () => Navigator.pop(dialogContext, true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: const Color(0xFF1565C0),
                 foregroundColor: Colors.white,
               ),
               child: const Text('DELETE'),
@@ -600,7 +606,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Supplier deleted.'),
-          backgroundColor: Colors.green,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
     } catch (error) {
@@ -609,7 +615,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to delete supplier: $error'),
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
     }
@@ -636,65 +642,66 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
     return Container(
       color: const Color(0xFFF2F6FC),
       padding: const EdgeInsets.all(22),
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-              ),
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x291565C0),
-                  blurRadius: 20,
-                  offset: Offset(0, 9),
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
                 ),
-              ],
-            ),
-            child: const Row(
-              children: [
-                Icon(
-                  Icons.local_shipping_outlined,
-                  color: Colors.white,
-                  size: 29,
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Supplier Management',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 23,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Manage supplier contacts and keep '
-                        'restocking records organized.',
-                        style: TextStyle(color: Colors.white70, fontSize: 12.5),
-                      ),
-                    ],
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x291565C0),
+                    blurRadius: 20,
+                    offset: Offset(0, 9),
                   ),
-                ),
-              ],
+                ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.local_shipping_outlined,
+                    color: Colors.white,
+                    size: 29,
+                  ),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Supplier Management',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 23,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Manage supplier contacts and keep '
+                          'restocking records organized.',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          // Handles the sized box logic used by this module.
-          const SizedBox(height: 16),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection('suppliers')
-                  .snapshots(),
+            // Handles the sized box logic used by this module.
+            const SizedBox(height: 16),
+            StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: _recordsStream,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting &&
                     !snapshot.hasData) {
@@ -709,7 +716,7 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                       'Unable to load suppliers.\n'
                       '${snapshot.error}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red),
+                      style: const TextStyle(color: const Color(0xFF1565C0)),
                     ),
                   );
                 }
@@ -772,13 +779,13 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                               title: 'Active Suppliers',
                               value: '$activeCount',
                               icon: Icons.check_circle_outline,
-                              color: const Color(0xFF159447),
+                              color: const Color(0xFF1565C0),
                             ),
                             _supplierSummaryCard(
                               title: 'Inactive Suppliers',
                               value: '$inactiveCount',
                               icon: Icons.pause_circle_outline,
-                              color: const Color(0xFFF59E0B),
+                              color: const Color(0xFFEAF3FF),
                             ),
                           ],
                         );
@@ -888,48 +895,50 @@ class _SupplierManagementScreenState extends State<SupplierManagementScreen> {
                     ),
                     // Handles the sized box logic used by this module.
                     const SizedBox(height: 16),
-                    Expanded(
-                      child: suppliers.isEmpty
-                          ? const _SupplierEmptyState()
-                          : GridView.builder(
-                              itemCount: suppliers.length,
-                              gridDelegate:
-                                  // Handles the sliver grid delegate with max cross axis extent logic used by this module.
-                                  const SliverGridDelegateWithMaxCrossAxisExtent(
-                                    maxCrossAxisExtent: 410,
-                                    mainAxisExtent: 310,
-                                    crossAxisSpacing: 16,
-                                    mainAxisSpacing: 16,
-                                  ),
-                              itemBuilder: (context, index) {
-                                final document = suppliers[index];
-                                final data = document.data();
+                    suppliers.isEmpty
+                        ? const SizedBox(
+                            height: 220,
+                            child: _SupplierEmptyState(),
+                          )
+                        : GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: suppliers.length,
+                            gridDelegate:
+                                // Handles the sliver grid delegate with max cross axis extent logic used by this module.
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                                  maxCrossAxisExtent: 410,
+                                  mainAxisExtent: 310,
+                                  crossAxisSpacing: 16,
+                                  mainAxisSpacing: 16,
+                                ),
+                            itemBuilder: (context, index) {
+                              final document = suppliers[index];
+                              final data = document.data();
 
-                                // Handles the supplier card logic used by this module.
-                                return _SupplierCard(
-                                  supplierName:
-                                      (data['supplierName'] ??
-                                              'Unnamed Supplier')
-                                          .toString(),
-                                  contactPerson: (data['contactPerson'] ?? '')
-                                      .toString(),
-                                  phone: (data['phone'] ?? '').toString(),
-                                  email: (data['email'] ?? '').toString(),
-                                  address: (data['address'] ?? '').toString(),
-                                  isActive: data['isActive'] != false,
-                                  onEdit: () =>
-                                      _showSupplierDialog(document: document),
-                                  onDelete: () => _deleteSupplier(document),
-                                );
-                              },
-                            ),
-                    ),
+                              // Handles the supplier card logic used by this module.
+                              return _SupplierCard(
+                                supplierName:
+                                    (data['supplierName'] ?? 'Unnamed Supplier')
+                                        .toString(),
+                                contactPerson: (data['contactPerson'] ?? '')
+                                    .toString(),
+                                phone: (data['phone'] ?? '').toString(),
+                                email: (data['email'] ?? '').toString(),
+                                address: (data['address'] ?? '').toString(),
+                                isActive: data['isActive'] != false,
+                                onEdit: () =>
+                                    _showSupplierDialog(document: document),
+                                onDelete: () => _deleteSupplier(document),
+                              );
+                            },
+                          ),
                   ],
                 );
               },
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

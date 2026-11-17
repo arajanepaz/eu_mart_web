@@ -84,7 +84,7 @@ class _CashierAccountCardState extends State<_CashierAccountCard> {
   Widget build(BuildContext context) {
     final accent = widget.isActive
         ? const Color(0xFF1565C0)
-        : const Color(0xFFD32F2F);
+        : const Color(0xFF1565C0);
 
     // Handles the mouse region logic used by this module.
     return MouseRegion(
@@ -397,7 +397,10 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                 }
 
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  SnackBar(content: Text(message), backgroundColor: Colors.red),
+                  SnackBar(
+                    content: Text(message),
+                    backgroundColor: Colors.blue,
+                  ),
                 );
 
                 setDialogState(() => creating = false);
@@ -409,7 +412,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                     content: Text(
                       error.toString().replaceFirst('Exception: ', ''),
                     ),
-                    backgroundColor: Colors.red,
+                    backgroundColor: Colors.blue,
                   ),
                 );
 
@@ -535,7 +538,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Cashier account created successfully.'),
-          backgroundColor: Colors.green,
+          backgroundColor: Colors.blue,
         ),
       );
     }
@@ -571,7 +574,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
           content: Text(
             isActive ? 'Cashier account enabled.' : 'Cashier account disabled.',
           ),
-          backgroundColor: Colors.green,
+          backgroundColor: Colors.blue,
         ),
       );
     } catch (error) {
@@ -580,7 +583,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to update cashier: $error'),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.blue,
         ),
       );
     }
@@ -596,7 +599,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Password reset email sent to $email.'),
-          backgroundColor: Colors.green,
+          backgroundColor: Colors.blue,
         ),
       );
     } on FirebaseAuthException catch (error) {
@@ -605,7 +608,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(error.message ?? 'Unable to send reset email.'),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.blue,
         ),
       );
     }
@@ -658,7 +661,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
                   SnackBar(
                     content: Text('Unable to update cashier: $error'),
-                    backgroundColor: Colors.red,
+                    backgroundColor: Colors.blue,
                   ),
                 );
 
@@ -710,7 +713,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Cashier information updated.'),
-          backgroundColor: Colors.green,
+          backgroundColor: Colors.blue,
         ),
       );
     }
@@ -746,7 +749,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
             child: Text(
               'Unable to load cashier accounts.\n${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -789,7 +792,7 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                   gradient: const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                    colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                   ),
                   borderRadius: BorderRadius.circular(22),
                   boxShadow: const [
@@ -902,13 +905,13 @@ class _ManageCashiersScreenState extends State<ManageCashiersScreen> {
                         title: 'Active Accounts',
                         value: '$activeCount',
                         icon: Icons.verified_user_outlined,
-                        color: const Color(0xFF159447),
+                        color: const Color(0xFF1565C0),
                       ),
                       _summaryCard(
                         title: 'Disabled Accounts',
                         value: '$disabledCount',
                         icon: Icons.person_off_outlined,
-                        color: const Color(0xFFD32F2F),
+                        color: const Color(0xFF1565C0),
                       ),
                     ],
                   );

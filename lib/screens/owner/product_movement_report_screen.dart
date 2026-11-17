@@ -5,6 +5,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 // Private UI/data helper used only inside this module.
 class _ProductMovementHoverCard extends StatefulWidget {
@@ -80,6 +81,8 @@ class _ProductMovementCard extends StatefulWidget {
 
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _ProductMovementCardState extends State<_ProductMovementCard> {
+  static final NumberFormat _money = NumberFormat('#,##0.00', 'en_US');
+  static final NumberFormat _whole = NumberFormat('#,##0', 'en_US');
   bool _hovered = false;
 
   @override
@@ -204,18 +207,18 @@ class _ProductMovementCardState extends State<_ProductMovementCard> {
               children: [
                 _MovementMetricBox(
                   label: 'Units Sold',
-                  value: '${widget.quantitySold}',
+                  value: _whole.format(widget.quantitySold),
                   color: const Color(0xFF1565C0),
                 ),
                 _MovementMetricBox(
                   label: 'Revenue',
-                  value: '₱${widget.revenue.toStringAsFixed(2)}',
-                  color: const Color(0xFF159447),
+                  value: '₱${_money.format(widget.revenue)}',
+                  color: const Color(0xFF1565C0),
                 ),
                 _MovementMetricBox(
                   label: 'Current Stock',
-                  value: '${widget.stock}',
-                  color: const Color(0xFF7B1FA2),
+                  value: _whole.format(widget.stock),
+                  color: const Color(0xFF1565C0),
                 ),
               ],
             );
@@ -377,6 +380,33 @@ class _ProductMovementReportScreenState
     extends State<ProductMovementReportScreen> {
   String _selectedPeriod = 'Last 30 Days';
   String _selectedCategory = 'All';
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _productsStream;
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _transactionsStream;
+  int _visibleProducts = 24;
+  bool _showNoSales = false;
+  static final NumberFormat _whole = NumberFormat('#,##0', 'en_US');
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _makeTransactionStream() {
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
+      'transactions',
+    );
+    if (_selectedPeriod != 'All Time') {
+      query = query.where(
+        'createdAt',
+        isGreaterThanOrEqualTo: Timestamp.fromDate(_cutoffDate()),
+      );
+    }
+    return query.snapshots();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _productsStream = FirebaseFirestore.instance
+        .collection('products')
+        .snapshots();
+    _transactionsStream = _makeTransactionStream();
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -403,26 +433,28 @@ class _ProductMovementReportScreenState
     }
   }
 
-  // Handles the classification logic used by this module.
-  String _classification(int quantitySold) {
-    if (quantitySold >= 20) return 'Fast-Moving';
-    if (quantitySold >= 5) return 'Regular';
-    if (quantitySold > 0) return 'Slow-Moving';
-    return 'No Sales';
+  // Compare equivalent demand across period filters. These cutoffs are
+  // preliminary reporting rules, NOT client-validated restock thresholds.
+  String _classification(int quantitySold, double observationDays) {
+    if (quantitySold <= 0) return 'No Sales';
+    final monthlyEquivalent = quantitySold * 30.0 / observationDays;
+    if (monthlyEquivalent >= 20) return 'Fast-Moving';
+    if (monthlyEquivalent >= 5) return 'Regular';
+    return 'Slow-Moving';
   }
 
   // Handles the classification color logic used by this module.
   Color _classificationColor(String classification) {
     switch (classification) {
       case 'Fast-Moving':
-        return Colors.green;
+        return Colors.blue;
       case 'Regular':
         // Handles the color logic used by this module.
         return const Color(0xFF1565C0);
       case 'Slow-Moving':
-        return Colors.orange;
+        return Colors.blue;
       default:
-        return Colors.red;
+        return Colors.blue;
     }
   }
 
@@ -514,7 +546,7 @@ class _ProductMovementReportScreenState
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('products').snapshots(),
+      stream: _productsStream,
       builder: (context, productSnapshot) {
         if (productSnapshot.connectionState == ConnectionState.waiting &&
             !productSnapshot.hasData) {
@@ -528,7 +560,7 @@ class _ProductMovementReportScreenState
             child: Text(
               'Unable to load products.\n${productSnapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -548,19 +580,8 @@ class _ProductMovementReportScreenState
 
         final cutoff = _cutoffDate();
 
-        Query<Map<String, dynamic>> transactionQuery = FirebaseFirestore
-            .instance
-            .collection('transactions');
-
-        if (_selectedPeriod != 'All Time') {
-          transactionQuery = transactionQuery.where(
-            'createdAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(cutoff),
-          );
-        }
-
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: transactionQuery.snapshots(),
+          stream: _transactionsStream,
           builder: (context, transactionSnapshot) {
             if (transactionSnapshot.connectionState ==
                     ConnectionState.waiting &&
@@ -575,97 +596,159 @@ class _ProductMovementReportScreenState
                 child: Text(
                   'Unable to load transactions.\n${transactionSnapshot.error}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red),
+                  style: const TextStyle(color: Colors.blue),
                 ),
               );
             }
 
-            final Map<String, int> soldByProductId = {};
-            final Map<String, int> soldByProductName = {};
-            final Map<String, double> revenueByProductId = {};
-            final Map<String, double> revenueByProductName = {};
+            // Use product ID whenever it exists. Legacy name-only lines are
+            // matched ONLY if a name identifies exactly one catalog product;
+            // otherwise they cannot safely be attributed to either product.
+            final catalogNameCounts = <String, int>{};
+            for (final product in products) {
+              final name = (product.data()['productName'] ?? '')
+                  .toString()
+                  .trim()
+                  .toLowerCase();
+              if (name.isNotEmpty) {
+                catalogNameCounts[name] = (catalogNameCounts[name] ?? 0) + 1;
+              }
+            }
+            final soldByProductId = <String, int>{};
+            final soldByLegacyName = <String, int>{};
+            final revenueByProductId = <String, double>{};
+            final revenueByLegacyName = <String, double>{};
+            int skippedInvalidLines = 0;
+            int unmatchedLegacyLines = 0;
+            DateTime? earliestRecordedSale;
+            final selectedNow = DateTime.now();
 
             for (final transaction
                 in transactionSnapshot.data?.docs ??
                     <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
               final data = transaction.data();
-
               final status = (data['status'] ?? 'completed')
                   .toString()
+                  .trim()
                   .toLowerCase();
-
-              if (status == 'voided') continue;
+              if (status != 'completed' && status != 'paid') continue;
 
               final createdAt = _readDate(data['createdAt']);
-              if (createdAt == null || createdAt.isBefore(cutoff)) {
+              if (createdAt == null ||
+                  createdAt.isAfter(selectedNow) ||
+                  (_selectedPeriod != 'All Time' &&
+                      createdAt.isBefore(cutoff))) {
                 continue;
+              }
+              if (earliestRecordedSale == null ||
+                  createdAt.isBefore(earliestRecordedSale)) {
+                earliestRecordedSale = createdAt;
               }
 
               final items = data['items'] as List<dynamic>? ?? <dynamic>[];
+              // The transaction total is authoritative for paid revenue.
+              // Distribute transaction-level discounts proportionally across
+              // item subtotals to avoid overstating product sales revenue.
+              double itemSubtotalSum = 0;
+              for (final raw in items) {
+                if (raw is! Map) continue;
+                final number = raw['subtotal'];
+                if (number is num &&
+                    number.toDouble().isFinite &&
+                    number >= 0) {
+                  itemSubtotalSum += number.toDouble();
+                }
+              }
+              final totalRaw = data['total'];
+              final finalTotal = totalRaw is num ? totalRaw.toDouble() : null;
+              final revenueRatio =
+                  itemSubtotalSum > 0 &&
+                      finalTotal != null &&
+                      finalTotal.isFinite &&
+                      finalTotal >= 0 &&
+                      finalTotal < itemSubtotalSum
+                  ? finalTotal / itemSubtotalSum
+                  : 1.0;
 
               for (final rawItem in items) {
-                if (rawItem is! Map) continue;
-
+                if (rawItem is! Map) {
+                  skippedInvalidLines++;
+                  continue;
+                }
                 final item = Map<String, dynamic>.from(rawItem);
-
-                final productId = (item['productId'] ?? '').toString();
-
-                final productName = (item['productName'] ?? '')
+                final productId = (item['productId'] ?? '').toString().trim();
+                final name = (item['productName'] ?? '')
                     .toString()
+                    .trim()
                     .toLowerCase();
-
-                final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
-
-                final subtotal = (item['subtotal'] as num?)?.toDouble() ?? 0;
-
+                final quantityRaw = item['quantity'];
+                final subtotalRaw = item['subtotal'];
+                if (quantityRaw is! num ||
+                    quantityRaw <= 0 ||
+                    quantityRaw.toInt() != quantityRaw ||
+                    subtotalRaw is! num ||
+                    !subtotalRaw.toDouble().isFinite ||
+                    subtotalRaw < 0) {
+                  skippedInvalidLines++;
+                  continue;
+                }
+                final quantity = quantityRaw.toInt();
+                final revenue = subtotalRaw.toDouble() * revenueRatio;
                 if (productId.isNotEmpty) {
                   soldByProductId[productId] =
                       (soldByProductId[productId] ?? 0) + quantity;
-
                   revenueByProductId[productId] =
-                      (revenueByProductId[productId] ?? 0) + subtotal;
-                }
-
-                if (productName.isNotEmpty) {
-                  soldByProductName[productName] =
-                      (soldByProductName[productName] ?? 0) + quantity;
-
-                  revenueByProductName[productName] =
-                      (revenueByProductName[productName] ?? 0) + subtotal;
+                      (revenueByProductId[productId] ?? 0) + revenue;
+                } else if (name.isNotEmpty && catalogNameCounts[name] == 1) {
+                  soldByLegacyName[name] =
+                      (soldByLegacyName[name] ?? 0) + quantity;
+                  revenueByLegacyName[name] =
+                      (revenueByLegacyName[name] ?? 0) + revenue;
+                } else {
+                  unmatchedLegacyLines++;
                 }
               }
             }
 
+            final observationDays = switch (_selectedPeriod) {
+              'Last 7 Days' => 7.0,
+              'Last 90 Days' => 90.0,
+              'All Time' =>
+                earliestRecordedSale == null
+                    ? 30.0
+                    : ((selectedNow.difference(earliestRecordedSale).inHours /
+                              24)
+                          .clamp(1.0, double.infinity)
+                          .toDouble()),
+              _ => 30.0,
+            };
+
             final allRows = products
                 .map((document) {
                   final data = document.data();
-
                   final productName = (data['productName'] ?? 'Unknown Product')
                       .toString();
-
+                  final normalizedName = productName.trim().toLowerCase();
                   final category = (data['category'] ?? 'Uncategorized')
                       .toString();
-
                   final quantitySold =
-                      soldByProductId[document.id] ??
-                      soldByProductName[productName.toLowerCase()] ??
-                      0;
-
+                      (soldByProductId[document.id] ?? 0) +
+                      (soldByLegacyName[normalizedName] ?? 0);
                   final revenue =
-                      revenueByProductId[document.id] ??
-                      revenueByProductName[productName.toLowerCase()] ??
-                      0;
-
-                  final stock = (data['stock'] as num?)?.toInt() ?? 0;
-
-                  // Handles the product movement logic used by this module.
+                      (revenueByProductId[document.id] ?? 0) +
+                      (revenueByLegacyName[normalizedName] ?? 0);
+                  final rawStock = data['stock'];
+                  final stock = rawStock is num ? rawStock.toInt() : 0;
                   return _ProductMovement(
                     productName: productName,
                     category: category,
                     quantitySold: quantitySold,
                     revenue: revenue,
                     stock: stock,
-                    classification: _classification(quantitySold),
+                    classification: _classification(
+                      quantitySold,
+                      observationDays,
+                    ),
                   );
                 })
                 .where((row) {
@@ -674,10 +757,11 @@ class _ProductMovementReportScreenState
                 })
                 .toList();
 
-            // Keep the summary counts based on all products in the selected
-            // category, but only render products with actual sales movement.
-            // This prevents thousands of "No Sales" cards from being built.
-            final rows = allRows.where((row) => row.quantitySold > 0).toList();
+            // No-sales products are included in category summary counts;
+            // owners can reveal them without rendering thousands of cards.
+            final rows = _showNoSales
+                ? allRows.toList()
+                : allRows.where((row) => row.quantitySold > 0).toList();
 
             rows.sort((a, b) {
               final quantityComparison = b.quantitySold.compareTo(
@@ -809,40 +893,42 @@ class _ProductMovementReportScreenState
                                     if (value == null) return;
                                     setState(() {
                                       _selectedPeriod = value;
+                                      _visibleProducts = 24;
+                                      _transactionsStream =
+                                          _makeTransactionStream();
                                     });
                                   },
                                 );
 
-                            final categoryFilter =
-                                DropdownButtonFormField<String>(
-                                  initialValue:
-                                      categories.contains(_selectedCategory)
-                                      ? _selectedCategory
-                                      : 'All',
-                                  decoration: _movementInputDecoration(
-                                    label: 'Category',
-                                    icon: Icons.category_outlined,
+                            final categoryFilter = DropdownButtonFormField<String>(
+                              initialValue:
+                                  categories.contains(_selectedCategory)
+                                  ? _selectedCategory
+                                  : 'All',
+                              decoration: _movementInputDecoration(
+                                label: 'Category',
+                                icon: Icons.category_outlined,
+                              ),
+                              items: [
+                                // Handles the dropdown menu item logic used by this module.
+                                const DropdownMenuItem(
+                                  value: 'All',
+                                  child: Text('All Categories'),
+                                ),
+                                ...categories.map(
+                                  (category) => DropdownMenuItem(
+                                    value: category,
+                                    child: Text(category),
                                   ),
-                                  items: [
-                                    // Handles the dropdown menu item logic used by this module.
-                                    const DropdownMenuItem(
-                                      value: 'All',
-                                      child: Text('All Categories'),
-                                    ),
-                                    ...categories.map(
-                                      (category) => DropdownMenuItem(
-                                        value: category,
-                                        child: Text(category),
-                                      ),
-                                    ),
-                                  ],
-                                  onChanged: (value) {
-                                    if (value == null) return;
-                                    setState(() {
-                                      _selectedCategory = value;
-                                    });
-                                  },
-                                );
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value == null) return;
+                                setState(() {
+                                  _selectedCategory = value;
+                                });
+                              },
+                            );
 
                             if (compact) {
                               // Handles the column logic used by this module.
@@ -891,27 +977,27 @@ class _ProductMovementReportScreenState
                               children: [
                                 _summaryCard(
                                   title: 'Fast-Moving',
-                                  value: '$fastCount',
+                                  value: _whole.format(fastCount),
                                   icon: Icons.trending_up,
-                                  color: const Color(0xFF159447),
+                                  color: const Color(0xFF1565C0),
                                 ),
                                 _summaryCard(
                                   title: 'Regular',
-                                  value: '$regularCount',
+                                  value: _whole.format(regularCount),
                                   icon: Icons.show_chart,
                                   color: const Color(0xFF1565C0),
                                 ),
                                 _summaryCard(
                                   title: 'Slow-Moving',
-                                  value: '$slowCount',
+                                  value: _whole.format(slowCount),
                                   icon: Icons.trending_flat,
-                                  color: const Color(0xFFF59E0B),
+                                  color: const Color(0xFF1976D2),
                                 ),
                                 _summaryCard(
                                   title: 'No Sales',
-                                  value: '$noSalesCount',
+                                  value: _whole.format(noSalesCount),
                                   icon: Icons.trending_down,
-                                  color: const Color(0xFFD32F2F),
+                                  color: const Color(0xFF1976D2),
                                 ),
                               ],
                             );
@@ -946,10 +1032,11 @@ class _ProductMovementReportScreenState
                                 SizedBox(width: 12),
                                 Expanded(
                                   child: Text(
-                                    'Fast-Moving = 20 or more units, '
+                                    'Classification uses 30-day equivalent sales: '
+                                    'Fast-Moving = 20+ units, '
                                     'Regular = 5–19 units, '
-                                    'Slow-Moving = 1–4 units, '
-                                    'No Sales = 0 units.',
+                                    'Slow-Moving = below 5 units (but above 0), '
+                                    'No Sales = 0 units. These are initial reporting cutoffs, not validated restock rules.',
                                     style: TextStyle(
                                       color: Color(0xFF53657C),
                                       fontWeight: FontWeight.w700,
@@ -999,7 +1086,7 @@ class _ProductMovementReportScreenState
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                '${rows.length} PRODUCT(S)',
+                                '${_whole.format(rows.length)} PRODUCT(S)',
                                 style: const TextStyle(
                                   color: Color(0xFF1565C0),
                                   fontSize: 10,
@@ -1009,6 +1096,40 @@ class _ProductMovementReportScreenState
                             ),
                           ],
                         ),
+                        // Owners can inspect products with no recorded sales.
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: () => setState(() {
+                              _showNoSales = !_showNoSales;
+                              _visibleProducts = 24;
+                            }),
+                            icon: Icon(
+                              _showNoSales
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                            ),
+                            label: Text(
+                              _showNoSales
+                                  ? 'Hide products with no sales'
+                                  : 'Show products with no sales',
+                            ),
+                          ),
+                        ),
+                        if (skippedInvalidLines > 0 || unmatchedLegacyLines > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Text(
+                              'Data quality notice: $skippedInvalidLines invalid '
+                              'transaction item(s) and $unmatchedLegacyLines legacy '
+                              'item(s) with missing/ambiguous product IDs were '
+                              'not attributed to products.',
+                              style: const TextStyle(
+                                color: Color(0xFF805A13),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
                         // Handles the sized box logic used by this module.
                         const SizedBox(height: 12),
                         if (rows.isEmpty)
@@ -1021,7 +1142,9 @@ class _ProductMovementReportScreenState
                           ListView.separated(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: rows.length,
+                            itemCount: rows.length < _visibleProducts
+                                ? rows.length
+                                : _visibleProducts,
                             separatorBuilder: (_, _) =>
                                 // Handles the sized box logic used by this module.
                                 const SizedBox(height: 12),
@@ -1045,6 +1168,19 @@ class _ProductMovementReportScreenState
                               );
                             },
                           ),
+                        if (rows.length > _visibleProducts) ...[
+                          const SizedBox(height: 14),
+                          Center(
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  setState(() => _visibleProducts += 24),
+                              icon: const Icon(Icons.expand_more),
+                              label: Text(
+                                'Show more (${_whole.format(rows.length - _visibleProducts)} remaining)',
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),

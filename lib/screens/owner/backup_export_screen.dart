@@ -299,6 +299,20 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
   Map<String, dynamic>? _restoreBackup;
   String _restoreFileName = '';
   final Set<String> _selectedRestoreCollections = <String>{};
+  late final Map<String, Future<AggregateQuerySnapshot>> _countFutures;
+
+  @override
+  void initState() {
+    super.initState();
+    // Aggregation counts avoid downloading every record for the collection cards.
+    _countFutures = {
+      for (final collection in _collections)
+        collection.name: FirebaseFirestore.instance
+            .collection(collection.name)
+            .count()
+            .get(),
+    };
+  }
 
   final List<_BackupCollection> _collections = const [
     _BackupCollection(
@@ -363,76 +377,30 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     ),
   ];
 
-  // Handles the serialize value logic used by this module.
-  Map<String, dynamic> _serializeValue(dynamic value) {
+  // V2 preserves Firestore types recursively for reliable JSON recovery.
+  dynamic _serializeAny(dynamic value) {
     if (value is Timestamp) {
-      return <String, dynamic>{
-        '__type': 'timestamp',
-        'value': value.toDate().toIso8601String(),
-      };
+      return {'__type': 'timestamp', 'value': value.toDate().toIso8601String()};
     }
-
+    if (value is DateTime) {
+      return {'__type': 'timestamp', 'value': value.toIso8601String()};
+    }
     if (value is DocumentReference) {
-      return <String, dynamic>{
-        '__type': 'documentReference',
-        'value': value.path,
-      };
+      return {'__type': 'documentReference', 'value': value.path};
     }
-
     if (value is GeoPoint) {
-      return <String, dynamic>{
+      return {
         '__type': 'geoPoint',
         'latitude': value.latitude,
         'longitude': value.longitude,
       };
     }
-
-    if (value is List) {
-      return <String, dynamic>{
-        '__type': 'list',
-        'value': value.map(_serializeAny).toList(),
-      };
-    }
-
-    if (value is Map) {
-      return <String, dynamic>{
-        '__type': 'map',
-        'value': value.map(
-          (key, item) => MapEntry(key.toString(), _serializeAny(item)),
-        ),
-      };
-    }
-
-    return <String, dynamic>{'__type': 'value', 'value': value};
-  }
-
-  // Handles the serialize any logic used by this module.
-  dynamic _serializeAny(dynamic value) {
-    if (value is Timestamp) {
-      return value.toDate().toIso8601String();
-    }
-
-    if (value is DocumentReference) {
-      return value.path;
-    }
-
-    if (value is GeoPoint) {
-      return <String, dynamic>{
-        'latitude': value.latitude,
-        'longitude': value.longitude,
-      };
-    }
-
-    if (value is List) {
-      return value.map(_serializeAny).toList();
-    }
-
+    if (value is List) return value.map(_serializeAny).toList();
     if (value is Map) {
       return value.map(
         (key, item) => MapEntry(key.toString(), _serializeAny(item)),
       );
     }
-
     return value;
   }
 
@@ -458,6 +426,15 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
       'documentCount': documents.length,
       'documents': documents,
     };
+  }
+
+  String _formatCount(int value) {
+    final digits = value.abs().toString();
+    final grouped = digits.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => ',',
+    );
+    return value < 0 ? '-$grouped' : grouped;
   }
 
   // Handles the timestamp for file name logic used by this module.
@@ -490,7 +467,10 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     anchor.click();
     anchor.remove();
 
-    html.Url.revokeObjectUrl(url);
+    // Give the browser a chance to initiate the download before revoking.
+    Future<void>.delayed(const Duration(seconds: 2), () {
+      html.Url.revokeObjectUrl(url);
+    });
   }
 
   // Handles the export full backup logic used by this module.
@@ -503,12 +483,13 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     try {
       final data = <String, dynamic>{
         'system': 'EÜ MART Web',
-        'backupVersion': 1,
+        'backupVersion': 2,
         'generatedAt': DateTime.now().toIso8601String(),
         'collections': <String, dynamic>{},
       };
 
       for (final collection in _collections) {
+        if (!mounted) return;
         setState(() {
           _statusMessage = 'Reading ${collection.title}...';
         });
@@ -529,13 +510,14 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
       if (!mounted) return;
 
       setState(() {
-        _statusMessage = 'Full backup downloaded successfully.';
+        _statusMessage =
+            'Configured collections backup downloaded successfully.';
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         // Handles the snack bar logic used by this module.
         const SnackBar(
-          content: Text('Full JSON backup downloaded.'),
+          content: Text('JSON backup downloaded.'),
           backgroundColor: Colors.green,
         ),
       );
@@ -567,7 +549,8 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
         ? jsonEncode(_serializeAny(value))
         : value.toString();
 
-    final escaped = text.replaceAll('"', '""');
+    final safeText = RegExp(r'^[\s]*[=+\-@]').hasMatch(text) ? '\'$text' : text;
+    final escaped = safeText.replaceAll('\"', '\"\"');
 
     return '"$escaped"';
   }
@@ -648,83 +631,6 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     }
   }
 
-  // Handles the collection card logic used by this module.
-  Widget _collectionCard(_BackupCollection collection) {
-    return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      future: FirebaseFirestore.instance.collection(collection.name).get(),
-      builder: (context, snapshot) {
-        final count = snapshot.data?.docs.length;
-
-        // Handles the container logic used by this module.
-        return Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x10000000),
-                blurRadius: 14,
-                offset: Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE3F2FD),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      collection.icon,
-                      color: const Color(0xFF1565C0),
-                    ),
-                  ),
-                  // Handles the spacer logic used by this module.
-                  const Spacer(),
-                  Text(
-                    count == null ? '...' : '$count records',
-                    style: const TextStyle(
-                      color: Colors.grey,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 18),
-              Text(
-                collection.title,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              // Handles the spacer logic used by this module.
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: _exporting
-                      ? null
-                      : () => _exportCollectionCsv(collection),
-                  icon: const Icon(Icons.download_outlined),
-                  label: const Text('EXPORT CSV'),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   static const Set<String> _restorableCollections = {
     'products',
     'suppliers',
@@ -733,48 +639,49 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     'permit_reminders',
   };
 
-  // Handles the restore value logic used by this module.
+  // Restore only explicit V2 Firestore type markers; keep ordinary strings intact.
   dynamic _restoreValue(dynamic value) {
-    if (value is List) {
-      return value.map(_restoreValue).toList();
-    }
-
+    if (value is List) return value.map(_restoreValue).toList();
     if (value is Map) {
       final converted = Map<String, dynamic>.from(value);
-
-      if (converted.length == 2 &&
-          converted['__type'] == 'timestamp' &&
-          converted['value'] is String) {
-        final parsed = DateTime.tryParse(converted['value'] as String);
-
-        return parsed == null ? converted['value'] : Timestamp.fromDate(parsed);
+      final marker = converted['__type'];
+      if (marker == 'timestamp' && converted.length == 2) {
+        final raw = converted['value'];
+        final date = raw is String ? DateTime.tryParse(raw) : null;
+        if (date == null)
+          throw const FormatException('Invalid timestamp in backup.');
+        return Timestamp.fromDate(date);
       }
-
-      if (converted['__type'] == 'geoPoint') {
-        final latitude = (converted['latitude'] as num?)?.toDouble();
-        final longitude = (converted['longitude'] as num?)?.toDouble();
-
-        if (latitude != null && longitude != null) {
-          // Handles the geo point logic used by this module.
-          return GeoPoint(latitude, longitude);
+      if (marker == 'documentReference' && converted.length == 2) {
+        final path = converted['value'];
+        if (path is! String ||
+            path.isEmpty ||
+            path.split('/').length.isOdd ||
+            path.contains('//')) {
+          throw const FormatException('Invalid document reference in backup.');
         }
+        return FirebaseFirestore.instance.doc(path);
       }
-
+      if (marker == 'geoPoint' && converted.length == 3) {
+        final lat = (converted['latitude'] as num?)?.toDouble();
+        final lon = (converted['longitude'] as num?)?.toDouble();
+        if (lat == null ||
+            lon == null ||
+            lat < -90 ||
+            lat > 90 ||
+            lon < -180 ||
+            lon > 180) {
+          throw const FormatException(
+            'Invalid geographic coordinates in backup.',
+          );
+        }
+        return GeoPoint(lat, lon);
+      }
+      if (marker != null && converted.containsKey('__type')) {
+        throw FormatException('Unsupported data type in backup: $marker');
+      }
       return converted.map((key, item) => MapEntry(key, _restoreValue(item)));
     }
-
-    if (value is String) {
-      final parsed = DateTime.tryParse(value);
-
-      if (parsed != null &&
-          value.contains('T') &&
-          (value.endsWith('Z') ||
-              value.contains('+') ||
-              RegExp(r'T\d{2}:\d{2}:\d{2}').hasMatch(value))) {
-        return Timestamp.fromDate(parsed);
-      }
-    }
-
     return value;
   }
 
@@ -814,6 +721,13 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
       if (backup['system'] != 'EÜ MART Web' || backup['collections'] is! Map) {
         // Formats exception into a user-friendly display value.
         throw const FormatException('This is not a valid EÜ MART backup file.');
+      }
+
+      if (backup['backupVersion'] != 2) {
+        throw const FormatException(
+          'Only version 2 JSON backups can be restored safely. '
+          'Older exports did not preserve all Firestore data types.',
+        );
       }
 
       final collections = Map<String, dynamic>.from(
@@ -907,9 +821,10 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
           content: SizedBox(
             width: 520,
             child: Text(
-              'The selected backup records will be merged '
-              'into the live Firestore database. Existing '
-              'documents with the same IDs will be replaced.\n\n'
+              'WARNING: This writes directly to LIVE Firestore. '
+              'Documents with matching IDs will be overwritten. '
+              'Restoration is not automatically reversible, and a failed '
+              'batch may leave a partial restore. Create a fresh backup first.\n\n'
               'Selected collections: '
               '${_selectedRestoreCollections.join(', ')}',
             ),
@@ -930,6 +845,52 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     );
 
     if (confirmed != true) return;
+    // Validate every selected document before the first write so malformed
+    // files cannot cause partial restoration from a parsing failure.
+    final validated = <String, List<MapEntry<String, Map<String, dynamic>>>>{};
+    try {
+      final collections = Map<String, dynamic>.from(
+        backup['collections'] as Map,
+      );
+      for (final collectionName in _selectedRestoreCollections) {
+        if (!_restorableCollections.contains(collectionName)) {
+          throw const FormatException('Collection not approved for recovery.');
+        }
+        final raw = collections[collectionName];
+        if (raw is! Map || raw['documents'] is! List) {
+          throw FormatException('Invalid collection: $collectionName');
+        }
+        final seen = <String>{};
+        final entries = <MapEntry<String, Map<String, dynamic>>>[];
+        for (final item in (raw['documents'] as List)) {
+          if (item is! Map || item['id'] is! String || item['data'] is! Map) {
+            throw FormatException('Invalid record in $collectionName');
+          }
+          final id = item['id'] as String;
+          if (id.isEmpty ||
+              id.contains('/') ||
+              id == '.' ||
+              id == '..' ||
+              !seen.add(id)) {
+            throw FormatException(
+              'Invalid/duplicate document ID in $collectionName',
+            );
+          }
+          final data = _restoreValue(item['data']);
+          if (data is! Map<String, dynamic>) {
+            throw FormatException('Invalid record data in $collectionName');
+          }
+          entries.add(MapEntry(id, data));
+        }
+        validated[collectionName] = entries;
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Restore validation failed: $error')),
+      );
+      return;
+    }
 
     setState(() {
       _restoring = true;
@@ -937,61 +898,28 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
     });
 
     try {
-      final collections = Map<String, dynamic>.from(
-        backup['collections'] as Map,
-      );
-
       int restoredDocuments = 0;
-
+      // Firestore batches are limited; small batches reduce failed-write scope.
       for (final collectionName in _selectedRestoreCollections) {
-        final collectionRaw = collections[collectionName];
-
-        if (collectionRaw is! Map) continue;
-
-        final collectionData = Map<String, dynamic>.from(collectionRaw);
-
-        final documents = collectionData['documents'];
-
-        if (documents is! List) continue;
-
+        final entries = validated[collectionName]!;
         var batch = FirebaseFirestore.instance.batch();
-        int batchCount = 0;
-
-        for (final rawDocument in documents) {
-          if (rawDocument is! Map) continue;
-
-          final document = Map<String, dynamic>.from(rawDocument);
-
-          final id = (document['id'] ?? '').toString();
-
-          final rawData = document['data'];
-
-          if (id.isEmpty || rawData is! Map) {
-            continue;
-          }
-
-          final restoredData = Map<String, dynamic>.from(
-            _restoreValue(rawData) as Map,
-          );
-
+        var pending = 0;
+        for (final entry in entries) {
           final reference = FirebaseFirestore.instance
               .collection(collectionName)
-              .doc(id);
-
-          batch.set(reference, restoredData, SetOptions(merge: false));
-
-          batchCount++;
-          restoredDocuments++;
-
-          if (batchCount == 400) {
+              .doc(entry.key);
+          batch.set(reference, entry.value, SetOptions(merge: false));
+          pending++;
+          if (pending == 400) {
             await batch.commit();
+            restoredDocuments += pending;
             batch = FirebaseFirestore.instance.batch();
-            batchCount = 0;
+            pending = 0;
           }
         }
-
-        if (batchCount > 0) {
+        if (pending > 0) {
           await batch.commit();
+          restoredDocuments += pending;
         }
       }
 
@@ -1008,7 +936,9 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$restoredDocuments document(s) restored.'),
+          content: Text(
+            '${_formatCount(restoredDocuments)} document(s) restored.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -1146,7 +1076,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                 contentPadding: EdgeInsets.zero,
                 title: Text(collectionName),
                 subtitle: Text(
-                  '${_restoreDocumentCount(collectionName)} '
+                  '${_formatCount(_restoreDocumentCount(collectionName))} '
                   'document(s)',
                 ),
                 onChanged: _restoring
@@ -1253,7 +1183,7 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                                 const SizedBox(height: 4),
                                 // Handles the text logic used by this module.
                                 const Text(
-                                  'Download a complete JSON backup or export '
+                                  'Download a JSON backup of configured collections or export '
                                   'individual Firestore collections as CSV.',
                                   style: TextStyle(
                                     color: Colors.white70,
@@ -1525,20 +1455,20 @@ class _BackupExportScreenState extends State<BackupExportScreen> {
                   itemBuilder: (context, index) {
                     final collection = _collections[index];
 
-                    return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      future: FirebaseFirestore.instance
-                          .collection(collection.name)
-                          .get(),
+                    return FutureBuilder<AggregateQuerySnapshot>(
+                      future: _countFutures[collection.name],
                       builder: (context, snapshot) {
-                        final count = snapshot.data?.docs.length;
+                        final count = snapshot.data?.count;
 
                         // Handles the backup collection card logic used by this module.
                         return _BackupCollectionCard(
                           title: collection.title,
                           icon: collection.icon,
-                          recordCount: count == null
+                          recordCount: snapshot.hasError
+                              ? 'Count unavailable'
+                              : count == null
                               ? 'Loading...'
-                              : '$count record(s)',
+                              : '${_formatCount(count)} record(s)',
                           loading: _exporting,
                           onPressed: _exporting
                               ? null

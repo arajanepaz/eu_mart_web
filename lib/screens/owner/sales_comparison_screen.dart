@@ -5,6 +5,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 // Private UI/data helper used only inside this module.
 class _SalesCompareHoverCard extends StatefulWidget {
@@ -123,9 +124,42 @@ class _SalesSectionIcon extends StatelessWidget {
 }
 
 // Screen widget for compares sales performance across selected periods for basic business monitoring.
-class SalesComparisonScreen extends StatelessWidget {
+class SalesComparisonScreen extends StatefulWidget {
   // Handles the sales comparison screen logic used by this module.
   const SalesComparisonScreen({super.key});
+
+  @override
+  State<SalesComparisonScreen> createState() => _SalesComparisonScreenState();
+}
+
+class _SalesComparisonScreenState extends State<SalesComparisonScreen> {
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _transactionsStream;
+  late final DateTime _today;
+  late final DateTime _yesterday;
+
+  static final NumberFormat _moneyFormat = NumberFormat('#,##0.00', 'en_US');
+  static final NumberFormat _countFormat = NumberFormat('#,##0', 'en_US');
+  static String _money(num value) => '₱${_moneyFormat.format(value)}';
+  static String _count(num value) => _countFormat.format(value);
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _today = DateTime(now.year, now.month, now.day);
+    _yesterday = _today.subtract(const Duration(days: 1));
+    // Query only recent transactions rather than downloading all sales history.
+    // Both today's and yesterday's records share this listener.
+    // Transactions created before yesterday but completed later are not included;
+    // a dedicated completion-time field/index is needed for that edge case.
+    _transactionsStream = FirebaseFirestore.instance
+        .collection('transactions')
+        .where(
+          'createdAt',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(_yesterday),
+        )
+        .snapshots();
+  }
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -145,7 +179,7 @@ class SalesComparisonScreen extends StatelessWidget {
   // Handles the percent change logic used by this module.
   double _percentChange(double current, double previous) {
     if (previous == 0) {
-      return current == 0 ? 0 : 100;
+      return 0; // A zero denominator has no meaningful percentage growth.
     }
 
     return ((current - previous) / previous) * 100;
@@ -290,7 +324,7 @@ class SalesComparisonScreen extends StatelessWidget {
                       _SalesMetricPill(
                         title: 'Yesterday',
                         value: yesterday,
-                        color: const Color(0xFF7B1FA2),
+                        color: const Color(0xFF1565C0),
                       ),
                       _SalesMetricPill(
                         title: 'Difference',
@@ -331,7 +365,7 @@ class SalesComparisonScreen extends StatelessWidget {
                     yesterday,
                     textAlign: TextAlign.right,
                     style: const TextStyle(
-                      color: Color(0xFF7B1FA2),
+                      color: Color(0xFF1565C0),
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -356,12 +390,11 @@ class SalesComparisonScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
+    final today = _today;
+    final yesterday = _yesterday;
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('transactions').snapshots(),
+      stream: _transactionsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -376,7 +409,7 @@ class SalesComparisonScreen extends StatelessWidget {
               'Unable to load sales comparison.\n'
               '${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -401,7 +434,9 @@ class SalesComparisonScreen extends StatelessWidget {
               .toString()
               .toLowerCase();
 
-          if (status == 'voided') continue;
+          if (!const {'completed', 'paid', 'success'}.contains(status)) {
+            continue;
+          }
 
           final date = _readDate(
             data['transactionCompletedAt'] ?? data['createdAt'],
@@ -409,7 +444,9 @@ class SalesComparisonScreen extends StatelessWidget {
 
           if (date == null) continue;
 
-          final total = (data['total'] as num?)?.toDouble() ?? 0;
+          final total = ((data['total'] as num?)?.toDouble() ?? 0)
+              .clamp(0.0, double.infinity)
+              .toDouble();
 
           final duration = (data['transactionDurationSeconds'] as num?)
               ?.toInt();
@@ -423,7 +460,8 @@ class SalesComparisonScreen extends StatelessWidget {
 
             final item = Map<String, dynamic>.from(rawItem);
 
-            itemCount += (item['quantity'] as num?)?.toInt() ?? 0;
+            final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+            if (quantity > 0) itemCount += quantity;
           }
 
           if (_isSameDay(date, today)) {
@@ -482,20 +520,21 @@ class SalesComparisonScreen extends StatelessWidget {
 
         // Handles the change color logic used by this module.
         Color changeColor(double value) {
-          if (value > 0) return Colors.green;
-          if (value < 0) return Colors.red;
+          if (value > 0) return Colors.blue;
+          if (value < 0) return Colors.blue;
           return Colors.grey;
         }
 
         // Handles the change label logic used by this module.
-        String changeLabel(double value) {
+        String changeLabel(double value, {bool hasBaseline = true}) {
+          if (!hasBaseline) return 'N/A (no baseline)';
           final sign = value > 0
               ? '+'
               : value < 0
               ? ''
               : '';
 
-          return '$sign${value.toStringAsFixed(1)}%';
+          return '$sign${NumberFormat('#,##0.0', 'en_US').format(value)}%';
         }
 
         // Handles the duration label logic used by this module.
@@ -507,23 +546,34 @@ class SalesComparisonScreen extends StatelessWidget {
           final minutes = absolute ~/ 60;
           final remaining = absolute % 60;
 
-          return '$sign${minutes}m ${remaining}s';
+          return '$sign${_count(minutes)}m ${remaining}s';
         }
 
+        final hasSalesBaseline = yesterdaySales > 0 || todaySales == 0;
+        final hasTransactionBaseline =
+            yesterdayTransactions > 0 || todayTransactions == 0;
+        final hasItemBaseline = yesterdayItems > 0 || todayItems == 0;
+        final hasAverageBaseline = yesterdayAverage > 0 || todayAverage == 0;
         final trendColor = changeColor(salesChange);
-        final trendIcon = salesChange > 0
+        final trendIcon = !hasSalesBaseline
+            ? Icons.info_outline_rounded
+            : salesChange > 0
             ? Icons.trending_up_rounded
             : salesChange < 0
             ? Icons.trending_down_rounded
             : Icons.trending_flat_rounded;
 
-        final trendTitle = salesChange > 0
+        final trendTitle = !hasSalesBaseline
+            ? 'Sales Recorded (No Yesterday Baseline)'
+            : salesChange > 0
             ? 'Sales Increased'
             : salesChange < 0
             ? 'Sales Decreased'
             : 'Sales Unchanged';
 
-        final trendMessage = salesChange > 0
+        final trendMessage = !hasSalesBaseline
+            ? 'Yesterday had no recorded sales. Percentage growth cannot be calculated from zero.'
+            : salesChange > 0
             ? 'Today’s sales are higher than yesterday by '
                   '${salesChange.toStringAsFixed(1)}%.'
             : salesChange < 0
@@ -677,7 +727,10 @@ class SalesComparisonScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                changeLabel(salesChange),
+                                changeLabel(
+                                  salesChange,
+                                  hasBaseline: hasSalesBaseline,
+                                ),
                                 style: TextStyle(
                                   color: trendColor,
                                   fontSize: 12,
@@ -739,33 +792,33 @@ class SalesComparisonScreen extends StatelessWidget {
                           children: [
                             _summaryCard(
                               title: 'Today’s Sales',
-                              value: '₱${todaySales.toStringAsFixed(2)}',
+                              value: _money(todaySales),
                               subtitle:
-                                  '${changeLabel(salesChange)} vs yesterday',
+                                  '${changeLabel(salesChange, hasBaseline: hasSalesBaseline)} vs yesterday',
                               icon: Icons.payments_outlined,
                               color: changeColor(salesChange),
                             ),
                             _summaryCard(
                               title: 'Today’s Transactions',
-                              value: '$todayTransactions',
+                              value: _count(todayTransactions),
                               subtitle:
-                                  '${changeLabel(transactionChange)} vs yesterday',
+                                  '${changeLabel(transactionChange, hasBaseline: hasTransactionBaseline)} vs yesterday',
                               icon: Icons.receipt_long_outlined,
                               color: changeColor(transactionChange),
                             ),
                             _summaryCard(
                               title: 'Items Sold Today',
-                              value: '$todayItems',
+                              value: _count(todayItems),
                               subtitle:
-                                  '${changeLabel(itemChange)} vs yesterday',
+                                  '${changeLabel(itemChange, hasBaseline: hasItemBaseline)} vs yesterday',
                               icon: Icons.shopping_bag_outlined,
                               color: changeColor(itemChange),
                             ),
                             _summaryCard(
                               title: 'Average Transaction',
-                              value: '₱${todayAverage.toStringAsFixed(2)}',
+                              value: _money(todayAverage),
                               subtitle:
-                                  '${changeLabel(averageChange)} vs yesterday',
+                                  '${changeLabel(averageChange, hasBaseline: hasAverageBaseline)} vs yesterday',
                               icon: Icons.analytics_outlined,
                               color: changeColor(averageChange),
                             ),
@@ -858,7 +911,7 @@ class SalesComparisonScreen extends StatelessWidget {
                                         'YESTERDAY',
                                         textAlign: TextAlign.right,
                                         style: TextStyle(
-                                          color: Color(0xFF7B1FA2),
+                                          color: Color(0xFF1565C0),
                                           fontSize: 10,
                                           fontWeight: FontWeight.w900,
                                         ),
@@ -883,52 +936,69 @@ class SalesComparisonScreen extends StatelessWidget {
                             ],
                             _comparisonRow(
                               label: 'Sales',
-                              today: '₱${todaySales.toStringAsFixed(2)}',
-                              yesterday:
-                                  '₱${yesterdaySales.toStringAsFixed(2)}',
-                              difference: changeLabel(salesChange),
+                              today: _money(todaySales),
+                              yesterday: _money(yesterdaySales),
+                              difference: changeLabel(
+                                salesChange,
+                                hasBaseline: hasSalesBaseline,
+                              ),
                               differenceColor: changeColor(salesChange),
                             ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             _comparisonRow(
                               label: 'Transactions',
-                              today: '$todayTransactions',
-                              yesterday: '$yesterdayTransactions',
-                              difference: changeLabel(transactionChange),
+                              today: _count(todayTransactions),
+                              yesterday: _count(yesterdayTransactions),
+                              difference: changeLabel(
+                                transactionChange,
+                                hasBaseline: hasTransactionBaseline,
+                              ),
                               differenceColor: changeColor(transactionChange),
                             ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             _comparisonRow(
                               label: 'Items Sold',
-                              today: '$todayItems',
-                              yesterday: '$yesterdayItems',
-                              difference: changeLabel(itemChange),
+                              today: _count(todayItems),
+                              yesterday: _count(yesterdayItems),
+                              difference: changeLabel(
+                                itemChange,
+                                hasBaseline: hasItemBaseline,
+                              ),
                               differenceColor: changeColor(itemChange),
                             ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             _comparisonRow(
                               label: 'Average Transaction',
-                              today: '₱${todayAverage.toStringAsFixed(2)}',
-                              yesterday:
-                                  '₱${yesterdayAverage.toStringAsFixed(2)}',
-                              difference: changeLabel(averageChange),
+                              today: _money(todayAverage),
+                              yesterday: _money(yesterdayAverage),
+                              difference: changeLabel(
+                                averageChange,
+                                hasBaseline: hasAverageBaseline,
+                              ),
                               differenceColor: changeColor(averageChange),
                             ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(height: 10),
                             _comparisonRow(
                               label: 'Average Service Time',
-                              today: '${todayAverageDuration.round()} sec',
-                              yesterday:
-                                  '${yesterdayAverageDuration.round()} sec',
-                              difference: durationLabel(durationDifference),
+                              today: todayDurationCount == 0
+                                  ? 'N/A'
+                                  : '${_count(todayAverageDuration.round())} sec',
+                              yesterday: yesterdayDurationCount == 0
+                                  ? 'N/A'
+                                  : '${_count(yesterdayAverageDuration.round())} sec',
+                              difference:
+                                  todayDurationCount == 0 ||
+                                      yesterdayDurationCount == 0
+                                  ? 'N/A'
+                                  : durationLabel(durationDifference),
                               differenceColor: durationDifference > 0
-                                  ? const Color(0xFFD32F2F)
+                                  ? const Color(0xFF1976D2)
                                   : durationDifference < 0
-                                  ? const Color(0xFF159447)
+                                  ? const Color(0xFF1565C0)
                                   : const Color(0xFF7A8494),
                             ),
                           ],

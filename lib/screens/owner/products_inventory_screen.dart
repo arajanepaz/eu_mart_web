@@ -7,11 +7,151 @@ import 'dart:convert';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/audit_log_service.dart';
+import 'restock_suggestions_screen.dart';
+import 'stock_movement_screen.dart';
+import 'supplier_management_screen.dart';
+import 'barcode_generator_screen.dart';
+import 'promotions_management_screen.dart';
+
+// Single Inventory Management workspace. All original product/stock functions
+// remain in their existing widgets; the sidebar needs only this one entry.
+class ProductsInventoryScreen extends StatefulWidget {
+  const ProductsInventoryScreen({super.key});
+
+  @override
+  State<ProductsInventoryScreen> createState() =>
+      _UnifiedInventoryWorkspaceState();
+}
+
+class _UnifiedInventoryWorkspaceState extends State<ProductsInventoryScreen> {
+  int _section = 0;
+
+  static const _sections = <({String name, IconData icon})>[
+    (name: 'Products', icon: Icons.inventory_2_outlined),
+    (name: 'Stock Movements', icon: Icons.swap_horiz_outlined),
+    (name: 'Restock', icon: Icons.low_priority_outlined),
+    (name: 'Suppliers', icon: Icons.local_shipping_outlined),
+    (name: 'Barcodes', icon: Icons.qr_code_rounded),
+    (name: 'Promotions', icon: Icons.local_offer_outlined),
+  ];
+
+  // Visited tabs remain mounted; their search, pagination and loaded data survive
+  // a tab switch. Unvisited tabs are not created until opened.
+  final Set<int> _visitedSections = <int>{0};
+
+  Widget _contentFor(int section) => switch (section) {
+    0 => const _ProductsCatalogScreen(),
+    1 => const StockMovementScreen(),
+    2 => const RestockSuggestionsScreen(),
+    3 => const SupplierManagementScreen(),
+    4 => const BarcodeGeneratorScreen(),
+    5 => const PromotionsManagementScreen(),
+    _ => const SizedBox.shrink(),
+  };
+
+  void _openSection(int index) {
+    if (_section == index) return;
+    setState(() {
+      _visitedSections.add(index);
+      _section = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const navy = Color(0xFF1559A6);
+    const ink = Color(0xFF243247);
+    const gray = Color(0xFFF3F5F8);
+
+    return ColoredBox(
+      color: gray,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Inventory Management',
+                  style: TextStyle(
+                    fontSize: 23,
+                    fontWeight: FontWeight.w800,
+                    color: ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Products, stock, suppliers and promotions in one workspace.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF67758A)),
+                ),
+                const SizedBox(height: 16),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (var index = 0; index < _sections.length; index++)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: OutlinedButton.icon(
+                            onPressed: () => _openSection(index),
+                            icon: Icon(_sections[index].icon, size: 17),
+                            label: Text(_sections[index].name),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _section == index
+                                  ? Colors.white
+                                  : ink,
+                              backgroundColor: _section == index
+                                  ? navy
+                                  : Colors.white,
+                              side: BorderSide(
+                                color: _section == index
+                                    ? navy
+                                    : const Color(0xFFD7DEE9),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(9),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 13,
+                                vertical: 15,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: IndexedStack(
+              index: _section,
+              children: [
+                for (var index = 0; index < _sections.length; index++)
+                  _visitedSections.contains(index)
+                      ? TickerMode(
+                          enabled: _section == index,
+                          child: _contentFor(index),
+                        )
+                      : const SizedBox.shrink(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _InventoryEmptyState extends StatelessWidget {
@@ -68,6 +208,7 @@ class _InventoryProductCard extends StatefulWidget {
   final int stock;
   final int lowStockThreshold;
   final bool active;
+  final bool expired;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -82,6 +223,7 @@ class _InventoryProductCard extends StatefulWidget {
     required this.stock,
     required this.lowStockThreshold,
     required this.active,
+    required this.expired,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
@@ -174,15 +316,17 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                           ),
                           decoration: BoxDecoration(
                             color: widget.active
-                                ? const Color(0xFFEAF8F0)
+                                ? const Color(0xFF1565C0)
                                 : const Color(0xFFF1F3F5),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            widget.active ? 'ACTIVE' : 'INACTIVE',
+                            widget.expired
+                                ? 'EXPIRED'
+                                : (widget.active ? 'ACTIVE' : 'INACTIVE'),
                             style: TextStyle(
                               color: widget.active
-                                  ? const Color(0xFF168653)
+                                  ? const Color(0xFF1565C0)
                                   : Colors.grey,
                               fontSize: 9.5,
                               fontWeight: FontWeight.w900,
@@ -222,7 +366,7 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                   Text(
                     '₱${widget.price.toStringAsFixed(2)}',
                     style: const TextStyle(
-                      color: Color(0xFF0F8A4B),
+                      color: Color(0xFF1559A6),
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
                     ),
@@ -236,16 +380,14 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
                     ),
                     decoration: BoxDecoration(
                       color: lowStock
-                          ? const Color(0xFFFFF1E6)
-                          : const Color(0xFFEAF8F0),
+                          ? const Color(0xFFEAF3FF)
+                          : const Color(0xFFDCEBFF),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       'Stock: ${widget.stock}',
                       style: TextStyle(
-                        color: lowStock
-                            ? const Color(0xFFD97706)
-                            : const Color(0xFF168653),
+                        color: const Color(0xFF1559A6),
                         fontSize: 10.5,
                         fontWeight: FontWeight.w900,
                       ),
@@ -263,7 +405,10 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
               IconButton(
                 tooltip: 'Delete',
                 onPressed: widget.onDelete,
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                icon: const Icon(
+                  Icons.delete_outline,
+                  color: const Color(0xFF1565C0),
+                ),
               ),
             ],
           ),
@@ -274,17 +419,16 @@ class _InventoryProductCardState extends State<_InventoryProductCard> {
 }
 
 // Screen widget for owner product and inventory management including product creation, editing, stock data, pricing, and expiration information.
-class ProductsInventoryScreen extends StatefulWidget {
+class _ProductsCatalogScreen extends StatefulWidget {
   // Handles the products inventory screen logic used by this module.
-  const ProductsInventoryScreen({super.key});
+  const _ProductsCatalogScreen({super.key});
 
   @override
-  State<ProductsInventoryScreen> createState() =>
-      _ProductsInventoryScreenState();
+  State<_ProductsCatalogScreen> createState() => _ProductsCatalogScreenState();
 }
 
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
-class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
+class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedCategory = 'All';
@@ -362,7 +506,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         throw Exception('Unable to read the selected CSV file.');
       }
 
-      final csvText = utf8.decode(bytes, allowMalformed: true);
+      final csvText = utf8.decode(bytes);
       final List<List<dynamic>> rows = csv.decode(csvText);
 
       if (rows.isEmpty) {
@@ -371,7 +515,13 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       }
 
       final headers = rows.first
-          .map((value) => value.toString().trim().toLowerCase())
+          .map(
+            (value) => value
+                .toString()
+                .replaceFirst('\uFEFF', '')
+                .trim()
+                .toLowerCase(),
+          )
           .toList();
 
       const requiredHeaders = [
@@ -433,7 +583,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       final existingBarcodes = <String>{
         for (final document in existingSnapshot.docs)
           if ((document.data()['barcode'] ?? '').toString().trim().isNotEmpty)
-            (document.data()['barcode'] ?? '').toString().trim(),
+            (document.data()['barcode'] ?? '').toString().trim().toLowerCase(),
       };
 
       // Also track barcodes encountered inside this CSV so duplicate rows
@@ -442,6 +592,13 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
 
       int imported = 0;
       int skipped = 0;
+      final skippedReasons = <String>[];
+      void skipRow(int row, String reason) {
+        skipped++;
+        if (skippedReasons.length < 20) {
+          skippedReasons.add('Row $row: $reason');
+        }
+      }
 
       WriteBatch batch = FirebaseFirestore.instance.batch();
       int batchCount = 0;
@@ -469,32 +626,53 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         final sellingPrice = double.tryParse(valueAt(row, 'sellingprice'));
         final stock = int.tryParse(valueAt(row, 'stock'));
 
-        if (productName.isEmpty ||
-            category.isEmpty ||
-            buyingPrice == null ||
-            sellingPrice == null ||
-            stock == null ||
-            stock < 0) {
-          skipped++;
+        // Never silently import invalid money, inventory or empty identifiers.
+        if (productName.isEmpty || category.isEmpty) {
+          skipRow(index + 1, 'Product name and category are required.');
           continue;
+        }
+        if (buyingPrice == null ||
+            !buyingPrice.isFinite ||
+            buyingPrice < 0 ||
+            sellingPrice == null ||
+            !sellingPrice.isFinite ||
+            sellingPrice <= 0) {
+          skipRow(
+            index + 1,
+            'Buying price must be non-negative and selling price must be positive.',
+          );
+          continue;
+        }
+        if (stock == null || stock < 0) {
+          skipRow(index + 1, 'Stock must be a non-negative whole number.');
+          continue;
+        }
+        final expirationText = valueAt(row, 'expirationdate');
+        final expirationDate = expirationText.isEmpty
+            ? null
+            : DateTime.tryParse(expirationText);
+        if (expirationText.isNotEmpty) {
+          // Require ISO YYYY-MM-DD to avoid accepting ambiguous dates or overflow.
+          if (expirationDate == null ||
+              !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(expirationText) ||
+              expirationDate.toIso8601String().substring(0, 10) !=
+                  expirationText) {
+            skipRow(index + 1, 'Invalid expiration date. Use YYYY-MM-DD.');
+            continue;
+          }
         }
 
         final barcode = valueAt(row, 'barcode');
 
         if (barcode.isNotEmpty) {
-          if (existingBarcodes.contains(barcode) ||
-              csvBarcodes.contains(barcode)) {
-            skipped++;
+          if (existingBarcodes.contains(barcode.toLowerCase()) ||
+              csvBarcodes.contains(barcode.toLowerCase())) {
+            skipRow(index + 1, 'Duplicate barcode: $barcode');
             continue;
           }
 
-          csvBarcodes.add(barcode);
+          csvBarcodes.add(barcode.toLowerCase());
         }
-
-        final expirationText = valueAt(row, 'expirationdate');
-        final expirationDate = expirationText.isEmpty
-            ? null
-            : DateTime.tryParse(expirationText);
 
         final document = productsRef.doc();
 
@@ -539,6 +717,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
           details: {
             'importedCount': imported,
             'skippedCount': skipped,
+            'skippedExamples': skippedReasons,
             'fileName': file.name,
           },
         );
@@ -555,9 +734,14 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         SnackBar(
           content: Text(
             'CSV import complete: $imported imported, '
-            '$skipped skipped.',
+                    '$skipped skipped. ' +
+                (skippedReasons.isEmpty
+                    ? ''
+                    : skippedReasons.take(3).join(' | ')),
           ),
-          backgroundColor: imported > 0 ? Colors.green : Colors.orange,
+          backgroundColor: imported > 0
+              ? const Color(0xFF1565C0)
+              : const Color(0xFF1565C0),
         ),
       );
     } catch (error) {
@@ -574,7 +758,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
             'Unable to import CSV: '
             '${error.toString().replaceFirst('Exception: ', '')}',
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
     }
@@ -742,7 +926,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                         content: Text(
                           'This barcode is already assigned to another product.',
                         ),
-                        backgroundColor: Colors.red,
+                        backgroundColor: const Color(0xFF1565C0),
                       ),
                     );
 
@@ -813,42 +997,99 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 // =================================================
                 else {
                   final oldStock = _readInt(data['stock']);
+                  final stockRequestedChange = newStock != oldStock;
+                  final db = FirebaseFirestore.instance;
+                  final reminderReference = db
+                      .collection('price_update_reminders')
+                      .doc();
+                  final movementReference = db
+                      .collection('stock_movements')
+                      .doc();
+                  final auditReference = db.collection('audit_logs').doc();
 
-                  final oldBuyingPrice = _readDouble(data['buyingPrice']);
+                  // Check latest inventory atomically to prevent an old edit
+                  // form from overwriting a recent POS sale or stock movement.
+                  await db.runTransaction<void>((transaction) async {
+                    final latest = await transaction.get(document.reference);
+                    if (!latest.exists) {
+                      throw Exception('Product was deleted. Reload inventory.');
+                    }
+                    final latestData = latest.data() ?? <String, dynamic>{};
+                    final latestStock = _readInt(latestData['stock']);
+                    if (stockRequestedChange && latestStock != oldStock) {
+                      throw Exception(
+                        'Stock changed from $oldStock to $latestStock while editing. '
+                        'Reload the product and re-enter the adjustment.',
+                      );
+                    }
+                    // Do NOT write a stale stock value if the owner only edits
+                    // a price, category, expiration date or other metadata.
+                    final safeProductData = Map<String, dynamic>.from(
+                      productData,
+                    );
+                    if (!stockRequestedChange) safeProductData.remove('stock');
+                    transaction.update(document.reference, safeProductData);
 
-                  final buyingPriceChanged = oldBuyingPrice != newBuyingPrice;
-
-                  // ------------------------------------------------
-                  // UPDATE PRODUCT + CREATE REMINDER ATOMICALLY
-                  // ------------------------------------------------
-
-                  final batch = FirebaseFirestore.instance.batch();
-
-                  batch.update(document.reference, productData);
-
-                  DocumentReference<Map<String, dynamic>>? reminderReference;
-
-                  if (buyingPriceChanged) {
-                    reminderReference = FirebaseFirestore.instance
-                        .collection('price_update_reminders')
-                        .doc();
-
-                    batch.set(reminderReference, {
-                      'productId': document.id,
-                      'productName': productName,
-                      'oldBuyingPrice': oldBuyingPrice,
-                      'newBuyingPrice': newBuyingPrice,
-                      'currentSellingPrice': newSellingPrice,
-                      'status': 'Pending Review',
-                      'type': 'Price Update Reminder',
-                      'source': 'Products',
-                      'recipientRole': 'Owner',
-                      'createdAt': FieldValue.serverTimestamp(),
-                      'updatedAt': FieldValue.serverTimestamp(),
-                    });
-                  }
-
-                  await batch.commit();
+                    final currentBuying = _readDouble(
+                      latestData['buyingPrice'],
+                    );
+                    final currentSelling = _readDouble(
+                      latestData['sellingPrice'],
+                    );
+                    if (currentBuying != newBuyingPrice ||
+                        currentSelling != newSellingPrice) {
+                      transaction.set(reminderReference, {
+                        'productId': document.id,
+                        'productName': productName,
+                        'oldBuyingPrice': currentBuying,
+                        'newBuyingPrice': newBuyingPrice,
+                        'oldSellingPrice': currentSelling,
+                        'newSellingPrice': newSellingPrice,
+                        'currentSellingPrice': newSellingPrice,
+                        'status': 'Pending Review',
+                        'type': 'Price Update Reminder',
+                        'source': 'Products',
+                        'recipientRole': 'Owner',
+                        'createdAt': FieldValue.serverTimestamp(),
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      });
+                    }
+                    if (stockRequestedChange) {
+                      final delta = newStock - latestStock;
+                      transaction.set(movementReference, {
+                        'productId': document.id,
+                        'productName': productName,
+                        'movementType': delta > 0
+                            ? 'Stock Increase'
+                            : 'Stock Decrease',
+                        'quantity': delta.abs(),
+                        'direction': delta > 0 ? 'increase' : 'decrease',
+                        'previousStock': latestStock,
+                        'newStock': newStock,
+                        'supplierId': '',
+                        'supplier': '',
+                        'buyingCost': 0.0,
+                        'reason':
+                            'Stock edited directly in Products & Inventory',
+                        'performedById':
+                            FirebaseAuth.instance.currentUser?.uid ?? '',
+                        'performedByEmail':
+                            FirebaseAuth.instance.currentUser?.email ?? '',
+                        'createdAt': FieldValue.serverTimestamp(),
+                      });
+                      transaction.set(auditReference, {
+                        'action': 'Stock Movement',
+                        'module': 'Inventory',
+                        'description':
+                            'Product stock edited: $productName, $latestStock to $newStock',
+                        'performedById':
+                            FirebaseAuth.instance.currentUser?.uid ?? '',
+                        'performedByEmail':
+                            FirebaseAuth.instance.currentUser?.email ?? '',
+                        'createdAt': FieldValue.serverTimestamp(),
+                      });
+                    }
+                  });
 
                   // ------------------------------------------------
                   // PRODUCT AUDIT LOG
@@ -859,18 +1100,8 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                     productName: productName,
                   );
 
-                  // ------------------------------------------------
-                  // STOCK AUDIT LOG
-                  // ------------------------------------------------
-
-                  if (oldStock != newStock) {
-                    await AuditLogService.stockAdjusted(
-                      productId: document.id,
-                      productName: productName,
-                      oldStock: oldStock,
-                      newStock: newStock,
-                    );
-                  }
+                  // The stock movement and stock audit record were committed
+                  // atomically above; do not insert a duplicate audit event.
                 }
 
                 if (!dialogContext.mounted) return;
@@ -882,7 +1113,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
                   SnackBar(
                     content: Text('Unable to save product: $error'),
-                    backgroundColor: Colors.red,
+                    backgroundColor: const Color(0xFF1565C0),
                   ),
                 );
 
@@ -944,7 +1175,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          validator: _numberValidator,
+                          validator: _positivePriceValidator,
                         ),
                         _dialogField(
                           controller: stockController,
@@ -1066,7 +1297,9 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                               Navigator.pop(dialogContext, false);
                             }
                           },
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF1565C0),
+                    ),
                     icon: const Icon(Icons.delete_outline),
                     label: const Text('Delete Product'),
                   ),
@@ -1106,7 +1339,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                 ? 'Product added successfully.'
                 : 'Product updated successfully.',
           ),
-          backgroundColor: Colors.green,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
     }
@@ -1155,10 +1388,18 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   String? _numberValidator(String? value) {
     final parsed = double.tryParse(value?.trim() ?? '');
 
-    if (parsed == null || parsed < 0) {
-      return 'Enter a valid number';
+    if (parsed == null || !parsed.isFinite || parsed < 0) {
+      return 'Enter a valid finite, non-negative number';
     }
 
+    return null;
+  }
+
+  String? _positivePriceValidator(String? value) {
+    final parsed = double.tryParse(value?.trim() ?? '');
+    if (parsed == null || !parsed.isFinite || parsed <= 0) {
+      return 'Enter a positive selling price';
+    }
     return null;
   }
 
@@ -1199,7 +1440,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
             ),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: const Color(0xFF1565C0),
                 foregroundColor: Colors.white,
               ),
               onPressed: () => Navigator.pop(dialogContext, true),
@@ -1232,7 +1473,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Product deleted successfully.'),
-          backgroundColor: Colors.green,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
 
@@ -1243,7 +1484,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to delete product: $error'),
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
 
@@ -1285,66 +1526,84 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
         });
   }
 
-  // Loads active product records into local caches used by fast POS search and barcode lookup.
+  // Cache-first and stale-while-revalidate: avoid blocking the entire catalog
+  // while waiting for a network round trip. The server remains authoritative.
+  bool _isFetchingProducts = false;
+
+  void _applyProductDocuments(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
+  ) {
+    if (!mounted) return;
+    final activeCount = documents
+        .where((document) => document.data()['isActive'] != false)
+        .length;
+    final totalStock = documents.fold<int>(
+      0,
+      (total, document) => total + _readInt(document.data()['stock']),
+    );
+    setState(() {
+      _allProducts = documents;
+      _activeCount = activeCount;
+      _totalStock = totalStock;
+      _productsLoading = false;
+      _productsError = null;
+      if (_selectedCategory != 'All' &&
+          !documents.any(
+            (doc) =>
+                _productCategory(doc.data()).toLowerCase() ==
+                _selectedCategory.toLowerCase(),
+          )) {
+        _selectedCategory = 'All';
+      }
+      final filteredCount = _filteredProducts.length;
+      final pageCount = filteredCount == 0
+          ? 1
+          : (filteredCount + _productsPerPage - 1) ~/ _productsPerPage;
+      if (_currentPage >= pageCount) _currentPage = pageCount - 1;
+    });
+  }
+
+  // Load locally cached data immediately when available, then fetch the
+  // authoritative server version. No duplicate full-collection requests.
   Future<void> _loadProducts() async {
+    if (_isFetchingProducts) return;
+    _isFetchingProducts = true;
     if (mounted) {
       setState(() {
-        _productsLoading = true;
+        _productsLoading = _allProducts.isEmpty;
         _productsError = null;
       });
     }
-
     try {
-      final snapshot = await FirebaseFirestore.instance
+      final query = FirebaseFirestore.instance
           .collection('products')
-          .orderBy('productName')
-          .get();
+          .orderBy('productName');
 
-      final documents = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-        snapshot.docs,
-      );
-
-      final activeCount = documents
-          .where((document) => document.data()['isActive'] != false)
-          .length;
-
-      final totalStock = documents.fold<int>(
-        0,
-        (sum, document) => sum + _readInt(document.data()['stock']),
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _allProducts = documents;
-        if (_selectedCategory != 'All' &&
-            !documents.any(
-              (doc) =>
-                  _productCategory(doc.data()).toLowerCase() ==
-                  _selectedCategory.toLowerCase(),
-            )) {
-          _selectedCategory = 'All';
+      if (_allProducts.isEmpty) {
+        try {
+          final cached = await query.get(
+            const GetOptions(source: Source.cache),
+          );
+          if (cached.docs.isNotEmpty) _applyProductDocuments(cached.docs);
+        } catch (_) {
+          // The browser may have no Firestore cache yet.
         }
-        _activeCount = activeCount;
-        _totalStock = totalStock;
-        _productsLoading = false;
+      }
 
-        final totalPages = _filteredProducts.isEmpty
-            ? 1
-            : ((_filteredProducts.length + _productsPerPage - 1) ~/
-                  _productsPerPage);
-
-        if (_currentPage >= totalPages) {
-          _currentPage = totalPages - 1;
-        }
-      });
+      // The full catalog is retained to preserve cross-product search,
+      // category chips, overall stock totals, and existing pagination.
+      final latest = await query.get(const GetOptions(source: Source.server));
+      _applyProductDocuments(latest.docs);
     } catch (error) {
       if (!mounted) return;
-
       setState(() {
         _productsLoading = false;
-        _productsError = error.toString();
+        // Keep already rendered cached data rather than replacing it with
+        // an error page if the connection temporarily fails.
+        _productsError = _allProducts.isEmpty ? error.toString() : null;
       });
+    } finally {
+      _isFetchingProducts = false;
     }
   }
 
@@ -1437,7 +1696,19 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
   Widget build(BuildContext context) {
     if (_productsLoading) {
       // Handles the center logic used by this module.
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Color(0xFF1565C0)),
+            SizedBox(height: 14),
+            Text(
+              'Loading inventory...',
+              style: TextStyle(color: Color(0xFF52657B)),
+            ),
+          ],
+        ),
+      );
     }
 
     if (_productsError != null) {
@@ -1449,7 +1720,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
             Text(
               'Unable to load products.\n$_productsError',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: const Color(0xFF1565C0)),
             ),
             // Handles the sized box logic used by this module.
             const SizedBox(height: 12),
@@ -1558,7 +1829,6 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           onPressed: () async {
                             // Handles the import products from csv logic used by this module.
                             await _importProductsFromCsv();
-                            // Loads active product records into local caches used by fast POS search and barcode lookup.
                             await _loadProducts();
                           },
                           style: OutlinedButton.styleFrom(
@@ -1575,8 +1845,6 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                           onPressed: () async {
                             // Opens the product dialog interface using the current record or screen state.
                             await _showProductDialog();
-                            // Loads active product records into local caches used by fast POS search and barcode lookup.
-                            await _loadProducts();
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
@@ -1643,19 +1911,19 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                         label: 'Active Products',
                         value: '$_activeCount',
                         icon: Icons.check_circle_outline,
-                        color: const Color(0xFF159447),
+                        color: const Color(0xFF1565C0),
                       ),
                       _inventorySummaryCard(
                         label: 'Low Stock',
                         value: '$_lowStockCount',
                         icon: Icons.warning_amber_rounded,
-                        color: const Color(0xFFF59E0B),
+                        color: const Color(0xFFEAF3FF),
                       ),
                       _inventorySummaryCard(
                         label: 'Total Units',
                         value: '$_totalStock',
                         icon: Icons.stacked_bar_chart_rounded,
-                        color: const Color(0xFF7B1FA2),
+                        color: const Color(0xFF1565C0),
                       ),
                     ],
                   );
@@ -1979,7 +2247,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                                   active ? 'Active' : 'Inactive',
                                   style: TextStyle(
                                     color: active
-                                        ? const Color(0xFF159447)
+                                        ? const Color(0xFF1565C0)
                                         : Colors.grey,
                                     fontSize: 10.5,
                                     fontWeight: FontWeight.w700,
@@ -2004,7 +2272,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                       Text(
                         '₱${sellingPrice.toStringAsFixed(2)}',
                         style: const TextStyle(
-                          color: Color(0xFF0F8A4B),
+                          color: Color(0xFF1559A6),
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -2017,23 +2285,56 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: stock > 0 && stock <= _lowStockThreshold
-                              ? const Color(0xFFFFF1E6)
-                              : const Color(0xFFEAF8F0),
+                              ? const Color(0xFFEAF3FF)
+                              : const Color(0xFFDCEBFF),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
                           '$stock',
                           style: TextStyle(
-                            color: stock > 0 && stock <= _lowStockThreshold
-                                ? const Color(0xFFD97706)
-                                : const Color(0xFF168653),
+                            color: const Color(0xFF1559A6),
                             fontWeight: FontWeight.w900,
                           ),
                         ),
                       ),
                     ),
                     DataCell(Text((data['unit'] ?? '').toString())),
-                    DataCell(Text(_formatDate(expirationDate))),
+                    DataCell(
+                      Text(
+                        expirationDate != null &&
+                                DateTime(
+                                  expirationDate.year,
+                                  expirationDate.month,
+                                  expirationDate.day,
+                                ).isBefore(
+                                  DateTime(
+                                    DateTime.now().year,
+                                    DateTime.now().month,
+                                    DateTime.now().day,
+                                  ),
+                                )
+                            ? 'EXPIRED • ${_formatDate(expirationDate)}'
+                            : _formatDate(expirationDate),
+                        style: TextStyle(
+                          color:
+                              expirationDate != null &&
+                                  DateTime(
+                                    expirationDate.year,
+                                    expirationDate.month,
+                                    expirationDate.day,
+                                  ).isBefore(
+                                    DateTime(
+                                      DateTime.now().year,
+                                      DateTime.now().month,
+                                      DateTime.now().day,
+                                    ),
+                                  )
+                              ? const Color(0xFFB91C1C)
+                              : const Color(0xFF52657B),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                     DataCell(
                       Row(
                         children: [
@@ -2051,7 +2352,7 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
                             onPressed: () => _confirmDelete(document),
                             icon: const Icon(
                               Icons.delete_outline,
-                              color: Colors.red,
+                              color: const Color(0xFF1565C0),
                             ),
                           ),
                         ],
@@ -2098,6 +2399,16 @@ class _ProductsInventoryScreenState extends State<ProductsInventoryScreen> {
           stock: stock,
           lowStockThreshold: _lowStockThreshold,
           active: active,
+          expired: () {
+            final value = _readDate(data['expirationDate']);
+            if (value == null) return false;
+            final now = DateTime.now();
+            return DateTime(
+              value.year,
+              value.month,
+              value.day,
+            ).isBefore(DateTime(now.year, now.month, now.day));
+          }(),
           onTap: () => _showProductDialog(document: document),
           onEdit: () => _showProductDialog(document: document),
           onDelete: () => _confirmDelete(document),

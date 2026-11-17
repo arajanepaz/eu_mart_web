@@ -91,7 +91,7 @@ class _TransactionHistoryCardState extends State<_TransactionHistoryCard> {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: widget.isVoided
-                ? const Color(0xFFFFCDD2)
+                ? const Color(0xFFF3F8FF)
                 : _hovered
                 ? const Color(0xFFB9D6F8)
                 : const Color(0xFFE1E9F3),
@@ -132,6 +132,11 @@ class _OwnerTransactionHistoryScreenState
 
   String _searchQuery = '';
   String _selectedFilter = 'All';
+
+  late final Stream<QuerySnapshot<Map<String, dynamic>>>
+  _transactionHistoryStream = FirebaseFirestore.instance
+      .collection('transactions')
+      .snapshots();
 
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
@@ -215,7 +220,7 @@ class _OwnerTransactionHistoryScreenState
           _selectedFilter = label;
         });
       },
-      selectedColor: const Color(0xFFFF9800),
+      selectedColor: const Color(0xFF1976D2),
       labelStyle: TextStyle(
         color: selected ? Colors.white : Colors.black87,
         fontWeight: FontWeight.w600,
@@ -223,160 +228,225 @@ class _OwnerTransactionHistoryScreenState
     );
   }
 
-  // Handles the void transaction logic used by this module.
+  // Prevent multiple simultaneous void requests from this screen.
+  bool _voidInProgress = false;
+
+  // Voiding is atomic: verify status and every product, read all stock values,
+  // then write the stock restoration and transaction status together.
   Future<void> _voidTransaction(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) async {
-    final data = document.data();
-    final receiptNumber =
-        (data['receiptNumber'] ?? data['transactionNumber'] ?? document.id)
-            .toString();
+    if (_voidInProgress) return;
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      _showVoidMessage('Please sign in again before voiding.', isError: true);
+      return;
+    }
+
+    final receiptNumber =
+        (document.data()['receiptNumber'] ??
+                document.data()['transactionNumber'] ??
+                document.id)
+            .toString();
     final reasonController = TextEditingController();
 
     final reason = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) {
-        // Handles the alert dialog logic used by this module.
-        return AlertDialog(
-          title: const Text('Void Transaction'),
-          content: SizedBox(
-            width: 480,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Void transaction "$receiptNumber"? '
-                  'The deducted product stock will be restored.',
-                ),
-                // Handles the sized box logic used by this module.
-                const SizedBox(height: 16),
-                TextField(
-                  controller: reasonController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Reason for voiding',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Void Transaction'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Void transaction "$receiptNumber"?'),
+              const SizedBox(height: 8),
+              const Text(
+                'This will reverse the sale and restore its recorded item '
+                'quantities to inventory. Confirm the items are physically '
+                'returned before continuing.',
               ),
-              onPressed: () {
-                final value = reasonController.text.trim();
-                if (value.isEmpty) return;
-                Navigator.pop(dialogContext, value);
-              },
-              icon: const Icon(Icons.block),
-              label: const Text('Void Transaction'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                maxLines: 3,
+                maxLength: 300,
+                decoration: const InputDecoration(
+                  labelText: 'Reason for voiding (required)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1565C0),
+              foregroundColor: Colors.white,
             ),
-          ],
-        );
-      },
+            onPressed: () {
+              final enteredReason = reasonController.text.trim();
+              if (enteredReason.isEmpty) return;
+              Navigator.pop(dialogContext, enteredReason);
+            },
+            icon: const Icon(Icons.block),
+            label: const Text('Confirm Void'),
+          ),
+        ],
+      ),
     );
+    // The dialog is no longer mounted after awaiting it.
+    // TextEditingController disposal is deferred until the frame is complete.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      reasonController.dispose();
+    });
+    if (!mounted || reason == null || reason.isEmpty) return;
 
-    reasonController.dispose();
-
-    if (reason == null || reason.isEmpty) return;
-
+    setState(() => _voidInProgress = true);
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final firestore = FirebaseFirestore.instance;
+      final saleRef = firestore.collection('transactions').doc(document.id);
 
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        final transactionReference = FirebaseFirestore.instance
-            .collection('transactions')
-            .doc(document.id);
-
-        final transactionSnapshot = await transaction.get(transactionReference);
-
-        if (!transactionSnapshot.exists) {
-          // Handles the exception logic used by this module.
-          throw Exception('Transaction no longer exists.');
-        }
-
-        final currentData = transactionSnapshot.data()!;
-        final status = (currentData['status'] ?? 'completed')
+      await firestore.runTransaction<void>((txn) async {
+        final sale = await txn.get(saleRef);
+        if (!sale.exists) throw Exception('Transaction no longer exists.');
+        final saleData = sale.data() ?? <String, dynamic>{};
+        final status = (saleData['status'] ?? 'completed')
             .toString()
             .toLowerCase();
-
         if (status == 'voided') {
-          // Handles the exception logic used by this module.
-          throw Exception('This transaction is already voided.');
+          throw Exception('This transaction has already been voided.');
+        }
+        if (status != 'completed') {
+          throw Exception('Only completed transactions can be voided.');
         }
 
-        final items = currentData['items'] as List<dynamic>? ?? <dynamic>[];
+        final rawItems = saleData['items'];
+        if (rawItems is! List || rawItems.isEmpty) {
+          throw Exception('Cannot void a sale without valid line items.');
+        }
 
-        for (final rawItem in items) {
-          if (rawItem is! Map) continue;
-
+        // Group duplicate product lines to avoid overwriting restored stock.
+        final quantityByProductId = <String, int>{};
+        for (final rawItem in rawItems) {
+          if (rawItem is! Map) {
+            throw Exception('A sale item is malformed; void cancelled.');
+          }
           final item = Map<String, dynamic>.from(rawItem);
-          final productId = (item['productId'] ?? '').toString();
-          final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
+          final productId = (item['productId'] ?? '').toString().trim();
+          final quantityValue = item['quantity'];
+          final quantity =
+              quantityValue is num &&
+                  quantityValue.isFinite &&
+                  quantityValue == quantityValue.toInt()
+              ? quantityValue.toInt()
+              : -1;
+          if (productId.isEmpty || quantity <= 0) {
+            throw Exception('A sale item has invalid product or quantity.');
+          }
+          quantityByProductId.update(
+            productId,
+            (previous) => previous + quantity,
+            ifAbsent: () => quantity,
+          );
+        }
 
-          if (productId.isEmpty || quantity <= 0) continue;
+        // Firestore requires transaction reads before transaction writes.
+        final stockUpdates = <DocumentReference<Map<String, dynamic>>, int>{};
+        for (final entry in quantityByProductId.entries) {
+          final productRef = firestore.collection('products').doc(entry.key);
+          final product = await txn.get(productRef);
+          if (!product.exists) {
+            throw Exception(
+              'Product ${entry.key} is missing. Stock cannot be safely '
+              'restored; void cancelled.',
+            );
+          }
+          final storedStock = product.data()?['stock'];
+          if (storedStock is! num ||
+              !storedStock.isFinite ||
+              storedStock < 0 ||
+              storedStock != storedStock.toInt()) {
+            throw Exception(
+              'Invalid inventory stock for product ${entry.key}. '
+              'Void cancelled.',
+            );
+          }
+          stockUpdates[productRef] = storedStock.toInt() + entry.value;
+        }
 
-          final productReference = FirebaseFirestore.instance
-              .collection('products')
-              .doc(productId);
-
-          final productSnapshot = await transaction.get(productReference);
-
-          if (!productSnapshot.exists) continue;
-
-          final currentStock =
-              (productSnapshot.data()?['stock'] as num?)?.toInt() ?? 0;
-
-          transaction.update(productReference, {
-            'stock': currentStock + quantity,
+        for (final entry in stockUpdates.entries) {
+          txn.update(entry.key, {
+            'stock': entry.value,
             'updatedAt': FieldValue.serverTimestamp(),
           });
         }
-
-        transaction.update(transactionReference, {
+        // The sale itself records a durable actor, reason, timestamp, and the
+        // exact quantities restored, even if optional external audit logging fails.
+        txn.update(saleRef, {
           'status': 'voided',
           'voidReason': reason,
           'voidedAt': FieldValue.serverTimestamp(),
-          'voidedById': user?.uid ?? '',
-          'voidedByEmail': user?.email ?? '',
+          'voidedById': user.uid,
+          'voidedByEmail': user.email ?? '',
+          'stockRestored': true,
+          'restoredQuantities': quantityByProductId,
         });
       });
 
-      await AuditLogService.transactionVoided(
-        transactionId: document.id,
-        receiptNumber: receiptNumber,
-        reason: reason,
-      );
+      // Keep the existing audit integration. A separate audit failure must
+      // not misreport the successfully committed stock/transaction reversal.
+      try {
+        await AuditLogService.transactionVoided(
+          transactionId: document.id,
+          receiptNumber: receiptNumber,
+          reason: reason,
+        );
+      } catch (auditError) {
+        debugPrint('Void committed; separate audit log failed: $auditError');
+        if (mounted) {
+          _showVoidMessage(
+            'Transaction voided and stock restored, but the audit-log '
+            'service could not record a separate entry. Check the audit logs.',
+            isError: true,
+          );
+        }
+        return;
+      }
 
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        // Handles the snack bar logic used by this module.
-        const SnackBar(
-          content: Text('Transaction voided and product stock restored.'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      if (mounted) {
+        _showVoidMessage('Transaction voided and stock restored.');
+      }
     } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        _showVoidMessage(
+          error.toString().replaceFirst('Exception: ', ''),
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _voidInProgress = false);
     }
+  }
+
+  void _showVoidMessage(String message, {bool isError = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError
+            ? const Color(0xFFB3261E)
+            : const Color(0xFF1565C0),
+      ),
+    );
   }
 
   // Handles the reprint receipt logic used by this module.
@@ -604,7 +674,7 @@ class _OwnerTransactionHistoryScreenState
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('transactions').snapshots(),
+      stream: _transactionHistoryStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -618,7 +688,7 @@ class _OwnerTransactionHistoryScreenState
             child: Text(
               'Unable to load transactions.\n${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -753,13 +823,13 @@ class _OwnerTransactionHistoryScreenState
                     title: 'Completed Transactions',
                     value: '$completedCount',
                     icon: Icons.receipt_long,
-                    color: const Color(0xFFFF9800),
+                    color: const Color(0xFF1976D2),
                   );
                   final salesCard = _summaryCard(
                     title: 'Total Sales',
                     value: '₱${totalSales.toStringAsFixed(2)}',
                     icon: Icons.payments,
-                    color: Colors.green,
+                    color: Colors.blue,
                   );
 
                   if (compactSummary) {
@@ -889,13 +959,13 @@ class _OwnerTransactionHistoryScreenState
                             child: ExpansionTile(
                               leading: CircleAvatar(
                                 backgroundColor: isVoided
-                                    ? Colors.red.shade100
+                                    ? Colors.blue.shade100
                                     : const Color(0xFFE3F2FD),
                                 child: Icon(
                                   isVoided ? Icons.block : Icons.receipt_long,
                                   color: isVoided
-                                      ? Colors.red
-                                      : const Color(0xFFFF9800),
+                                      ? Colors.blue
+                                      : const Color(0xFF1976D2),
                                 ),
                               ),
                               title: Row(
@@ -914,8 +984,8 @@ class _OwnerTransactionHistoryScreenState
                                         : '₱${total.toStringAsFixed(2)}',
                                     style: TextStyle(
                                       color: isVoided
-                                          ? Colors.red
-                                          : Colors.green,
+                                          ? Colors.blue
+                                          : Colors.blue,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -939,7 +1009,9 @@ class _OwnerTransactionHistoryScreenState
                                   alignment: WrapAlignment.spaceBetween,
                                   children: [
                                     Text('Cash: ₱${cash.toStringAsFixed(2)}'),
-                                    Text('Change: ₱${change.toStringAsFixed(2)}'),
+                                    Text(
+                                      'Change: ₱${change.toStringAsFixed(2)}',
+                                    ),
                                   ],
                                 ),
                                 // Handles the sized box logic used by this module.
@@ -994,11 +1066,12 @@ class _OwnerTransactionHistoryScreenState
                                     if (!isVoided)
                                       ElevatedButton.icon(
                                         style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.red,
+                                          backgroundColor: Colors.blue,
                                           foregroundColor: Colors.white,
                                         ),
-                                        onPressed: () =>
-                                            _voidTransaction(document),
+                                        onPressed: _voidInProgress
+                                            ? null
+                                            : () => _voidTransaction(document),
                                         icon: const Icon(Icons.block),
                                         label: const Text('Void Transaction'),
                                       ),
@@ -1016,7 +1089,7 @@ class _OwnerTransactionHistoryScreenState
                                     child: Text(
                                       'Void reason: ${data['voidReason']}',
                                       style: const TextStyle(
-                                        color: Colors.red,
+                                        color: Colors.blue,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),

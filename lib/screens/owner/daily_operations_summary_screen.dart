@@ -354,13 +354,13 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
         permitExpired > 0 ||
         expiredProductCount > 0) {
       overallStatus = 'Needs Immediate Attention';
-      overallColor = Colors.red;
+      overallColor = Colors.blue;
     } else if (totalOperationalAlerts > 0) {
       overallStatus = 'Review Required';
-      overallColor = Colors.orange;
+      overallColor = Colors.blue;
     } else {
       overallStatus = 'Operations Normal';
-      overallColor = Colors.green;
+      overallColor = Colors.blue;
     }
 
     // Handles the container logic used by this module.
@@ -587,8 +587,8 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                               '$delayedTransactions delayed transaction(s)',
                           icon: Icons.timer_outlined,
                           color: delayedTransactions > 0
-                              ? const Color(0xFFF59E0B)
-                              : const Color(0xFF159447),
+                              ? const Color(0xFF1976D2)
+                              : const Color(0xFF1565C0),
                         ),
                         _summaryCard(
                           title: 'Issues Reported Today',
@@ -596,8 +596,8 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                           subtitle: '$openIssues currently open',
                           icon: Icons.report_problem_outlined,
                           color: openIssues > 0
-                              ? const Color(0xFFF59E0B)
-                              : const Color(0xFF159447),
+                              ? const Color(0xFF1976D2)
+                              : const Color(0xFF1565C0),
                         ),
                         _summaryCard(
                           title: 'Operational Alerts',
@@ -605,8 +605,8 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                           subtitle: '$permitExpired expired permit(s)',
                           icon: Icons.notifications_active_outlined,
                           color: totalOperationalAlerts > 0
-                              ? const Color(0xFFD32F2F)
-                              : const Color(0xFF159447),
+                              ? const Color(0xFF1976D2)
+                              : const Color(0xFF1565C0),
                         ),
                       ],
                     );
@@ -630,7 +630,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Normal Service',
                             value: '$normalCount',
                             icon: Icons.check_circle_outline,
-                            color: const Color(0xFF159447),
+                            color: const Color(0xFF1565C0),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
@@ -638,7 +638,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Minor Delay',
                             value: '$minorDelayCount',
                             icon: Icons.schedule_outlined,
-                            color: const Color(0xFFF59E0B),
+                            color: const Color(0xFF1976D2),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
@@ -646,7 +646,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Long Delay',
                             value: '$longDelayCount',
                             icon: Icons.warning_amber_outlined,
-                            color: const Color(0xFFD32F2F),
+                            color: const Color(0xFF1976D2),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
@@ -654,7 +654,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Major Open Issues',
                             value: '$majorOpenIssues',
                             icon: Icons.report_problem_outlined,
-                            color: const Color(0xFFD32F2F),
+                            color: const Color(0xFF1976D2),
                           ),
                         ],
                       ),
@@ -664,14 +664,14 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                       title: 'Inventory & Compliance',
                       subtitle: 'Stock, expiration, and permit status.',
                       icon: Icons.inventory_2_outlined,
-                      accent: const Color(0xFF7B1FA2),
+                      accent: const Color(0xFF1565C0),
                       child: Column(
                         children: [
                           _alertRow(
                             title: 'Out of Stock',
                             value: '$outOfStockCount',
                             icon: Icons.remove_shopping_cart_outlined,
-                            color: const Color(0xFFD32F2F),
+                            color: const Color(0xFF1976D2),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
@@ -679,7 +679,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Low Stock',
                             value: '$lowStockCount',
                             icon: Icons.inventory_2_outlined,
-                            color: const Color(0xFFF59E0B),
+                            color: const Color(0xFF1976D2),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
@@ -687,7 +687,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Expired Products',
                             value: '$expiredProductCount',
                             icon: Icons.event_busy_outlined,
-                            color: const Color(0xFFD32F2F),
+                            color: const Color(0xFF1976D2),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
@@ -695,7 +695,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Expiring Products',
                             value: '$expiringProductCount',
                             icon: Icons.event_outlined,
-                            color: const Color(0xFFF59E0B),
+                            color: const Color(0xFF1976D2),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
@@ -703,7 +703,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Expired Permits',
                             value: '$permitExpired',
                             icon: Icons.assignment_late_outlined,
-                            color: const Color(0xFFD32F2F),
+                            color: const Color(0xFF1976D2),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 10),
@@ -711,7 +711,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                             title: 'Permits Due Soon',
                             value: '$permitDueSoon',
                             icon: Icons.description_outlined,
-                            color: const Color(0xFFF59E0B),
+                            color: const Color(0xFF1976D2),
                           ),
                         ],
                       ),
@@ -767,7 +767,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
               'Unable to load transaction data.\n'
               '${transactionSnapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -788,7 +788,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                   'Unable to load product data.\n'
                   '${productSnapshot.error}',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red),
+                  style: const TextStyle(color: Colors.blue),
                 ),
               );
             }
@@ -811,7 +811,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                       'Unable to load service issues.\n'
                       '${issueSnapshot.error}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red),
+                      style: const TextStyle(color: Colors.blue),
                     ),
                   );
                 }
@@ -835,7 +835,7 @@ class DailyOperationsSummaryScreen extends StatelessWidget {
                           'Unable to load permit data.\n'
                           '${permitSnapshot.error}',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.red),
+                          style: const TextStyle(color: Colors.blue),
                         ),
                       );
                     }

@@ -90,9 +90,9 @@ class _PromoProductCardState extends State<_PromoProductCard> {
     }
 
     return switch (widget.promoType) {
-      'Buy 1 Take 1' => const Color(0xFF7B1FA2),
-      'Near-Expiry' => const Color(0xFFF59E0B),
-      _ => const Color(0xFF159447),
+      'Buy 1 Take 1' => const Color(0xFF1565C0),
+      'Near-Expiry' => const Color(0xFF1565C0),
+      _ => const Color(0xFF1565C0),
     };
   }
 
@@ -292,7 +292,10 @@ class _PromoProductCardState extends State<_PromoProductCard> {
                   IconButton(
                     tooltip: 'Disable promo',
                     onPressed: widget.onDisable,
-                    icon: const Icon(Icons.block_rounded, color: Colors.red),
+                    icon: const Icon(
+                      Icons.block_rounded,
+                      color: const Color(0xFF1565C0),
+                    ),
                   ),
                 ],
               ],
@@ -362,6 +365,34 @@ class PromotionsManagementScreen extends StatefulWidget {
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _PromotionsManagementScreenState
     extends State<PromotionsManagementScreen> {
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _recordsStream =
+      FirebaseFirestore.instance.collection('products').snapshots();
+
+  QuerySnapshot<Map<String, dynamic>>? _cachedProducts;
+  static const int _pageSize = 24;
+  int _visibleCount = _pageSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCachedProducts();
+  }
+
+  // Display cached inventory promptly on repeat visits, while snapshots()
+  // continues to deliver the latest server changes in the background.
+  Future<void> _loadCachedProducts() async {
+    try {
+      final cached = await FirebaseFirestore.instance
+          .collection('products')
+          .get(const GetOptions(source: Source.cache));
+      if (mounted && _cachedProducts == null) {
+        setState(() => _cachedProducts = cached);
+      }
+    } catch (_) {
+      // Empty cache is normal on first launch; the live stream takes over.
+    }
+  }
+
   final TextEditingController _searchController = TextEditingController();
 
   String _searchQuery = '';
@@ -508,7 +539,7 @@ class _PromotionsManagementScreenState
                         'Promo price must be greater than zero '
                         'and lower than the regular price.',
                       ),
-                      backgroundColor: Colors.red,
+                      backgroundColor: const Color(0xFF1565C0),
                     ),
                   );
                   return;
@@ -525,7 +556,7 @@ class _PromotionsManagementScreenState
                       'Promo end date cannot be earlier '
                       'than the start date.',
                     ),
-                    backgroundColor: Colors.red,
+                    backgroundColor: const Color(0xFF1565C0),
                   ),
                 );
                 return;
@@ -558,7 +589,7 @@ class _PromotionsManagementScreenState
                 ScaffoldMessenger.of(dialogContext).showSnackBar(
                   SnackBar(
                     content: Text('Unable to save promo: $error'),
-                    backgroundColor: Colors.red,
+                    backgroundColor: const Color(0xFF1565C0),
                   ),
                 );
 
@@ -687,7 +718,7 @@ class _PromotionsManagementScreenState
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Product promotion saved.'),
-          backgroundColor: Colors.green,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
     }
@@ -709,7 +740,7 @@ class _PromotionsManagementScreenState
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Product promotion disabled.'),
-          backgroundColor: Colors.green,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
     } catch (error) {
@@ -718,7 +749,7 @@ class _PromotionsManagementScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Unable to disable promo: $error'),
-          backgroundColor: Colors.red,
+          backgroundColor: const Color(0xFF1565C0),
         ),
       );
     }
@@ -738,7 +769,10 @@ class _PromotionsManagementScreenState
         fontWeight: FontWeight.w600,
       ),
       onSelected: (_) {
-        setState(() => _selectedFilter = label);
+        setState(() {
+          _selectedFilter = label;
+          _visibleCount = _pageSize;
+        });
       },
     );
   }
@@ -746,27 +780,40 @@ class _PromotionsManagementScreenState
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('products').snapshots(),
+      stream: _recordsStream,
+      initialData: _cachedProducts,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
-            !snapshot.hasData) {
-          // Handles the center logic used by this module.
-          return const Center(child: CircularProgressIndicator());
+            !snapshot.hasData &&
+            _cachedProducts == null) {
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Color(0xFF1565C0)),
+                SizedBox(height: 14),
+                Text(
+                  'Loading promotions…',
+                  style: TextStyle(color: Color(0xFF40536B)),
+                ),
+              ],
+            ),
+          );
         }
 
-        if (snapshot.hasError) {
+        if (snapshot.hasError && !snapshot.hasData && _cachedProducts == null) {
           // Handles the center logic used by this module.
           return Center(
             child: Text(
               'Unable to load promotions.\n${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Color(0xFF1565C0)),
             ),
           );
         }
 
         final products = List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
-          snapshot.data?.docs ??
+          (snapshot.data ?? _cachedProducts)?.docs ??
               <QueryDocumentSnapshot<Map<String, dynamic>>>[],
         );
 
@@ -809,215 +856,223 @@ class _PromotionsManagementScreenState
 
         final filtered = products.where((document) {
           final data = document.data();
-          // Checks whether the current value satisfies the matches search rule used by this module.
           return _matchesSearch(data) && _matchesFilter(data);
         }).toList();
+        final displayed = filtered.take(_visibleCount).toList();
 
         // Handles the container logic used by this module.
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 18,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 18,
                   ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x291565C0),
-                      blurRadius: 20,
-                      offset: Offset(0, 9),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
                     ),
-                  ],
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.local_offer_outlined,
-                      color: Colors.white,
-                      size: 29,
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Promotions Management',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 23,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Create and manage discounts, '
-                            'Buy 1 Take 1, and near-expiry promotions.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  int count = 4;
-                  if (constraints.maxWidth < 1050) count = 2;
-                  if (constraints.maxWidth < 620) count = 1;
-
-                  return GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: count,
-                    crossAxisSpacing: 13,
-                    mainAxisSpacing: 13,
-                    childAspectRatio: count == 4 ? 2.25 : 3.1,
-                    children: [
-                      _promoSummaryCard(
-                        title: 'Active Promos',
-                        value: '$activeCount',
-                        icon: Icons.campaign_outlined,
-                        color: const Color(0xFF159447),
-                      ),
-                      _promoSummaryCard(
-                        title: 'Discounts',
-                        value: '$discountCount',
-                        icon: Icons.percent_rounded,
-                        color: const Color(0xFF1565C0),
-                      ),
-                      _promoSummaryCard(
-                        title: 'Buy 1 Take 1',
-                        value: '$b1t1Count',
-                        icon: Icons.redeem_outlined,
-                        color: const Color(0xFF7B1FA2),
-                      ),
-                      _promoSummaryCard(
-                        title: 'Near-Expiry',
-                        value: '$nearExpiryCount',
-                        icon: Icons.schedule_outlined,
-                        color: const Color(0xFFF59E0B),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x291565C0),
+                        blurRadius: 20,
+                        offset: Offset(0, 9),
                       ),
                     ],
-                  );
-                },
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 900;
-
-                  final search = TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      setState(() {
-                        _searchQuery = value.trim().toLowerCase();
-                      });
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Search product, category, brand, or promo',
-                      prefixIcon: const Icon(
-                        Icons.search_rounded,
-                        color: Color(0xFF1565C0),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.local_offer_outlined,
+                        color: Colors.white,
+                        size: 29,
                       ),
-                      suffixIcon: _searchQuery.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() {
-                                  _searchQuery = '';
-                                });
-                              },
-                              icon: const Icon(Icons.close_rounded),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Promotions Management',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 23,
+                                fontWeight: FontWeight.w900,
+                              ),
                             ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: const BorderSide(color: Color(0xFFDDE6F1)),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: const BorderSide(color: Color(0xFFDDE6F1)),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(15),
-                        borderSide: const BorderSide(
-                          color: Color(0xFF1565C0),
-                          width: 2,
+                            SizedBox(height: 4),
+                            Text(
+                              'Create and manage discounts, '
+                              'Buy 1 Take 1, and near-expiry promotions.',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  );
-
-                  final filters = SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _filterChip('All'),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 8),
-                        _filterChip('Active'),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 8),
-                        _filterChip('Inactive'),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 8),
-                        _filterChip('Discount'),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 8),
-                        _filterChip('Buy 1 Take 1'),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 8),
-                        _filterChip('Near-Expiry'),
-                      ],
-                    ),
-                  );
-
-                  if (compact) {
-                    // Handles the column logic used by this module.
-                    return Column(
-                      children: [search, const SizedBox(height: 12), filters],
-                    );
-                  }
-
-                  // Handles the row logic used by this module.
-                  return Row(
-                    children: [
-                      Expanded(child: search),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 14),
-                      filters,
                     ],
-                  );
-                },
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              Expanded(
-                child: filtered.isEmpty
-                    ? const _PromoEmptyState()
+                  ),
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    int count = 4;
+                    if (constraints.maxWidth < 1050) count = 2;
+                    if (constraints.maxWidth < 620) count = 1;
+
+                    return GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: count,
+                      crossAxisSpacing: 13,
+                      mainAxisSpacing: 13,
+                      childAspectRatio: count == 4 ? 2.25 : 3.1,
+                      children: [
+                        _promoSummaryCard(
+                          title: 'Active Promos',
+                          value: '$activeCount',
+                          icon: Icons.campaign_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _promoSummaryCard(
+                          title: 'Discounts',
+                          value: '$discountCount',
+                          icon: Icons.percent_rounded,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _promoSummaryCard(
+                          title: 'Buy 1 Take 1',
+                          value: '$b1t1Count',
+                          icon: Icons.redeem_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _promoSummaryCard(
+                          title: 'Near-Expiry',
+                          value: '$nearExpiryCount',
+                          icon: Icons.schedule_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 900;
+
+                    final search = TextField(
+                      controller: _searchController,
+                      onChanged: (value) {
+                        setState(() {
+                          _searchQuery = value.trim().toLowerCase();
+                          _visibleCount = _pageSize;
+                        });
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Search product, category, brand, or promo',
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          color: Color(0xFF1565C0),
+                        ),
+                        suffixIcon: _searchQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    _searchQuery = '';
+                                    _visibleCount = _pageSize;
+                                  });
+                                },
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFDDE6F1),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFDDE6F1),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(15),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF1565C0),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    );
+
+                    final filters = SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _filterChip('All'),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 8),
+                          _filterChip('Active'),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 8),
+                          _filterChip('Inactive'),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 8),
+                          _filterChip('Discount'),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 8),
+                          _filterChip('Buy 1 Take 1'),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 8),
+                          _filterChip('Near-Expiry'),
+                        ],
+                      ),
+                    );
+
+                    if (compact) {
+                      // Handles the column logic used by this module.
+                      return Column(
+                        children: [search, const SizedBox(height: 12), filters],
+                      );
+                    }
+
+                    // Handles the row logic used by this module.
+                    return Row(
+                      children: [
+                        Expanded(child: search),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 14),
+                        filters,
+                      ],
+                    );
+                  },
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                filtered.isEmpty
+                    ? const SizedBox(height: 220, child: _PromoEmptyState())
                     : GridView.builder(
-                        itemCount: filtered.length,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: displayed.length,
                         gridDelegate:
                             // Handles the sliver grid delegate with max cross axis extent logic used by this module.
                             const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -1027,7 +1082,7 @@ class _PromotionsManagementScreenState
                               mainAxisSpacing: 16,
                             ),
                         itemBuilder: (context, index) {
-                          final document = filtered[index];
+                          final document = displayed[index];
                           final data = document.data();
 
                           final name =
@@ -1067,8 +1122,29 @@ class _PromotionsManagementScreenState
                           );
                         },
                       ),
-              ),
-            ],
+                if (filtered.length > displayed.length) ...[
+                  const SizedBox(height: 18),
+                  Center(
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          setState(() => _visibleCount += _pageSize),
+                      icon: const Icon(Icons.expand_more),
+                      label: Text(
+                        'Show more (${displayed.length} of ${filtered.length})',
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF1565C0),
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         );
       },

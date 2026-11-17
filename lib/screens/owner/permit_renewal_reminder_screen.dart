@@ -275,12 +275,12 @@ class _PermitCardState extends State<_PermitCard> {
                             _PermitInfoPill(
                               icon: Icons.account_balance_outlined,
                               label: widget.issuingOffice,
-                              color: const Color(0xFF7B1FA2),
+                              color: const Color(0xFF1565C0),
                             ),
                           _PermitInfoPill(
                             icon: Icons.notifications_active_outlined,
                             label: '${widget.reminderDays} day reminder',
-                            color: const Color(0xFFF59E0B),
+                            color: const Color(0xFF1565C0),
                           ),
                         ],
                       ),
@@ -319,7 +319,7 @@ class _PermitCardState extends State<_PermitCard> {
                   const Text(
                     'EXPIRATION DATE',
                     style: TextStyle(
-                      color: Color(0xFF8A95A4),
+                      color: Color(0xFF64748B),
                       fontSize: 9.5,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 0.5,
@@ -362,7 +362,7 @@ class _PermitCardState extends State<_PermitCard> {
                 IconButton(
                   tooltip: 'Delete permit',
                   onPressed: widget.onDelete,
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  icon: const Icon(Icons.delete_outline, color: Colors.blue),
                 ),
               ],
             );
@@ -569,13 +569,13 @@ class _PermitRenewalReminderScreenState
     switch (status) {
       case 'EXPIRED':
       case 'EXPIRES TODAY':
-        return Colors.red;
+        return Colors.blue;
       case 'DUE SOON':
-        return Colors.orange;
+        return Colors.blue;
       case 'RENEWED':
         return Colors.blue;
       default:
-        return Colors.green;
+        return Colors.blue;
     }
   }
 
@@ -628,7 +628,7 @@ class _PermitRenewalReminderScreenState
                   // Handles the snack bar logic used by this module.
                   const SnackBar(
                     content: Text('Select the permit expiration date.'),
-                    backgroundColor: Colors.orange,
+                    backgroundColor: Colors.blue,
                   ),
                 );
                 return;
@@ -690,7 +690,7 @@ class _PermitRenewalReminderScreenState
                           ? 'Permission denied. Add the permit_reminders Firestore rule.'
                           : 'Unable to save permit: ${error.message ?? error.code}',
                     ),
-                    backgroundColor: Colors.red,
+                    backgroundColor: Colors.blue,
                   ),
                 );
 
@@ -888,7 +888,7 @@ class _PermitRenewalReminderScreenState
         // Handles the snack bar logic used by this module.
         const SnackBar(
           content: Text('Permit reminder saved successfully.'),
-          backgroundColor: Colors.green,
+          backgroundColor: Colors.blue,
         ),
       );
     }
@@ -916,7 +916,7 @@ class _PermitRenewalReminderScreenState
             ElevatedButton(
               onPressed: () => Navigator.pop(dialogContext, true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
               ),
               child: const Text('DELETE'),
@@ -944,7 +944,7 @@ class _PermitRenewalReminderScreenState
       // Handles the snack bar logic used by this module.
       const SnackBar(
         content: Text('Permit reminder deleted.'),
-        backgroundColor: Colors.green,
+        backgroundColor: Colors.blue,
       ),
     );
   }
@@ -1028,7 +1028,7 @@ class _PermitRenewalReminderScreenState
               'Unable to load permit reminders.\n'
               '${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: Colors.blue),
             ),
           );
         }
@@ -1085,165 +1085,168 @@ class _PermitRenewalReminderScreenState
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 18,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 18,
                   ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x291565C0),
-                      blurRadius: 20,
-                      offset: Offset(0, 9),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                     ),
-                  ],
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final compact = constraints.maxWidth < 680;
-
-                    final title = const Row(
-                      children: [
-                        Icon(
-                          Icons.description_outlined,
-                          color: Colors.white,
-                          size: 29,
-                        ),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Permit Renewal Reminders',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 23,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Monitor expiration dates and renew permits '
-                                'before they affect store operations.',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    );
-
-                    final button = SizedBox(
-                      height: 48,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _showPermitDialog(),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF1565C0),
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 18),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text(
-                          'ADD PERMIT',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x291565C0),
+                        blurRadius: 20,
+                        offset: Offset(0, 9),
                       ),
-                    );
+                    ],
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact = constraints.maxWidth < 680;
 
-                    if (compact) {
-                      // Handles the column logic used by this module.
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [title, const SizedBox(height: 14), button],
+                      final title = const Row(
+                        children: [
+                          Icon(
+                            Icons.description_outlined,
+                            color: Colors.white,
+                            size: 29,
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Permit Renewal Reminders',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 23,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  'Monitor expiration dates and renew permits '
+                                  'before they affect store operations.',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       );
+
+                      final button = SizedBox(
+                        height: 48,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showPermitDialog(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF1565C0),
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text(
+                            'ADD PERMIT',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                      );
+
+                      if (compact) {
+                        // Handles the column logic used by this module.
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [title, const SizedBox(height: 14), button],
+                        );
+                      }
+
+                      // Handles the row logic used by this module.
+                      return Row(
+                        children: [
+                          Expanded(child: title),
+                          // Handles the sized box logic used by this module.
+                          const SizedBox(width: 16),
+                          button,
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    int count = 4;
+
+                    if (constraints.maxWidth < 1050) {
+                      count = 2;
                     }
 
-                    // Handles the row logic used by this module.
-                    return Row(
+                    if (constraints.maxWidth < 620) {
+                      count = 1;
+                    }
+
+                    return GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: count,
+                      crossAxisSpacing: 13,
+                      mainAxisSpacing: 13,
+                      childAspectRatio: count == 4 ? 2.25 : 3.1,
                       children: [
-                        Expanded(child: title),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 16),
-                        button,
+                        _PermitSummaryCard(
+                          title: 'Active',
+                          value: '$activeCount',
+                          icon: Icons.verified_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _PermitSummaryCard(
+                          title: 'Due Soon',
+                          value: '$dueSoonCount',
+                          icon: Icons.schedule_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _PermitSummaryCard(
+                          title: 'Expired',
+                          value: '$expiredCount',
+                          icon: Icons.warning_amber_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _PermitSummaryCard(
+                          title: 'Renewed',
+                          value: '$renewedCount',
+                          icon: Icons.autorenew,
+                          color: const Color(0xFF1565C0),
+                        ),
                       ],
                     );
                   },
                 ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  int count = 4;
-
-                  if (constraints.maxWidth < 1050) {
-                    count = 2;
-                  }
-
-                  if (constraints.maxWidth < 620) {
-                    count = 1;
-                  }
-
-                  return GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: count,
-                    crossAxisSpacing: 13,
-                    mainAxisSpacing: 13,
-                    childAspectRatio: count == 4 ? 2.25 : 3.1,
-                    children: [
-                      _PermitSummaryCard(
-                        title: 'Active',
-                        value: '$activeCount',
-                        icon: Icons.verified_outlined,
-                        color: const Color(0xFF159447),
-                      ),
-                      _PermitSummaryCard(
-                        title: 'Due Soon',
-                        value: '$dueSoonCount',
-                        icon: Icons.schedule_outlined,
-                        color: const Color(0xFFF59E0B),
-                      ),
-                      _PermitSummaryCard(
-                        title: 'Expired',
-                        value: '$expiredCount',
-                        icon: Icons.warning_amber_outlined,
-                        color: const Color(0xFFD32F2F),
-                      ),
-                      _PermitSummaryCard(
-                        title: 'Renewed',
-                        value: '$renewedCount',
-                        icon: Icons.autorenew,
-                        color: const Color(0xFF1565C0),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              Expanded(
-                child: permits.isEmpty
-                    ? const _PermitEmptyState()
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                permits.isEmpty
+                    ? const SizedBox(height: 200, child: _PermitEmptyState())
                     : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
                         itemCount: permits.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
@@ -1300,8 +1303,8 @@ class _PermitRenewalReminderScreenState
                           );
                         },
                       ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },

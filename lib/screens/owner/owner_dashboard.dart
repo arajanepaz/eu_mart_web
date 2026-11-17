@@ -2,79 +2,45 @@
 // Module overview: Main owner navigation shell and operational overview, including realtime notification badge behavior.
 // Comments in this file document non-obvious behavior and maintenance intent.
 // -----------------------------------------------------------------------------
-
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'package:firebase_auth/firebase_auth.dart';
-
 import 'package:flutter/material.dart';
 import '../../utils/responsive_device.dart';
-
 import 'package:google_fonts/google_fonts.dart';
-
 import 'package:shared_preferences/shared_preferences.dart';
-
 import '../auth/login_screen.dart';
-
 import '../pos/new_transaction_screen.dart';
-
 import 'products_inventory_screen.dart';
-
 import 'barcode_generator_screen.dart';
-
 import 'owner_transaction_history_screen.dart';
-
 import 'sales_reports_screen.dart';
-
 import 'notifications_screen.dart';
-
 import 'promotions_management_screen.dart';
-
 import 'restock_suggestions_screen.dart';
-
 import 'stock_movement_screen.dart';
-
 import 'promo_sales_report_screen.dart';
-
 import 'supplier_management_screen.dart';
-
 import 'cashier_performance_report_screen.dart';
-
 import 'estimated_profit_report_screen.dart';
-
 import 'product_movement_report_screen.dart';
-
 import '../shared/service_issue_logging_screen.dart';
-
 import 'service_monitoring_report_screen.dart';
-
 import 'permit_renewal_reminder_screen.dart';
-
 import 'sales_comparison_screen.dart';
-
 import 'service_issue_summary_screen.dart';
-
 import 'daily_operations_summary_screen.dart';
-
 import '../shared/change_password_screen.dart';
-
 import 'login_activity_screen.dart';
-
 import 'manage_cashiers_screen.dart';
-
 import 'audit_trail_screen.dart';
-
 import '../settings/settings_screen.dart';
-
 import 'customer_feedback_screen.dart';
-
 import 'backup_export_screen.dart';
 
 // Defines a reusable component or data structure used by this module.
 class OwnerDashboard extends StatefulWidget {
   // Handles the owner dashboard logic used by this module.
   const OwnerDashboard({super.key});
-
   @override
   State<OwnerDashboard> createState() => _OwnerDashboardState();
 }
@@ -82,126 +48,161 @@ class OwnerDashboard extends StatefulWidget {
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _OwnerDashboardState extends State<OwnerDashboard> {
   int _selectedIndex = 0;
-
+  // Only these top-level destinations appear in the Owner sidebar.
+  // Existing feature indices remain unchanged for internal navigation.
+  static const List<int> _mainNavigation = [0, 1, 2, 28, 29, 30, 10];
   // Local sidebar-only search. Does not change the selected page or Firestore.
   String _sidebarSearchQuery = '';
   final TextEditingController _sidebarSearchController =
       TextEditingController();
-
   // Shared realtime streams: the dashboard uses product/settings data in
-
   // more than one widget. Broadcasting these streams prevents separate
-
   // Firestore listeners from being opened for the same collection/document.
-
   late final Stream<DocumentSnapshot<Map<String, dynamic>>> _settingsStream =
       FirebaseFirestore.instance
           .collection('settings')
           .doc('system')
           .snapshots();
+  // Keep expensive queries stable across rebuilds/navigation. Refresh manually
+  // when fresh dashboard totals are needed (rather than reading every rebuild).
+  late Future<QuerySnapshot<Map<String, dynamic>>> _dashboardProductsFuture;
+  late Future<QuerySnapshot<Map<String, dynamic>>> _dashboardTransactionsFuture;
+  bool _isDashboardRefreshing = false;
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _permitAlertsStream =
+      FirebaseFirestore.instance.collection('permit_reminders').snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>> _priceAlertsStream =
+      FirebaseFirestore.instance
+          .collection('price_update_reminders')
+          .snapshots();
+  late final Stream<QuerySnapshot<Map<String, dynamic>>>
+  _notificationReadsStream = FirebaseFirestore.instance
+      .collection('notification_reads')
+      .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid ?? '')
+      .snapshots();
+  final Map<int, Stream<QuerySnapshot<Map<String, dynamic>>>> _lowStockStreams =
+      {};
+  final Map<int, Stream<QuerySnapshot<Map<String, dynamic>>>>
+  _expirationStreams = {};
+  Stream<QuerySnapshot<Map<String, dynamic>>> _lowStockStream(int threshold) =>
+      _lowStockStreams.putIfAbsent(
+        threshold,
+        () => FirebaseFirestore.instance
+            .collection('products')
+            .where('stock', isLessThanOrEqualTo: threshold)
+            .snapshots(),
+      );
+  Stream<QuerySnapshot<Map<String, dynamic>>> _expirationStream(int days) =>
+      _expirationStreams.putIfAbsent(days, () {
+        final now = DateTime.now();
+        final cutoff = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).add(Duration(days: days + 1));
+        return FirebaseFirestore.instance
+            .collection('products')
+            .where('expirationDate', isLessThan: Timestamp.fromDate(cutoff))
+            .snapshots();
+      });
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboardFutures();
+  }
+
+  void _loadDashboardFutures() {
+    _dashboardProductsFuture = FirebaseFirestore.instance
+        .collection('products')
+        .get();
+    _dashboardTransactionsFuture = FirebaseFirestore.instance
+        .collection('transactions')
+        .get();
+  }
+
+  Future<void> _refreshDashboard() async {
+    if (_isDashboardRefreshing) return;
+
+    setState(() {
+      _isDashboardRefreshing = true;
+      _loadDashboardFutures();
+    });
+    try {
+      await Future.wait([
+        _dashboardProductsFuture,
+        _dashboardTransactionsFuture,
+      ]);
+    } catch (error) {
+      debugPrint('Dashboard refresh failed: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _isDashboardRefreshing = false);
+      }
+    }
+  }
 
   final List<_MenuItem> _menuItems = const [
     _MenuItem('Dashboard', Icons.dashboard_outlined),
-
     _MenuItem('New Transaction', Icons.point_of_sale),
-
     _MenuItem('Products & Inventory', Icons.inventory_2_outlined),
-
     _MenuItem('Restock Suggestions', Icons.auto_graph_outlined),
-
     _MenuItem('Stock Movements', Icons.swap_vert_circle_outlined),
-
     _MenuItem('Suppliers', Icons.local_shipping_outlined),
-
     _MenuItem('Barcode Generator', Icons.qr_code_2),
-
     _MenuItem('Transactions', Icons.receipt_long_outlined),
-
     _MenuItem('Sales Reports', Icons.bar_chart_outlined),
-
     _MenuItem('Promotions', Icons.local_offer_outlined),
-
     _MenuItem('Notifications', Icons.notifications_none),
-
     _MenuItem('Manage Cashiers', Icons.groups_outlined),
-
     _MenuItem('Audit Trail', Icons.history),
-
     _MenuItem('Customer Feedback', Icons.reviews_outlined),
-
     _MenuItem('Backup & Export', Icons.backup_outlined),
-
     _MenuItem('Promo Sales Report', Icons.sell_outlined),
-
     _MenuItem('Cashier Performance', Icons.leaderboard_outlined),
-
     _MenuItem('Estimated Profit', Icons.trending_up_outlined),
-
     _MenuItem('Product Movement', Icons.multiline_chart_outlined),
-
     _MenuItem('Service Issues', Icons.report_problem_outlined),
-
     _MenuItem('Service Monitoring', Icons.speed_outlined),
-
     _MenuItem('Permit Reminders', Icons.description_outlined),
-
     _MenuItem('Sales Comparison', Icons.compare_arrows_outlined),
-
     _MenuItem('Issue Summary', Icons.assessment_outlined),
-
     _MenuItem('Daily Operations', Icons.dashboard_customize_outlined),
-
     _MenuItem('Change Password', Icons.password_outlined),
-
     _MenuItem('Login Activity', Icons.login_outlined),
-
     _MenuItem('Settings', Icons.settings_outlined),
+    _MenuItem('Reports & Analytics', Icons.bar_chart_outlined),
+    _MenuItem('Service Management', Icons.support_agent_outlined),
+    _MenuItem('Settings & Administration', Icons.settings_outlined),
   ];
-
   // Finalizes the current login-activity record with logout time and session duration.
   Future<void> _closeLoginSession() async {
     final user = FirebaseAuth.instance.currentUser;
-
     if (user == null) return;
-
     try {
       final preferences = await SharedPreferences.getInstance();
-
       final activityId = preferences.getString('activeLoginActivityId');
-
       final startedAtMilliseconds = preferences.getInt('activeLoginStartedAt');
-
       if (activityId == null || startedAtMilliseconds == null) {
         return;
       }
-
       final logoutAt = DateTime.now();
-
       final startedAt = DateTime.fromMillisecondsSinceEpoch(
         startedAtMilliseconds,
       );
-
       final durationSeconds = logoutAt
           .difference(startedAt)
           .inSeconds
           .clamp(0, 86400 * 30)
           .toInt();
-
       await FirebaseFirestore.instance
           .collection('login_activity')
           .doc(activityId)
           .update({
             'logoutAt': FieldValue.serverTimestamp(),
-
             'sessionDurationSeconds': durationSeconds,
-
             'sessionStatus': 'closed',
-
             'logoutReason': 'manual_logout',
           });
-
       await preferences.remove('activeLoginActivityId');
-
       await preferences.remove('activeLoginStartedAt');
     } catch (error) {
       debugPrint('Unable to close login session: $error');
@@ -212,16 +213,11 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   Future<void> _logout() async {
     // Finalizes the current login-activity record with logout time and session duration.
     await _closeLoginSession();
-
     await FirebaseAuth.instance.signOut();
-
     if (!mounted) return;
-
     Navigator.pushAndRemoveUntil(
       context,
-
       MaterialPageRoute(builder: (_) => const LoginScreen()),
-
       (route) => false,
     );
   }
@@ -229,71 +225,50 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   // Handles the notification read date logic used by this module.
   DateTime? _notificationReadDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
-
     if (value is DateTime) return value;
-
     if (value is String) return DateTime.tryParse(value);
-
     return null;
   }
 
   // Applies owner notification priority rules to product stock and expiration data.
   String _notificationType(
     Map<String, dynamic> data, {
-
     required int lowStockThreshold,
-
     required int expirationAlertDays,
-
     required bool enableLowStockAlerts,
-
     required bool enableExpirationAlerts,
   }) {
     final rawStock = data['stock'];
     final stock = rawStock is num
         ? rawStock.toInt()
         : int.tryParse(rawStock?.toString().trim() ?? '') ?? 0;
-
     final expirationDate = _notificationReadDate(data['expirationDate']);
-
     if (stock <= 0) return 'Out of Stock';
-
     if (enableLowStockAlerts && stock <= lowStockThreshold) {
       return 'Low Stock';
     }
-
     if (enableExpirationAlerts && expirationDate != null) {
       final now = DateTime.now();
-
       final today = DateTime(now.year, now.month, now.day);
-
       final expiration = DateTime(
         expirationDate.year,
-
         expirationDate.month,
-
         expirationDate.day,
       );
-
       final daysRemaining = expiration.difference(today).inDays;
-
       if (daysRemaining < 0) return 'Expired';
-
       if (daysRemaining <= expirationAlertDays) {
         return 'Expiring Soon';
       }
     }
-
     return 'Normal';
   }
 
   // Applies permit reminder rules for the owner notification badge.
   String _notificationPermitType(Map<String, dynamic> data) {
     if (data['renewed'] == true) return 'Normal';
-
     final expirationDate = _notificationReadDate(data['expirationDate']);
     if (expirationDate == null) return 'Normal';
-
     final reminderDays = (data['reminderDays'] as num?)?.toInt() ?? 30;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -302,12 +277,9 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       expirationDate.month,
       expirationDate.day,
     );
-
     final days = target.difference(today).inDays;
-
     if (days < 0) return 'Permit Expired';
     if (days <= reminderDays) return 'Permit Due Soon';
-
     return 'Normal';
   }
 
@@ -322,7 +294,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       RegExp(r'[^a-z0-9]+'),
       '_',
     );
-
     return '${userId}_${source}_${documentId}_$normalizedType';
   }
 
@@ -334,56 +305,28 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     required Widget child,
   }) {
     final user = FirebaseAuth.instance.currentUser;
-
     if (user == null) return child;
-
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('settings')
-          .doc('system')
-          .snapshots(),
+      stream: _settingsStream,
       builder: (context, settingsSnapshot) {
         final settings = settingsSnapshot.data?.data() ?? <String, dynamic>{};
-
         final lowStockThreshold =
             (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
-
         final expirationAlertDays =
             (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
-
         final enableLowStockAlerts =
             settings['enableLowStockAlerts'] as bool? ?? true;
-
         final enableExpirationAlerts =
             settings['enableExpirationAlerts'] as bool? ?? true;
-
-        final now = DateTime.now();
-        final expirationCutoff = DateTime(
-          now.year,
-          now.month,
-          now.day,
-        ).add(Duration(days: expirationAlertDays + 1));
-
         final lowStockStream = enableLowStockAlerts
-            ? FirebaseFirestore.instance
-                  .collection('products')
-                  .where('stock', isLessThanOrEqualTo: lowStockThreshold)
-                  .snapshots()
+            ? _lowStockStream(lowStockThreshold)
             : const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
-
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: lowStockStream,
           builder: (context, lowStockSnapshot) {
             final expirationStream = enableExpirationAlerts
-                ? FirebaseFirestore.instance
-                      .collection('products')
-                      .where(
-                        'expirationDate',
-                        isLessThan: Timestamp.fromDate(expirationCutoff),
-                      )
-                      .snapshots()
+                ? _expirationStream(expirationAlertDays)
                 : const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
-
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: expirationStream,
               builder: (context, expirationSnapshot) {
@@ -391,56 +334,79 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 // one final alert, exactly like NotificationsScreen._productType.
                 final productMap =
                     <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-
                 for (final document
                     in lowStockSnapshot.data?.docs ??
                         <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
                   productMap[document.id] = document;
                 }
-
                 for (final document
                     in expirationSnapshot.data?.docs ??
                         <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
                   productMap[document.id] = document;
                 }
-
                 final productAlerts = <String>{};
-
                 for (final document in productMap.values) {
+                  final data = document.data();
                   final type = _notificationType(
-                    document.data(),
+                    data,
                     lowStockThreshold: lowStockThreshold,
                     expirationAlertDays: expirationAlertDays,
                     enableLowStockAlerts: enableLowStockAlerts,
                     enableExpirationAlerts: enableExpirationAlerts,
                   );
 
-                  if (type == 'Normal') continue;
+                  if (type != 'Normal') {
+                    productAlerts.add(
+                      _notificationReadId(
+                        userId: user.uid,
+                        source: 'product',
+                        documentId: document.id,
+                        type: type,
+                      ),
+                    );
+                  }
 
-                  productAlerts.add(
-                    _notificationReadId(
-                      userId: user.uid,
-                      source: 'product',
-                      documentId: document.id,
-                      type: type,
-                    ),
-                  );
+                  if ((type == 'Low Stock' || type == 'Out of Stock') &&
+                      enableExpirationAlerts) {
+                    final expirationDate = _notificationReadDate(
+                      data['expirationDate'],
+                    );
+                    if (expirationDate != null) {
+                      final now = DateTime.now();
+                      final today = DateTime(now.year, now.month, now.day);
+                      final expiry = DateTime(
+                        expirationDate.year,
+                        expirationDate.month,
+                        expirationDate.day,
+                      );
+                      final daysRemaining = expiry.difference(today).inDays;
+                      final expiryType = daysRemaining < 0
+                          ? 'Expired'
+                          : daysRemaining <= expirationAlertDays
+                          ? 'Expiring Soon'
+                          : null;
+                      if (expiryType != null) {
+                        productAlerts.add(
+                          _notificationReadId(
+                            userId: user.uid,
+                            source: 'product',
+                            documentId: document.id,
+                            type: expiryType,
+                          ),
+                        );
+                      }
+                    }
+                  }
                 }
-
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                  stream: FirebaseFirestore.instance
-                      .collection('permit_reminders')
-                      .snapshots(),
+                  stream: _permitAlertsStream,
                   builder: (context, permitSnapshot) {
                     final permitAlerts = <String>{};
-
                     for (final document
                         in permitSnapshot.data?.docs ??
                             <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
                       final type = _notificationPermitType(document.data());
-
                       if (type == 'Normal') continue;
-
                       permitAlerts.add(
                         _notificationReadId(
                           userId: user.uid,
@@ -450,11 +416,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                         ),
                       );
                     }
-
                     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: FirebaseFirestore.instance
-                          .collection('price_update_reminders')
-                          .snapshots(),
+                      stream: _priceAlertsStream,
                       builder: (context, priceSnapshot) {
                         final priceAlerts = <String>{
                           for (final document
@@ -469,23 +432,17 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               type: 'Price Update',
                             ),
                         };
-
                         final alertIds = <String>{
                           ...productAlerts,
                           ...permitAlerts,
                           ...priceAlerts,
                         };
-
                         return StreamBuilder<
                           QuerySnapshot<Map<String, dynamic>>
                         >(
-                          stream: FirebaseFirestore.instance
-                              .collection('notification_reads')
-                              .where('userId', isEqualTo: user.uid)
-                              .snapshots(),
+                          stream: _notificationReadsStream,
                           builder: (context, readsSnapshot) {
                             final readIds = <String>{};
-
                             for (final document
                                 in readsSnapshot.data?.docs ??
                                     <
@@ -497,13 +454,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                 readIds.add(document.id);
                               }
                             }
-
                             final unreadCount = alertIds
                                 .where((id) => !readIds.contains(id))
                                 .length;
-
                             if (unreadCount <= 0) return child;
-
                             // Handles the stack logic used by this module.
                             return Stack(
                               clipBehavior: Clip.none,
@@ -562,118 +516,158 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     super.dispose();
   }
 
+  Widget _buildOwnerMenuTile(
+    int index, {
+    required bool compact,
+    required bool drawerMode,
+    required bool indented,
+  }) {
+    final item = _menuItems[index];
+    final selected =
+        _selectedIndex == index ||
+        (index == 2 && const [3, 4, 5, 6, 9].contains(_selectedIndex)) ||
+        (index == 28 &&
+            const [7, 8, 15, 16, 17, 18, 22, 24].contains(_selectedIndex)) ||
+        (index == 29 && const [13, 19, 20, 21, 23].contains(_selectedIndex)) ||
+        (index == 30 &&
+            const [11, 12, 14, 25, 26, 27].contains(_selectedIndex));
+    Widget tile = Padding(
+      padding: EdgeInsets.only(bottom: 5, left: indented ? 14 : 0),
+      child: Material(
+        color: selected ? Colors.white : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            setState(() => _selectedIndex = index);
+            if (drawerMode && Navigator.of(context).canPop()) {
+              Navigator.of(context).pop();
+            }
+          },
+          child: SizedBox(
+            height: indented ? 43 : 48,
+            child: Row(
+              mainAxisAlignment: compact
+                  ? MainAxisAlignment.center
+                  : MainAxisAlignment.start,
+              children: [
+                SizedBox(width: compact ? 0 : (indented ? 12 : 14)),
+                Icon(
+                  item.icon,
+                  size: indented ? 18 : 21,
+                  color: selected ? const Color(0xFF1565C0) : Colors.white,
+                ),
+                if (!compact) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      item.label,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: selected
+                            ? const Color(0xFF18324F)
+                            : Colors.white,
+                        fontSize: indented ? 12 : 13,
+                        fontWeight: selected
+                            ? FontWeight.w800
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (compact) tile = Tooltip(message: item.label, child: tile);
+    if (index == 10) {
+      return _buildNotificationBadge(compact: compact, child: tile);
+    }
+    return tile;
+  }
+
   // Builds the sidebar UI from the current data and screen state.
   Widget _buildSidebar({required bool compact, bool drawerMode = false}) {
     // Keep original _menuItems indices for page routing and badges.
     final query = compact ? '' : _sidebarSearchQuery.trim().toLowerCase();
     final visibleMenuIndices = <int>[
-      for (var i = 0; i < _menuItems.length; i++)
+      for (final i in _mainNavigation)
         if (query.isEmpty || _menuItems[i].label.toLowerCase().contains(query))
           i,
     ];
     // Handles the animated container logic used by this module.
     return AnimatedContainer(
       duration: const Duration(milliseconds: 280),
-
       curve: Curves.easeInOutCubic,
-
       width: compact ? 88 : 260,
-
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
-
           end: Alignment.bottomCenter,
-
           colors: [Color(0xFF0D47A1), Color(0xFF1565C0), Color(0xFF0B4C9C)],
         ),
-
         boxShadow: [
           BoxShadow(
             color: Color(0x26000000),
-
             blurRadius: 16,
-
             offset: Offset(5, 0),
           ),
         ],
       ),
-
       child: SafeArea(
         child: Column(
           children: [
             Padding(
               padding: EdgeInsets.fromLTRB(
                 compact ? 12 : 18,
-
                 16,
-
                 compact ? 12 : 18,
-
                 12,
               ),
-
               child: Container(
                 height: 68,
-
                 padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
-
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.10),
-
                   borderRadius: BorderRadius.circular(16),
-
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.12),
                   ),
                 ),
-
                 child: Row(
                   mainAxisAlignment: compact
                       ? MainAxisAlignment.center
                       : MainAxisAlignment.start,
-
                   children: [
                     Image.asset(
                       'assets/images/eu_mart_logo.png',
-
                       width: compact ? 46 : 50,
-
                       height: compact ? 46 : 50,
-
                       fit: BoxFit.contain,
                     ),
-
                     if (!compact) ...[
                       // Handles the sized box logic used by this module.
                       const SizedBox(width: 10),
-
                       Expanded(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
-
                           crossAxisAlignment: CrossAxisAlignment.start,
-
                           children: [
                             Text(
                               'EÜ MART',
-
                               style: GoogleFonts.baloo2(
                                 color: Colors.white,
-
                                 fontSize: 20,
-
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-
                             // Handles the text logic used by this module.
                             const Text(
                               'Owner Portal',
-
                               style: TextStyle(
                                 color: Colors.white70,
-
                                 fontSize: 11,
                               ),
                             ),
@@ -685,7 +679,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
               ),
             ),
-
             // Sidebar module finder. Only expanded sidebar has enough space
             // for the text field; compact mode keeps its existing icon navigation.
             if (!compact)
@@ -737,202 +730,61 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                   ),
                 ),
               ),
-
             Expanded(
-              child: visibleMenuIndices.isEmpty
+              child: query.isNotEmpty && visibleMenuIndices.isEmpty
                   ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text(
-                          'No modules found',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
+                      child: Text(
+                        'No modules found',
+                        style: TextStyle(color: Colors.white70),
                       ),
                     )
-                  : ListView.builder(
+                  : ListView(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 9,
                         vertical: 4,
                       ),
-
-                      itemCount: visibleMenuIndices.length,
-
-                      itemBuilder: (context, filteredIndex) {
-                        final index = visibleMenuIndices[filteredIndex];
-                        final item = _menuItems[index];
-
-                        final selected = _selectedIndex == index;
-
-                        Widget tile = Padding(
-                          padding: const EdgeInsets.only(bottom: 5),
-
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 210),
-
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? Colors.white
-                                  : Colors.transparent,
-
-                              borderRadius: BorderRadius.circular(13),
-
-                              boxShadow: selected
-                                  ? const [
-                                      BoxShadow(
-                                        color: Color(0x20000000),
-
-                                        blurRadius: 10,
-
-                                        offset: Offset(0, 4),
-                                      ),
-                                    ]
-                                  : const [],
-                            ),
-
-                            child: Material(
-                              color: Colors.transparent,
-
-                              borderRadius: BorderRadius.circular(13),
-
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(13),
-
-                                hoverColor: Colors.white.withValues(
-                                  alpha: 0.12,
-                                ),
-
-                                onTap: () {
-                                  setState(() {
-                                    _selectedIndex = index;
-                                  });
-                                  if (drawerMode &&
-                                      Navigator.of(context).canPop()) {
-                                    Navigator.of(context).pop();
-                                  }
-                                },
-
-                                child: SizedBox(
-                                  height: 48,
-
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: compact ? 10 : 13,
-                                    ),
-
-                                    child: Row(
-                                      mainAxisAlignment: compact
-                                          ? MainAxisAlignment.center
-                                          : MainAxisAlignment.start,
-
-                                      children: [
-                                        Icon(
-                                          item.icon,
-
-                                          size: 21,
-
-                                          color: selected
-                                              ? const Color(0xFF1565C0)
-                                              : Colors.white,
-                                        ),
-
-                                        if (!compact) ...[
-                                          // Handles the sized box logic used by this module.
-                                          const SizedBox(width: 12),
-
-                                          Expanded(
-                                            child: Text(
-                                              item.label,
-
-                                              overflow: TextOverflow.ellipsis,
-
-                                              style: TextStyle(
-                                                color: selected
-                                                    ? const Color(0xFF18324F)
-                                                    : Colors.white,
-
-                                                fontSize: 13,
-
-                                                fontWeight: selected
-                                                    ? FontWeight.w800
-                                                    : FontWeight.w500,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-
-                        if (compact) {
-                          tile = Tooltip(message: item.label, child: tile);
-                        }
-
-                        if (item.label == 'Notifications') {
-                          // Calculates and displays the owner sidebar unread badge while matching the same notification ID rules used by the Notifications screen.
-                          return _buildNotificationBadge(
+                      children: [
+                        for (final index in visibleMenuIndices)
+                          _buildOwnerMenuTile(
+                            index,
                             compact: compact,
-
-                            child: tile,
-                          );
-                        }
-
-                        return tile;
-                      },
+                            drawerMode: drawerMode,
+                            indented: false,
+                          ),
+                      ],
                     ),
             ),
-
             Padding(
               padding: const EdgeInsets.fromLTRB(9, 6, 9, 12),
-
               child: Material(
                 color: Colors.white.withValues(alpha: 0.10),
-
                 borderRadius: BorderRadius.circular(13),
-
                 child: InkWell(
                   onTap: _logout,
-
                   borderRadius: BorderRadius.circular(13),
-
                   hoverColor: Colors.redAccent.withValues(alpha: 0.18),
-
                   child: SizedBox(
                     height: 48,
-
                     child: Row(
                       mainAxisAlignment: compact
                           ? MainAxisAlignment.center
                           : MainAxisAlignment.start,
-
                       children: [
                         SizedBox(width: compact ? 0 : 14),
-
                         // Handles the icon logic used by this module.
                         const Icon(
                           Icons.logout_rounded,
-
                           color: Colors.white,
-
                           size: 21,
                         ),
-
                         if (!compact) ...[
                           // Handles the sized box logic used by this module.
                           const SizedBox(width: 12),
-
                           // Handles the text logic used by this module.
                           const Text(
                             'Logout',
-
                             style: TextStyle(
                               color: Colors.white,
-
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -949,34 +801,34 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Return feature pages to their parent workspace rather than Dashboard.
+  int _backDestination(int index) {
+    if (const [7, 8, 15, 16, 17, 18, 22, 24].contains(index)) return 28;
+    if (const [13, 19, 20, 21, 23].contains(index)) return 29;
+    if (const [11, 12, 14, 25, 26, 27].contains(index)) return 30;
+    if (const [3, 4, 5, 6, 9].contains(index)) return 2;
+    return 0;
+  }
+
   // Builds the top bar UI from the current data and screen state.
   Widget _buildTopBar({bool mobile = false, VoidCallback? onMenuPressed}) {
     final user = FirebaseAuth.instance.currentUser;
-
     final pageTitle = _menuItems[_selectedIndex].label;
-
     // Handles the container logic used by this module.
     return Container(
       height: 68,
-
       padding: const EdgeInsets.symmetric(horizontal: 22),
-
       decoration: const BoxDecoration(
         color: Colors.white,
-
         border: Border(bottom: BorderSide(color: Color(0xFFE7EDF5))),
-
         boxShadow: [
           BoxShadow(
             color: Color(0x0D000000),
-
             blurRadius: 10,
-
             offset: Offset(0, 3),
           ),
         ],
       ),
-
       child: Row(
         children: [
           if (mobile) ...[
@@ -999,76 +851,53 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           if (_selectedIndex != 0) ...[
             Material(
               color: const Color(0xFFF0F5FC),
-
               borderRadius: BorderRadius.circular(12),
-
               child: InkWell(
                 onTap: () {
                   setState(() {
-                    _selectedIndex = 0;
+                    _selectedIndex = _backDestination(_selectedIndex);
                   });
                 },
-
                 borderRadius: BorderRadius.circular(12),
-
                 child: const SizedBox(
                   width: 42,
-
                   height: 42,
-
                   child: Icon(
                     Icons.arrow_back_rounded,
-
                     color: Color(0xFF1565C0),
                   ),
                 ),
               ),
             ),
-
             // Handles the sized box logic used by this module.
             const SizedBox(width: 14),
           ],
-
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
-
               child: Column(
                 key: ValueKey<String>(pageTitle),
-
                 mainAxisAlignment: MainAxisAlignment.center,
-
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
                   Text(
                     pageTitle,
-
                     maxLines: 1,
-
                     overflow: TextOverflow.ellipsis,
-
                     style: const TextStyle(
                       color: Color(0xFF172033),
-
                       fontSize: 22,
-
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-
                   Text(
                     _selectedIndex == 0
                         ? 'Monitor and manage store operations.'
                         : 'Manage and review $pageTitle.',
-
                     maxLines: 1,
-
                     overflow: TextOverflow.ellipsis,
-
                     style: const TextStyle(
                       color: Color(0xFF7D8796),
-
                       fontSize: 11.5,
                     ),
                   ),
@@ -1076,7 +905,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               ),
             ),
           ),
-
           if (mobile)
             // Handles the circle avatar logic used by this module.
             const CircleAvatar(
@@ -1087,62 +915,43 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           else
             Container(
               height: 48,
-
               padding: const EdgeInsets.symmetric(horizontal: 12),
-
               decoration: BoxDecoration(
                 color: const Color(0xFFEAF3FF),
-
                 borderRadius: BorderRadius.circular(14),
-
                 border: Border.all(color: const Color(0xFFD2E4FA)),
               ),
-
               child: Row(
                 children: [
                   // Handles the circle avatar logic used by this module.
                   const CircleAvatar(
                     radius: 17,
-
                     backgroundColor: Color(0xFF1565C0),
-
                     child: Icon(
                       Icons.person_rounded,
-
                       color: Colors.white,
-
                       size: 19,
                     ),
                   ),
-
                   // Handles the sized box logic used by this module.
                   const SizedBox(width: 9),
-
                   Column(
                     mainAxisAlignment: MainAxisAlignment.center,
-
                     crossAxisAlignment: CrossAxisAlignment.start,
-
                     children: [
                       // Handles the text logic used by this module.
                       const Text(
                         'Owner',
-
                         style: TextStyle(
                           color: Color(0xFF17345A),
-
                           fontSize: 12.5,
-
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-
                       Text(
                         user?.email ?? '',
-
                         style: const TextStyle(
                           color: Color(0xFF6D798B),
-
                           fontSize: 9.5,
                         ),
                       ),
@@ -1159,99 +968,69 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   // Handles the summary card logic used by this module.
   Widget _summaryCard({
     required String title,
-
     required String value,
-
     required IconData icon,
-
     required Color color,
-
     required VoidCallback onTap,
   }) {
     // Handles the material logic used by this module.
     return Material(
       color: Colors.white,
-
       borderRadius: BorderRadius.circular(18),
-
       elevation: 0,
-
       child: InkWell(
         onTap: onTap,
-
         borderRadius: BorderRadius.circular(18),
-
         hoverColor: color.withValues(alpha: 0.06),
-
         child: Container(
           padding: const EdgeInsets.all(22),
-
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-
             boxShadow: const [
               BoxShadow(
                 color: Color(0x12000000),
-
                 blurRadius: 14,
-
                 offset: Offset(0, 6),
               ),
             ],
           ),
-
           child: Row(
             children: [
               Container(
                 width: 54,
-
                 height: 54,
-
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
-
                   borderRadius: BorderRadius.circular(14),
                 ),
-
                 child: Icon(icon, color: color, size: 28),
               ),
-
               // Handles the sized box logic used by this module.
               const SizedBox(width: 16),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-
                   children: [
                     Text(
                       title,
-
                       style: const TextStyle(color: Colors.grey, fontSize: 13),
                     ),
-
                     // Handles the sized box logic used by this module.
                     const SizedBox(height: 5),
-
                     Text(
                       value,
-
                       style: const TextStyle(
                         fontSize: 25,
-
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ],
                 ),
               ),
-
               // Handles the icon logic used by this module.
               const Icon(
                 Icons.arrow_forward_ios_rounded,
-
                 size: 16,
-
                 color: Colors.black38,
               ),
             ],
@@ -1264,89 +1043,66 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
   DateTime? _readDate(dynamic value) {
     if (value is Timestamp) return value.toDate();
-
     if (value is DateTime) return value;
-
     if (value is String) return DateTime.tryParse(value);
-
     return null;
   }
 
   // Formats date/time values used in the owner dashboard overview.
   String _formatDashboardDate(DateTime? date) {
     if (date == null) return 'Date unavailable';
-
     final month = date.month.toString().padLeft(2, '0');
-
     final day = date.day.toString().padLeft(2, '0');
-
     final hour = date.hour == 0
         ? 12
         : date.hour > 12
         ? date.hour - 12
         : date.hour;
-
     final minute = date.minute.toString().padLeft(2, '0');
-
     final period = date.hour >= 12 ? 'PM' : 'AM';
-
     return '${date.year}-$month-$day • $hour:$minute $period';
   }
 
   // Handles the dashboard panel logic used by this module.
   Widget _dashboardPanel({
     required String title,
-
     required Widget child,
-
     VoidCallback? onViewAll,
   }) {
     // Handles the container logic used by this module.
     return Container(
       padding: const EdgeInsets.all(22),
-
       decoration: BoxDecoration(
         color: Colors.white,
-
         borderRadius: BorderRadius.circular(18),
-
         boxShadow: const [
           BoxShadow(
             color: Color(0x10000000),
-
             blurRadius: 14,
-
             offset: Offset(0, 6),
           ),
         ],
       ),
-
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
           Row(
             children: [
               Expanded(
                 child: Text(
                   title,
-
                   style: const TextStyle(
                     fontSize: 21,
-
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-
               if (onViewAll != null)
                 TextButton(onPressed: onViewAll, child: const Text('View All')),
             ],
           ),
-
           // Handles the sized box logic used by this module.
           const SizedBox(height: 14),
-
           child,
         ],
       ),
@@ -1358,128 +1114,90 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) {
     final now = DateTime.now();
-
     final today = DateTime(now.year, now.month, now.day);
-
     final activePromos = products.where((document) {
       final data = document.data();
-
       if (data['promoActive'] != true) return false;
-
       final startDate = _readDate(data['promoStartDate']);
-
       final endDate = _readDate(data['promoEndDate']);
-
       if (startDate != null) {
         final normalizedStart = DateTime(
           startDate.year,
-
           startDate.month,
-
           startDate.day,
         );
-
         if (normalizedStart.isAfter(today)) return false;
       }
-
       if (endDate != null) {
         final normalizedEnd = DateTime(
           endDate.year,
-
           endDate.month,
-
           endDate.day,
         );
-
         if (normalizedEnd.isBefore(today)) return false;
       }
-
       return true;
     }).toList();
-
     if (activePromos.isEmpty) {
       // Handles the container logic used by this module.
       return Container(
         width: double.infinity,
-
         padding: const EdgeInsets.all(22),
-
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF7ED),
-
+          color: const Color(0xFFF1F7FF),
           borderRadius: BorderRadius.circular(20),
-
-          border: Border.all(color: const Color(0xFFFED7AA)),
+          border: Border.all(color: const Color(0xFFD7E7FA)),
         ),
-
         child: Row(
           children: [
             Container(
               width: 56,
-
               height: 56,
-
               decoration: BoxDecoration(
-                color: const Color(0xFFFFEDD5),
-
+                color: const Color(0xFFEAF3FF),
                 borderRadius: BorderRadius.circular(16),
               ),
-
               child: const Icon(
                 Icons.local_offer_outlined,
-
-                color: Colors.orange,
-
+                color: const Color(0xFF1565C0),
                 size: 30,
               ),
             ),
-
             // Handles the sized box logic used by this module.
             const SizedBox(width: 16),
-
             // Handles the expanded logic used by this module.
             const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
                   Text(
                     'No Active Promotions',
-
                     style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold),
                   ),
-
                   SizedBox(height: 4),
-
                   Text(
                     'Create a discount, Buy 1 Take 1, or near-expiry promo.',
-
                     style: TextStyle(color: Colors.black54),
                   ),
                 ],
               ),
             ),
-
             ElevatedButton.icon(
               onPressed: () {
                 setState(() {
                   _selectedIndex = 9;
                 });
               },
-
               icon: const Icon(Icons.add),
-
               label: const Text('CREATE PROMO'),
             ),
           ],
         ),
       );
     }
-
     // Handles the column logic used by this module.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-
       children: [
         Row(
           children: [
@@ -1487,58 +1205,39 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             const Expanded(
               child: Text(
                 'Featured Promotions',
-
                 style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
               ),
             ),
-
             TextButton.icon(
               onPressed: () {
                 setState(() {
                   _selectedIndex = 9;
                 });
               },
-
               icon: const Icon(Icons.local_offer_outlined),
-
               label: const Text('Manage Promotions'),
             ),
           ],
         ),
-
         // Handles the sized box logic used by this module.
         const SizedBox(height: 12),
-
         SizedBox(
           height: 235,
-
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-
             itemCount: activePromos.length,
-
             separatorBuilder: (_, _) => const SizedBox(width: 16),
-
             itemBuilder: (context, index) {
               final data = activePromos[index].data();
-
               final productName = (data['productName'] ?? 'Product').toString();
-
               final promoType = (data['promoType'] ?? 'Promo').toString();
-
               final promoLabel = (data['promoLabel'] ?? promoType).toString();
-
               final regularPrice =
                   (data['sellingPrice'] as num?)?.toDouble() ?? 0;
-
               final promoPrice = (data['promoPrice'] as num?)?.toDouble();
-
               final stock = (data['stock'] as num?)?.toInt() ?? 0;
-
               final endDate = _readDate(data['promoEndDate']);
-
               String priceText;
-
               if (promoType == 'Buy 1 Take 1') {
                 priceText = 'BUY 1 TAKE 1';
               } else if (promoPrice != null) {
@@ -1546,146 +1245,100 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
               } else {
                 priceText = promoType.toUpperCase();
               }
-
               // Handles the material logic used by this module.
               return Material(
                 color: Colors.transparent,
-
                 borderRadius: BorderRadius.circular(22),
-
                 child: InkWell(
                   onTap: () {
                     setState(() {
                       _selectedIndex = 9;
                     });
                   },
-
                   borderRadius: BorderRadius.circular(22),
-
                   child: Container(
                     width: 330,
-
                     padding: const EdgeInsets.all(20),
-
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: index.isEven
-                            ? const [Color(0xFFFF6B35), Color(0xFFFF9F1C)]
-                            : const [Color(0xFF1565C0), Color(0xFF42A5F5)],
+                        colors: const [Color(0xFF0D47A1), Color(0xFF1976D2)],
                       ),
-
                       borderRadius: BorderRadius.circular(22),
-
                       boxShadow: const [
                         BoxShadow(
                           color: Color(0x22000000),
-
                           blurRadius: 14,
-
                           offset: Offset(0, 7),
                         ),
                       ],
                     ),
-
                     child: Stack(
                       children: [
                         Positioned(
                           right: -18,
-
                           top: -28,
-
                           child: Icon(
                             Icons.local_offer,
-
                             size: 130,
-
                             color: Colors.white.withValues(alpha: 0.12),
                           ),
                         ),
-
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 10,
-
                                 vertical: 5,
                               ),
-
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.20),
-
                                 borderRadius: BorderRadius.circular(20),
                               ),
-
                               child: Text(
                                 promoLabel.toUpperCase(),
-
                                 maxLines: 1,
-
                                 overflow: TextOverflow.ellipsis,
-
                                 style: const TextStyle(
                                   color: Colors.white,
-
                                   fontSize: 11,
-
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-
                             // Handles the sized box logic used by this module.
                             const SizedBox(height: 15),
-
                             Text(
                               productName,
-
                               maxLines: 2,
-
                               overflow: TextOverflow.ellipsis,
-
                               style: const TextStyle(
                                 color: Colors.white,
-
                                 fontSize: 21,
-
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-
                             // Handles the spacer logic used by this module.
                             const Spacer(),
-
                             if (promoType != 'Buy 1 Take 1' &&
                                 promoPrice != null)
                               Text(
                                 'Regular ₱${regularPrice.toStringAsFixed(2)}',
-
                                 style: const TextStyle(
                                   color: Colors.white70,
-
                                   decoration: TextDecoration.lineThrough,
                                 ),
                               ),
-
                             Text(
                               priceText,
-
                               style: const TextStyle(
                                 color: Colors.white,
-
                                 fontSize: 25,
-
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
-
                             // Handles the sized box logic used by this module.
                             const SizedBox(height: 7),
-
                             Row(
                               children: [
                                 Expanded(
@@ -1693,23 +1346,17 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                     endDate == null
                                         ? 'Limited-time offer'
                                         : 'Until ${_formatDashboardDate(endDate).split(' • ').first}',
-
                                     style: const TextStyle(
                                       color: Colors.white70,
-
                                       fontSize: 11,
                                     ),
                                   ),
                                 ),
-
                                 Text(
                                   '$stock in stock',
-
                                   style: const TextStyle(
                                     color: Colors.white,
-
                                     fontSize: 11,
-
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -1733,283 +1380,233 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   Widget _buildDashboardOverview() {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _settingsStream,
-
       builder: (context, settingsSnapshot) {
         final settings = settingsSnapshot.data?.data() ?? <String, dynamic>{};
-
         final lowStockThreshold =
             (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
-
         final expirationAlertDays =
             (settings['expirationAlertDays'] as num?)?.toInt() ?? 30;
-
         return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          future: FirebaseFirestore.instance.collection('products').get(),
-
+          future: _dashboardProductsFuture,
           builder: (context, productSnapshot) {
+            if (productSnapshot.hasError) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    'Unable to load dashboard products: ${productSnapshot.error}',
+                  ),
+                ),
+              );
+            }
             final productDocs =
                 List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
                   productSnapshot.data?.docs ??
                       <QueryDocumentSnapshot<Map<String, dynamic>>>[],
                 );
-
             final productCount = productDocs.length;
-
             final lowStockProducts =
                 productDocs.where((document) {
                   final stock =
                       (document.data()['stock'] as num?)?.toInt() ?? 0;
-
                   return stock > 0 && stock <= lowStockThreshold;
                 }).toList()..sort((a, b) {
                   final first = (a.data()['stock'] as num?)?.toInt() ?? 0;
-
                   final second = (b.data()['stock'] as num?)?.toInt() ?? 0;
-
                   return first.compareTo(second);
                 });
-
             final outOfStockCount = productDocs.where((document) {
               final stock = (document.data()['stock'] as num?)?.toInt() ?? 0;
-
               return stock <= 0;
             }).length;
-
             final now = DateTime.now();
-
             final today = DateTime(now.year, now.month, now.day);
-
             final expiringProducts =
                 productDocs.where((document) {
                   final expiration = _readDate(
                     document.data()['expirationDate'],
                   );
-
                   if (expiration == null) return false;
-
                   final normalized = DateTime(
                     expiration.year,
-
                     expiration.month,
-
                     expiration.day,
                   );
-
                   final daysRemaining = normalized.difference(today).inDays;
-
                   return daysRemaining >= 0 &&
                       daysRemaining <= expirationAlertDays;
                 }).toList()..sort((a, b) {
                   final first = _readDate(a.data()['expirationDate']);
-
                   final second = _readDate(b.data()['expirationDate']);
-
                   if (first == null && second == null) return 0;
-
                   if (first == null) return 1;
-
                   if (second == null) return -1;
-
                   return first.compareTo(second);
                 });
-
             return FutureBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              future: FirebaseFirestore.instance
-                  .collection('transactions')
-                  .get(),
-
+              future: _dashboardTransactionsFuture,
               builder: (context, transactionSnapshot) {
+                if (transactionSnapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'Unable to load dashboard transactions: ${transactionSnapshot.error}',
+                      ),
+                    ),
+                  );
+                }
                 final transactionDocs =
                     List<QueryDocumentSnapshot<Map<String, dynamic>>>.from(
                       transactionSnapshot.data?.docs ??
                           <QueryDocumentSnapshot<Map<String, dynamic>>>[],
                     );
-
                 final completedTransactions =
                     transactionDocs.where((document) {
                       final status = (document.data()['status'] ?? 'completed')
                           .toString()
                           .toLowerCase();
-
                       return status != 'voided';
                     }).toList()..sort((a, b) {
                       final first = _readDate(a.data()['createdAt']);
-
                       final second = _readDate(b.data()['createdAt']);
-
                       if (first == null && second == null) return 0;
-
                       if (first == null) return 1;
-
                       if (second == null) return -1;
-
                       return second.compareTo(first);
                     });
-
                 double totalSales = 0;
-
                 double todaySales = 0;
-
                 final Map<String, int> productQuantities = {};
-
                 for (final document in completedTransactions) {
                   final data = document.data();
-
                   final total = (data['total'] as num?)?.toDouble() ?? 0;
-
                   totalSales += total;
-
                   final transactionDate = _readDate(data['createdAt']);
-
                   if (transactionDate != null &&
                       transactionDate.year == now.year &&
                       transactionDate.month == now.month &&
                       transactionDate.day == now.day) {
                     todaySales += total;
                   }
-
                   final items = data['items'] as List<dynamic>? ?? <dynamic>[];
-
                   for (final rawItem in items) {
                     if (rawItem is! Map) continue;
-
                     final item = Map<String, dynamic>.from(rawItem);
-
                     final name = (item['productName'] ?? 'Unknown Product')
                         .toString();
-
                     final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
-
                     productQuantities[name] =
                         (productQuantities[name] ?? 0) + quantity;
                   }
                 }
-
                 final topProducts = productQuantities.entries.toList()
                   ..sort((a, b) => b.value.compareTo(a.value));
-
                 // Handles the single child scroll view logic used by this module.
                 return SingleChildScrollView(
                   padding: const EdgeInsets.all(28),
-
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-
                     children: [
                       Text(
                         'Welcome back, Owner!',
-
                         style: GoogleFonts.baloo2(
                           fontSize: 30,
-
                           fontWeight: FontWeight.w700,
-
                           color: const Color(0xFF1F2937),
                         ),
                       ),
-
                       // Handles the sized box logic used by this module.
                       const SizedBox(height: 8),
-
                       // Handles the text logic used by this module.
                       const Text(
                         'Here is the latest overview of EÜ MART operations.',
-
                         style: TextStyle(color: Colors.grey),
                       ),
-
                       // Handles the sized box logic used by this module.
                       const SizedBox(height: 24),
-
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          onPressed: _isDashboardRefreshing
+                              ? null
+                              : _refreshDashboard,
+                          icon: _isDashboardRefreshing
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh_rounded),
+                          label: Text(
+                            _isDashboardRefreshing
+                                ? 'Refreshing Dashboard...'
+                                : 'Refresh Dashboard',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
                       _buildPromoCarousel(productDocs),
-
                       // Handles the sized box logic used by this module.
                       const SizedBox(height: 26),
-
                       LayoutBuilder(
                         builder: (context, constraints) {
                           int crossAxisCount = 4;
-
                           if (constraints.maxWidth < 1150) {
                             crossAxisCount = 2;
                           }
-
                           if (constraints.maxWidth < 900) {
                             crossAxisCount = 1;
                           }
-
                           return GridView.count(
                             shrinkWrap: true,
-
                             physics: const NeverScrollableScrollPhysics(),
-
                             crossAxisCount: crossAxisCount,
-
                             crossAxisSpacing: 18,
-
                             mainAxisSpacing: 18,
-
                             childAspectRatio: 2.15,
-
                             children: [
                               _summaryCard(
                                 title: 'Total Products',
-
                                 value: '$productCount',
-
                                 icon: Icons.inventory_2,
-
                                 color: const Color(0xFF1565C0),
-
                                 onTap: () {
                                   setState(() {
                                     _selectedIndex = 2;
                                   });
                                 },
                               ),
-
                               _summaryCard(
                                 title: 'Stock Alerts',
-
                                 value:
                                     '${lowStockProducts.length + outOfStockCount}',
-
                                 icon: Icons.warning_amber_rounded,
-
-                                color: Colors.orange,
-
+                                color: const Color(0xFF1565C0),
                                 onTap: () {
                                   setState(() {
                                     _selectedIndex = 10;
                                   });
                                 },
                               ),
-
                               _summaryCard(
                                 title: "Today's Sales",
-
                                 value: '₱${todaySales.toStringAsFixed(2)}',
-
                                 icon: Icons.today_outlined,
-
-                                color: Colors.purple,
-
+                                color: const Color(0xFF1565C0),
                                 onTap: () {
                                   setState(() {
                                     _selectedIndex = 8;
                                   });
                                 },
                               ),
-
                               _summaryCard(
                                 title: 'Total Sales',
-
                                 value: '₱${totalSales.toStringAsFixed(2)}',
-
                                 icon: Icons.payments,
-
-                                color: Colors.green,
-
+                                color: const Color(0xFF1565C0),
                                 onTap: () {
                                   setState(() {
                                     _selectedIndex = 8;
@@ -2020,31 +1617,24 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                           );
                         },
                       ),
-
                       // Handles the sized box logic used by this module.
                       const SizedBox(height: 26),
-
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final isWide = constraints.maxWidth >= 980;
-
                           final recentTransactions = _dashboardPanel(
                             title: 'Recent Transactions',
-
                             onViewAll: () {
                               setState(() {
                                 _selectedIndex = 7;
                               });
                             },
-
                             child: completedTransactions.isEmpty
                                 ? const SizedBox(
                                     height: 210,
-
                                     child: Center(
                                       child: Text(
                                         'No transactions yet.',
-
                                         style: TextStyle(color: Colors.grey),
                                       ),
                                     ),
@@ -2054,57 +1644,43 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                       document,
                                     ) {
                                       final data = document.data();
-
                                       final receipt =
                                           (data['receiptNumber'] ??
                                                   data['transactionNumber'] ??
                                                   document.id)
                                               .toString();
-
                                       final cashier =
                                           (data['processedByName'] ??
                                                   data['processedByEmail'] ??
                                                   'Unknown Cashier')
                                               .toString();
-
                                       final total =
                                           (data['total'] as num?)?.toDouble() ??
                                           0;
-
                                       // Handles the list tile logic used by this module.
                                       return ListTile(
                                         contentPadding: EdgeInsets.zero,
-
                                         leading: const CircleAvatar(
                                           backgroundColor: Color(0xFFE3F2FD),
-
                                           child: Icon(
                                             Icons.receipt_long,
-
                                             color: Color(0xFF1565C0),
                                           ),
                                         ),
-
                                         title: Text(
                                           receipt,
-
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
-
                                         subtitle: Text(
                                           '$cashier\n${_formatDashboardDate(_readDate(data['createdAt']))}',
                                         ),
-
                                         isThreeLine: true,
-
                                         trailing: Text(
                                           '₱${total.toStringAsFixed(2)}',
-
                                           style: const TextStyle(
-                                            color: Colors.green,
-
+                                            color: const Color(0xFF1565C0),
                                             fontWeight: FontWeight.bold,
                                           ),
                                         ),
@@ -2112,115 +1688,83 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                     }).toList(),
                                   ),
                           );
-
                           final alerts = _dashboardPanel(
                             title: 'Inventory Alerts',
-
                             onViewAll: () {
                               setState(() {
                                 _selectedIndex = 10;
                               });
                             },
-
                             child: Column(
                               children: [
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
-
                                   leading: CircleAvatar(
                                     backgroundColor: Colors.red.shade50,
-
                                     child: const Icon(
                                       Icons.remove_shopping_cart_outlined,
-
                                       color: Colors.red,
                                     ),
                                   ),
-
                                   title: const Text(
                                     'Out of Stock',
-
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-
                                   trailing: Text(
                                     '$outOfStockCount',
-
                                     style: const TextStyle(
                                       color: Colors.red,
-
                                       fontSize: 20,
-
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
-
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
-
                                   leading: CircleAvatar(
                                     backgroundColor: Colors.orange.shade50,
-
                                     child: const Icon(
                                       Icons.warning_amber_rounded,
-
-                                      color: Colors.orange,
+                                      color: const Color(0xFF1565C0),
                                     ),
                                   ),
-
                                   title: Text(
                                     'Low Stock (≤ $lowStockThreshold)',
-
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-
                                   trailing: Text(
                                     '${lowStockProducts.length}',
-
                                     style: const TextStyle(
-                                      color: Colors.orange,
-
+                                      color: const Color(0xFF1565C0),
                                       fontSize: 20,
-
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
-
                                 ListTile(
                                   contentPadding: EdgeInsets.zero,
-
                                   leading: CircleAvatar(
                                     backgroundColor: Colors.amber.shade50,
-
                                     child: Icon(
                                       Icons.schedule_outlined,
-
                                       color: Colors.amber.shade800,
                                     ),
                                   ),
-
                                   title: Text(
                                     'Expiring in $expirationAlertDays day(s)',
-
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-
                                   trailing: Text(
                                     '${expiringProducts.length}',
-
                                     style: TextStyle(
                                       color: Colors.amber.shade800,
-
                                       fontSize: 20,
-
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -2228,57 +1772,44 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               ],
                             ),
                           );
-
                           if (isWide) {
                             // Handles the row logic used by this module.
                             return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
-
                               children: [
                                 Expanded(flex: 3, child: recentTransactions),
-
                                 // Handles the sized box logic used by this module.
                                 const SizedBox(width: 20),
-
                                 Expanded(flex: 2, child: alerts),
                               ],
                             );
                           }
-
                           // Handles the column logic used by this module.
                           return Column(
                             children: [
                               recentTransactions,
-
                               // Handles the sized box logic used by this module.
                               const SizedBox(height: 20),
-
                               alerts,
                             ],
                           );
                         },
                       ),
-
                       // Handles the sized box logic used by this module.
                       const SizedBox(height: 20),
-
                       _dashboardPanel(
                         title: 'Top-Selling Products',
-
                         onViewAll: () {
                           setState(() {
                             _selectedIndex = 8;
                           });
                         },
-
                         child: topProducts.isEmpty
                             ? const SizedBox(
                                 height: 150,
-
                                 child: Center(
                                   child: Text(
                                     'No product sales data yet.',
-
                                     style: TextStyle(color: Colors.grey),
                                   ),
                                 ),
@@ -2288,13 +1819,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                   final displayed = topProducts
                                       .take(5)
                                       .toList();
-
                                   // Handles the wrap logic used by this module.
                                   return Wrap(
                                     spacing: 14,
-
                                     runSpacing: 14,
-
                                     children: displayed.asMap().entries.map((
                                       entry,
                                     ) {
@@ -2303,58 +1831,42 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                           : constraints.maxWidth >= 560
                                           ? (constraints.maxWidth - 14) / 2
                                           : constraints.maxWidth;
-
                                       // Handles the sized box logic used by this module.
                                       return SizedBox(
                                         width: width,
-
                                         child: Container(
                                           padding: const EdgeInsets.all(16),
-
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFF7F9FC),
-
                                             borderRadius: BorderRadius.circular(
                                               14,
                                             ),
                                           ),
-
                                           child: Column(
                                             crossAxisAlignment:
                                                 CrossAxisAlignment.start,
-
                                             children: [
                                               Text(
                                                 '#${entry.key + 1}',
-
                                                 style: const TextStyle(
                                                   color: Color(0xFF1565C0),
-
                                                   fontWeight: FontWeight.bold,
                                                 ),
                                               ),
-
                                               // Handles the sized box logic used by this module.
                                               const SizedBox(height: 8),
-
                                               Text(
                                                 entry.value.key,
-
                                                 maxLines: 2,
-
                                                 overflow: TextOverflow.ellipsis,
-
                                                 style: const TextStyle(
                                                   fontWeight: FontWeight.bold,
                                                 ),
                                               ),
-
                                               // Handles the sized box logic used by this module.
                                               const SizedBox(height: 8),
-
                                               Text(
                                                 '${entry.value.value} item(s) sold',
-
                                                 style: const TextStyle(
                                                   color: Colors.grey,
                                                 ),
@@ -2379,61 +1891,129 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     );
   }
 
+  // Feature shortcuts for sections not yet moved into a shared workspace.
+  // These are regular page cards, not dropdown sidebar entries.
+  Widget _buildFeatureHub(String title, String description, List<int> routes) {
+    const navy = Color(0xFF1559A6);
+    return ColoredBox(
+      color: const Color(0xFFF3F5F8),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF243247),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              description,
+              style: const TextStyle(color: Color(0xFF66758A), fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final columns = width >= 1000
+                    ? 3
+                    : width >= 620
+                    ? 2
+                    : 1;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: routes.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    mainAxisExtent: 94,
+                  ),
+                  itemBuilder: (context, position) {
+                    final index = routes[position];
+                    final item = _menuItems[index];
+                    return Material(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => setState(() => _selectedIndex = index),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Row(
+                            children: [
+                              Icon(item.icon, color: navy, size: 24),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  item.label,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF243247),
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right,
+                                color: Color(0xFF66758A),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // Builds the placeholder page UI from the current data and screen state.
   Widget _buildPlaceholderPage() {
     final item = _menuItems[_selectedIndex];
-
     // Handles the center logic used by this module.
     return Center(
       child: Container(
         constraints: const BoxConstraints(maxWidth: 520),
-
         margin: const EdgeInsets.all(30),
-
         padding: const EdgeInsets.all(34),
-
         decoration: BoxDecoration(
           color: Colors.white,
-
           borderRadius: BorderRadius.circular(20),
-
           boxShadow: const [
             BoxShadow(
               color: Color(0x12000000),
-
               blurRadius: 16,
-
               offset: Offset(0, 6),
             ),
           ],
         ),
-
         child: Column(
           mainAxisSize: MainAxisSize.min,
-
           children: [
             Icon(item.icon, size: 72, color: const Color(0xFF1565C0)),
-
             // Handles the sized box logic used by this module.
             const SizedBox(height: 18),
-
             Text(
               item.label,
-
               textAlign: TextAlign.center,
-
               style: const TextStyle(fontSize: 27, fontWeight: FontWeight.bold),
             ),
-
             // Handles the sized box logic used by this module.
             const SizedBox(height: 10),
-
             // Handles the text logic used by this module.
             const Text(
               'This module will be developed next.',
-
               textAlign: TextAlign.center,
-
               style: TextStyle(color: Colors.grey),
             ),
           ],
@@ -2449,85 +2029,69 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
       key: ValueKey<int>(_selectedIndex),
       child: switch (_selectedIndex) {
         0 => _buildDashboardOverview(),
-
         1 => const NewTransactionScreen(),
-
         2 => const ProductsInventoryScreen(),
-
         3 => const RestockSuggestionsScreen(),
-
         4 => const StockMovementScreen(),
-
         5 => const SupplierManagementScreen(),
-
         6 => const BarcodeGeneratorScreen(),
-
         7 => const OwnerTransactionHistoryScreen(),
-
         8 => const SalesReportsScreen(),
-
         9 => const PromotionsManagementScreen(),
-
         10 => NotificationsScreen(
           onOpenProducts: () {
             setState(() {
               _selectedIndex = 2;
             });
           },
-
           onOpenRestockSuggestions: () {
             setState(() {
               _selectedIndex = 3;
             });
           },
-
           onOpenStockMovements: () {
             setState(() {
               _selectedIndex = 4;
             });
           },
-
           onOpenPermitReminders: () {
             setState(() {
               _selectedIndex = 21;
             });
           },
         ),
-
         11 => const ManageCashiersScreen(),
-
         12 => const AuditTrailScreen(),
-
         13 => const CustomerFeedbackScreen(),
-
         14 => const BackupExportScreen(),
-
         15 => const PromoSalesReportScreen(),
-
         16 => const CashierPerformanceReportScreen(),
-
         17 => const EstimatedProfitReportScreen(),
-
         18 => const ProductMovementReportScreen(),
-
         19 => const ServiceIssueLoggingScreen(ownerView: true),
-
         20 => const ServiceMonitoringReportScreen(),
-
         21 => const PermitRenewalReminderScreen(),
-
         22 => const SalesComparisonScreen(),
-
         23 => const ServiceIssueSummaryScreen(),
-
         24 => const DailyOperationsSummaryScreen(),
-
         25 => const ChangePasswordScreen(),
-
         26 => const LoginActivityScreen(),
-
         27 => const SettingsScreen(),
-
+        28 => _buildFeatureHub(
+          'Reports & Analytics',
+          'View financial performance and operational reports in one place.',
+          const [7, 8, 15, 16, 17, 18, 22, 24],
+        ),
+        29 => _buildFeatureHub(
+          'Service Management',
+          'Manage service concerns, customer feedback, and compliance.',
+          const [13, 19, 20, 21, 23],
+        ),
+        30 => _buildFeatureHub(
+          'Settings & Administration',
+          'Manage authorized users, security records, and system settings.',
+          const [11, 12, 14, 25, 26, 27],
+        ),
         _ => _buildPlaceholderPage(),
       },
     );
@@ -2542,7 +2106,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
           constraints.maxWidth,
           breakpoint: 1000,
         );
-
         if (isPhone) {
           // Handles the scaffold logic used by this module.
           return Scaffold(
@@ -2579,9 +2142,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
             ),
           );
         }
-
         final compactSidebar = constraints.maxWidth < 1100;
-
         // Handles the scaffold logic used by this module.
         return Scaffold(
           backgroundColor: const Color(0xFFF2F6FC),
@@ -2616,9 +2177,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 // Private UI/data helper used only inside this module.
 class _MenuItem {
   final String label;
-
   final IconData icon;
-
   // Handles the menu item logic used by this module.
   const _MenuItem(this.label, this.icon);
 }

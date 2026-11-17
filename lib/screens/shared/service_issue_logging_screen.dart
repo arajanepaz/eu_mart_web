@@ -71,9 +71,7 @@ class _ServiceIssueSummaryCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(17),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.white, color.withValues(alpha: 0.055)],
-          ),
+          gradient: LinearGradient(colors: [Colors.white, Colors.white]),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: color.withValues(alpha: 0.13)),
         ),
@@ -83,9 +81,7 @@ class _ServiceIssueSummaryCard extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [color, color.withValues(alpha: 0.72)],
-                ),
+                gradient: LinearGradient(colors: [color, color]),
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: [
                   BoxShadow(
@@ -172,8 +168,8 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
   @override
   Widget build(BuildContext context) {
     final statusColor = widget.isResolved
-        ? const Color(0xFF159447)
-        : const Color(0xFFF59E0B);
+        ? const Color(0xFF1565C0)
+        : const Color(0xFF1565C0);
 
     // Handles the mouse region logic used by this module.
     return MouseRegion(
@@ -183,12 +179,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
         duration: const Duration(milliseconds: 200),
         transform: Matrix4.translationValues(0, _hovered ? -3 : 0, 0),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Colors.white,
-              widget.severityColor.withValues(alpha: 0.022),
-            ],
-          ),
+          gradient: LinearGradient(colors: [Colors.white, Colors.white]),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: _hovered
@@ -293,7 +284,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                               _ServiceIssuePill(
                                 icon: Icons.schedule_outlined,
                                 label: widget.createdAt,
-                                color: const Color(0xFF7B1FA2),
+                                color: const Color(0xFF1565C0),
                               ),
                             ],
                           ),
@@ -337,7 +328,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                       Container(
                         padding: const EdgeInsets.all(13),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEAF8F0),
+                          color: const Color(0xFFEAF3FF),
                           borderRadius: BorderRadius.circular(13),
                         ),
                         child: Row(
@@ -346,7 +337,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                             // Handles the icon logic used by this module.
                             const Icon(
                               Icons.check_circle_outline,
-                              color: Color(0xFF159447),
+                              color: Color(0xFF1565C0),
                             ),
                             // Handles the sized box logic used by this module.
                             const SizedBox(width: 9),
@@ -355,7 +346,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                                 'Resolution: '
                                 '${widget.resolution}',
                                 style: const TextStyle(
-                                  color: Color(0xFF168653),
+                                  color: Color(0xFF1565C0),
                                   fontWeight: FontWeight.w700,
                                   height: 1.4,
                                 ),
@@ -375,7 +366,7 @@ class _ServiceIssueCardState extends State<_ServiceIssueCard> {
                         child: ElevatedButton.icon(
                           onPressed: widget.onResolve,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF159447),
+                            backgroundColor: const Color(0xFF1565C0),
                             foregroundColor: Colors.white,
                             elevation: 0,
                             shape: RoundedRectangleBorder(
@@ -554,11 +545,11 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
   Color _severityColor(String severity) {
     switch (severity) {
       case 'Major':
-        return Colors.red;
+        return const Color(0xFF1565C0);
       case 'Moderate':
-        return Colors.orange;
+        return const Color(0xFF1565C0);
       default:
-        return Colors.blue;
+        return const Color(0xFF1565C0);
     }
   }
 
@@ -567,14 +558,17 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
     final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
-      _showMessage('No authenticated user.', Colors.red);
+      _showMessage('No authenticated user.', const Color(0xFF1565C0));
       return;
     }
 
     final description = _descriptionController.text.trim();
 
     if (description.isEmpty) {
-      _showMessage('Enter a short description of the issue.', Colors.orange);
+      _showMessage(
+        'Enter a short description of the issue.',
+        const Color(0xFF1565C0),
+      );
       return;
     }
 
@@ -600,7 +594,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
 
       if (!mounted) return;
 
-      _showMessage('Service issue recorded.', Colors.green);
+      _showMessage('Service issue recorded.', const Color(0xFF1565C0));
     } on FirebaseException catch (error) {
       if (!mounted) return;
 
@@ -609,7 +603,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
             ? 'Permission denied. Add the service_issues Firestore rule.'
             : 'Unable to save issue: '
                   '${error.message ?? error.code}',
-        Colors.red,
+        const Color(0xFF1565C0),
       );
     } finally {
       if (mounted) {
@@ -680,14 +674,14 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
 
       if (!mounted) return;
 
-      _showMessage('Issue marked as resolved.', Colors.green);
+      _showMessage('Issue marked as resolved.', const Color(0xFF1565C0));
     } on FirebaseException catch (error) {
       if (!mounted) return;
 
       _showMessage(
         'Unable to resolve issue: '
         '${error.message ?? error.code}',
-        Colors.red,
+        const Color(0xFF1565C0),
       );
     }
   }
@@ -724,7 +718,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                   height: 50,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)],
+                      colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                     ),
                     borderRadius: BorderRadius.circular(15),
                   ),
@@ -928,7 +922,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
       return const Center(
         child: Text(
           'No authenticated user.',
-          style: TextStyle(color: Colors.red),
+          style: TextStyle(color: const Color(0xFF1565C0)),
         ),
       );
     }
@@ -952,7 +946,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
+                colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
               ),
               borderRadius: BorderRadius.circular(22),
               boxShadow: const [
@@ -1023,7 +1017,7 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                       'Unable to load service issues.\n'
                       '${snapshot.error}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red),
+                      style: const TextStyle(color: const Color(0xFF1565C0)),
                     ),
                   );
                 }
@@ -1087,25 +1081,25 @@ class _ServiceIssueLoggingScreenState extends State<ServiceIssueLoggingScreen> {
                               title: 'Open Issues',
                               value: '$openCount',
                               icon: Icons.pending_actions_outlined,
-                              color: const Color(0xFFF59E0B),
+                              color: const Color(0xFF1565C0),
                             ),
                             _ServiceIssueSummaryCard(
                               title: 'Resolved Issues',
                               value: '$resolvedCount',
                               icon: Icons.check_circle_outline,
-                              color: const Color(0xFF159447),
+                              color: const Color(0xFF1565C0),
                             ),
                             _ServiceIssueSummaryCard(
                               title: 'Major',
                               value: '$majorCount',
                               icon: Icons.report_problem_outlined,
-                              color: const Color(0xFFD32F2F),
+                              color: const Color(0xFF1565C0),
                             ),
                             _ServiceIssueSummaryCard(
                               title: 'Moderate',
                               value: '$moderateCount',
                               icon: Icons.priority_high_rounded,
-                              color: const Color(0xFF7B1FA2),
+                              color: const Color(0xFF1565C0),
                             ),
                           ],
                         );

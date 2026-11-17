@@ -5,6 +5,10 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+// Displays whole-number metrics with thousands separators.
+final NumberFormat _issueCountFormat = NumberFormat.decimalPattern('en_US');
 
 // Screen widget for summarizes recorded service issues by period, type, severity, and resolution status.
 class ServiceIssueSummaryScreen extends StatefulWidget {
@@ -20,12 +24,40 @@ class ServiceIssueSummaryScreen extends StatefulWidget {
 class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
   String _selectedFilter = 'This Month';
 
-  // Normalizes supported Firestore/date values into a Dart DateTime for consistent comparisons.
-  DateTime? _readDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
+  late Stream<QuerySnapshot<Map<String, dynamic>>> _issuesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _issuesStream = _makeIssueStream();
+  }
+
+  // Recreate a query only when the selected report period changes.
+  Stream<QuerySnapshot<Map<String, dynamic>>> _makeIssueStream() {
+    Query<Map<String, dynamic>> query = FirebaseFirestore.instance.collection(
+      'service_issues',
+    );
+
+    final now = DateTime.now();
+    DateTime? start;
+    DateTime? end;
+    if (_selectedFilter == 'Today') {
+      start = DateTime(now.year, now.month, now.day);
+      end = start.add(const Duration(days: 1));
+    } else if (_selectedFilter == 'This Week') {
+      final today = DateTime(now.year, now.month, now.day);
+      start = today.subtract(Duration(days: today.weekday - 1));
+      end = start.add(const Duration(days: 7));
+    } else if (_selectedFilter == 'This Month') {
+      start = DateTime(now.year, now.month, 1);
+      end = DateTime(now.year, now.month + 1, 1);
+    }
+    if (start != null && end != null) {
+      query = query
+          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
+          .where('createdAt', isLessThan: Timestamp.fromDate(end));
+    }
+    return query.orderBy('createdAt', descending: true).snapshots();
   }
 
   // Formats a date into a consistent display value for the interface.
@@ -47,11 +79,11 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
 
   // Handles the severity color logic used by this module.
   Color _severityColor(String severity) {
-    switch (severity) {
-      case 'Major':
-        return Colors.red;
-      case 'Moderate':
-        return Colors.orange;
+    switch (severity.trim().toLowerCase()) {
+      case 'major':
+        return const Color(0xFF1565C0);
+      case 'moderate':
+        return const Color(0xFF1565C0);
       default:
         return Colors.blue;
     }
@@ -73,6 +105,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
       onSelected: (_) {
         setState(() {
           _selectedFilter = label;
+          _issuesStream = _makeIssueStream();
         });
       },
     );
@@ -156,41 +189,8 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    Query<Map<String, dynamic>> issueQuery = FirebaseFirestore.instance
-        .collection('service_issues');
-
-    final now = DateTime.now();
-
-    if (_selectedFilter == 'Today') {
-      final start = DateTime(now.year, now.month, now.day);
-      final end = start.add(const Duration(days: 1));
-
-      issueQuery = issueQuery
-          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-          .where('createdAt', isLessThan: Timestamp.fromDate(end));
-    } else if (_selectedFilter == 'This Week') {
-      final today = DateTime(now.year, now.month, now.day);
-      final start = today.subtract(Duration(days: today.weekday - 1));
-      final end = start.add(const Duration(days: 7));
-
-      issueQuery = issueQuery
-          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-          .where('createdAt', isLessThan: Timestamp.fromDate(end));
-    } else if (_selectedFilter == 'This Month') {
-      final start = DateTime(now.year, now.month, 1);
-      final end = now.month == 12
-          ? DateTime(now.year + 1, 1, 1)
-          : DateTime(now.year, now.month + 1, 1);
-
-      issueQuery = issueQuery
-          .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
-          .where('createdAt', isLessThan: Timestamp.fromDate(end));
-    }
-
-    issueQuery = issueQuery.orderBy('createdAt', descending: true);
-
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: issueQuery.snapshots(),
+      stream: _issuesStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -205,7 +205,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
               'Unable to load service issue summary.\n'
               '${snapshot.error}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+              style: const TextStyle(color: const Color(0xFF1565C0)),
             ),
           );
         }
@@ -220,6 +220,7 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
         int majorCount = 0;
         int moderateCount = 0;
         int minorCount = 0;
+        int unspecifiedSeverityCount = 0;
 
         final Map<String, int> issueTypeCounts = {};
         final Map<String, int> reporterCounts = {};
@@ -227,11 +228,17 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
         for (final document in issues) {
           final data = document.data();
 
-          final status = (data['status'] ?? 'open').toString();
+          final status = (data['status'] ?? 'open')
+              .toString()
+              .trim()
+              .toLowerCase();
 
-          final severity = (data['severity'] ?? 'Minor').toString();
+          final severity = (data['severity'] ?? '')
+              .toString()
+              .trim()
+              .toLowerCase();
 
-          final type = (data['issueType'] ?? 'Other').toString();
+          final type = (data['issueType'] ?? 'Other').toString().trim();
 
           final reporter =
               (data['reportedByName'] ??
@@ -246,17 +253,21 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
           }
 
           switch (severity) {
-            case 'Major':
+            case 'major':
               majorCount++;
               break;
-            case 'Moderate':
+            case 'moderate':
               moderateCount++;
               break;
-            default:
+            case 'minor':
               minorCount++;
+              break;
+            default:
+              unspecifiedSeverityCount++;
           }
 
-          issueTypeCounts[type] = (issueTypeCounts[type] ?? 0) + 1;
+          final typeKey = type.isEmpty ? 'Other' : type;
+          issueTypeCounts[typeKey] = (issueTypeCounts[typeKey] ?? 0) + 1;
 
           reporterCounts[reporter] = (reporterCounts[reporter] ?? 0) + 1;
         }
@@ -279,214 +290,253 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
         return Container(
           color: const Color(0xFFF2F6FC),
           padding: const EdgeInsets.all(22),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 22,
-                  vertical: 18,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF0D47A1), Color(0xFF1976D2)],
-                  ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x291565C0),
-                      blurRadius: 20,
-                      offset: Offset(0, 9),
-                    ),
-                  ],
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.assessment_outlined,
-                      color: Colors.white,
-                      size: 29,
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Service Issue Summary',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 23,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Review recurring issues, severity levels, '
-                            'reporters, and resolution performance.',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFDDE6F1)),
-                ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _filterChip('Today'),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 8),
-                      _filterChip('This Week'),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 8),
-                      _filterChip('This Month'),
-                      // Handles the sized box logic used by this module.
-                      const SizedBox(width: 8),
-                      _filterChip('All Time'),
-                    ],
-                  ),
-                ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  int count = 4;
-
-                  if (constraints.maxWidth < 1050) {
-                    count = 2;
-                  }
-
-                  if (constraints.maxWidth < 620) {
-                    count = 1;
-                  }
-
-                  return GridView.count(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisCount: count,
-                    crossAxisSpacing: 13,
-                    mainAxisSpacing: 13,
-                    childAspectRatio: count == 4 ? 2.25 : 3.1,
-                    children: [
-                      _summaryCard(
-                        title: 'Total Issues',
-                        value: '${issues.length}',
-                        icon: Icons.report_problem_outlined,
-                        color: const Color(0xFF1565C0),
-                      ),
-                      _summaryCard(
-                        title: 'Open Issues',
-                        value: '$openCount',
-                        icon: Icons.pending_actions_outlined,
-                        color: const Color(0xFFF59E0B),
-                      ),
-                      _summaryCard(
-                        title: 'Resolution Rate',
-                        value: '${resolutionRate.toStringAsFixed(1)}%',
-                        icon: Icons.check_circle_outline,
-                        color: const Color(0xFF159447),
-                      ),
-                      _summaryCard(
-                        title: 'Top Recurring Issue',
-                        value: topIssue,
-                        icon: Icons.repeat_outlined,
-                        color: const Color(0xFF7B1FA2),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 16),
-              _IssueSummaryHoverCard(
-                child: Container(
+          child: SingleChildScrollView(
+            physics: const ClampingScrollPhysics(),
+            child: Column(
+              children: [
+                Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(15),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 18,
+                  ),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFEAF3FF), Color(0xFFF8FBFF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1565C0), Color(0xFF1565C0)],
                     ),
-                    borderRadius: BorderRadius.circular(17),
-                    border: Border.all(color: const Color(0xFFD7E7FA)),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x291565C0),
+                        blurRadius: 20,
+                        offset: Offset(0, 9),
+                      ),
+                    ],
                   ),
-                  child: Wrap(
-                    spacing: 12,
-                    runSpacing: 10,
+                  child: const Row(
                     children: [
-                      _IssueCountPill(
-                        label: 'Major',
-                        value: majorCount,
-                        icon: Icons.report_problem_outlined,
-                        color: const Color(0xFFD32F2F),
+                      Icon(
+                        Icons.assessment_outlined,
+                        color: Colors.white,
+                        size: 29,
                       ),
-                      _IssueCountPill(
-                        label: 'Moderate',
-                        value: moderateCount,
-                        icon: Icons.priority_high_rounded,
-                        color: const Color(0xFFF59E0B),
-                      ),
-                      _IssueCountPill(
-                        label: 'Minor',
-                        value: minorCount,
-                        icon: Icons.info_outline,
-                        color: const Color(0xFF1565C0),
-                      ),
-                      _IssueCountPill(
-                        label: 'Resolved',
-                        value: resolvedCount,
-                        icon: Icons.check_circle_outline,
-                        color: const Color(0xFF159447),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Service Issue Summary',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 23,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Review recurring issues, severity levels, '
+                              'reporters, and resolution performance.',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ),
-              // Handles the sized box logic used by this module.
-              const SizedBox(height: 18),
-              Expanded(
-                child: LayoutBuilder(
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFDDE6F1)),
+                  ),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _filterChip('Today'),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 8),
+                        _filterChip('This Week'),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 8),
+                        _filterChip('This Month'),
+                        // Handles the sized box logic used by this module.
+                        const SizedBox(width: 8),
+                        _filterChip('All Time'),
+                      ],
+                    ),
+                  ),
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                LayoutBuilder(
                   builder: (context, constraints) {
-                    if (constraints.maxWidth < 900) {
-                      // Handles the list view logic used by this module.
-                      return ListView(
-                        padding: const EdgeInsets.only(bottom: 8),
+                    int count = 4;
+
+                    if (constraints.maxWidth < 1050) {
+                      count = 2;
+                    }
+
+                    if (constraints.maxWidth < 620) {
+                      count = 1;
+                    }
+
+                    return GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: count,
+                      crossAxisSpacing: 13,
+                      mainAxisSpacing: 13,
+                      childAspectRatio: count == 4 ? 2.25 : 3.1,
+                      children: [
+                        _summaryCard(
+                          title: 'Total Issues',
+                          value: _issueCountFormat.format(issues.length),
+                          icon: Icons.report_problem_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Unresolved Issues',
+                          value: _issueCountFormat.format(openCount),
+                          icon: Icons.pending_actions_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Resolution Rate',
+                          value: '${resolutionRate.toStringAsFixed(1)}%',
+                          icon: Icons.check_circle_outline,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _summaryCard(
+                          title: 'Top Recurring Issue',
+                          value: topIssue,
+                          icon: Icons.repeat_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 16),
+                _IssueSummaryHoverCard(
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFEAF3FF), Color(0xFFF8FBFF)],
+                      ),
+                      borderRadius: BorderRadius.circular(17),
+                      border: Border.all(color: const Color(0xFFD7E7FA)),
+                    ),
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 10,
+                      children: [
+                        _IssueCountPill(
+                          label: 'Major',
+                          value: majorCount,
+                          icon: Icons.report_problem_outlined,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _IssueCountPill(
+                          label: 'Moderate',
+                          value: moderateCount,
+                          icon: Icons.priority_high_rounded,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        _IssueCountPill(
+                          label: 'Minor',
+                          value: minorCount,
+                          icon: Icons.info_outline,
+                          color: const Color(0xFF1565C0),
+                        ),
+                        if (unspecifiedSeverityCount > 0)
+                          _IssueCountPill(
+                            label: 'Unspecified Severity',
+                            value: unspecifiedSeverityCount,
+                            icon: Icons.help_outline,
+                            color: const Color(0xFF607086),
+                          ),
+                        _IssueCountPill(
+                          label: 'Resolved',
+                          value: resolvedCount,
+                          icon: Icons.check_circle_outline,
+                          color: const Color(0xFF1565C0),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Handles the sized box logic used by this module.
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: MediaQuery.sizeOf(context).width < 1160 ? 1050 : 520,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth < 900) {
+                        // Handles the list view logic used by this module.
+                        return ListView(
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 8),
+                          children: [
+                            SizedBox(
+                              height: 300,
+                              child: _IssueTypePanel(entries: sortedIssueTypes),
+                            ),
+                            // Handles the sized box logic used by this module.
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 280,
+                              child: _ReporterPanel(entries: sortedReporters),
+                            ),
+                            // Handles the sized box logic used by this module.
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 390,
+                              child: _RecentIssuesPanel(
+                                issues: issues.take(10).toList(),
+                                formatDate: _formatDate,
+                                severityColor: _severityColor,
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+
+                      // Handles the row logic used by this module.
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          SizedBox(
-                            height: 300,
+                          Expanded(
+                            flex: 3,
                             child: _IssueTypePanel(entries: sortedIssueTypes),
                           ),
                           // Handles the sized box logic used by this module.
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            height: 280,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 2,
                             child: _ReporterPanel(entries: sortedReporters),
                           ),
                           // Handles the sized box logic used by this module.
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            height: 390,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 4,
                             child: _RecentIssuesPanel(
                               issues: issues.take(10).toList(),
                               formatDate: _formatDate,
@@ -495,38 +545,11 @@ class _ServiceIssueSummaryScreenState extends State<ServiceIssueSummaryScreen> {
                           ),
                         ],
                       );
-                    }
-
-                    // Handles the row logic used by this module.
-                    return Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: _IssueTypePanel(entries: sortedIssueTypes),
-                        ),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 16),
-                        Expanded(
-                          flex: 2,
-                          child: _ReporterPanel(entries: sortedReporters),
-                        ),
-                        // Handles the sized box logic used by this module.
-                        const SizedBox(width: 16),
-                        Expanded(
-                          flex: 4,
-                          child: _RecentIssuesPanel(
-                            issues: issues.take(10).toList(),
-                            formatDate: _formatDate,
-                            severityColor: _severityColor,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                    },
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -607,7 +630,7 @@ class _IssueCountPill extends StatelessWidget {
           // Handles the sized box logic used by this module.
           const SizedBox(width: 7),
           Text(
-            '$label: $value',
+            '$label: ${_issueCountFormat.format(value)}',
             style: TextStyle(
               color: color,
               fontSize: 11.5,
@@ -671,7 +694,7 @@ class _IssueTypePanel extends StatelessWidget {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            '${entry.value}',
+                            _issueCountFormat.format(entry.value),
                             style: const TextStyle(
                               color: Color(0xFF1565C0),
                               fontWeight: FontWeight.w900,
@@ -715,7 +738,7 @@ class _ReporterPanel extends StatelessWidget {
       title: 'Reported by Cashier',
       subtitle: 'Cashiers who logged service issues.',
       icon: Icons.people_outline,
-      accent: const Color(0xFF7B1FA2),
+      accent: const Color(0xFF1565C0),
       child: entries.isEmpty
           ? const _IssuePanelEmpty(message: 'No reporter data.')
           : ListView.separated(
@@ -736,11 +759,11 @@ class _ReporterPanel extends StatelessWidget {
                       // Handles the circle avatar logic used by this module.
                       const CircleAvatar(
                         radius: 19,
-                        backgroundColor: Color(0xFFEDE7F6),
+                        backgroundColor: Color(0xFFEAF3FF),
                         child: Icon(
                           Icons.person_outline,
                           size: 20,
-                          color: Color(0xFF7B1FA2),
+                          color: Color(0xFF1565C0),
                         ),
                       ),
                       // Handles the sized box logic used by this module.
@@ -762,13 +785,13 @@ class _ReporterPanel extends StatelessWidget {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFEDE7F6),
+                          color: const Color(0xFFEAF3FF),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          '${entry.value}',
+                          _issueCountFormat.format(entry.value),
                           style: const TextStyle(
-                            color: Color(0xFF7B1FA2),
+                            color: Color(0xFF1565C0),
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -812,7 +835,7 @@ class _RecentIssuesPanel extends StatelessWidget {
       title: 'Recent Service Issues',
       subtitle: 'Latest issues recorded in the selected period.',
       icon: Icons.history_outlined,
-      accent: const Color(0xFFF59E0B),
+      accent: const Color(0xFF1565C0),
       child: issues.isEmpty
           ? const _IssuePanelEmpty(message: 'No recent issues.')
           : ListView.separated(
@@ -825,7 +848,10 @@ class _RecentIssuesPanel extends StatelessWidget {
 
                 final severity = (data['severity'] ?? 'Minor').toString();
 
-                final status = (data['status'] ?? 'open').toString();
+                final status = (data['status'] ?? 'open')
+                    .toString()
+                    .trim()
+                    .toLowerCase();
 
                 final reporter =
                     (data['reportedByName'] ??
@@ -836,8 +862,8 @@ class _RecentIssuesPanel extends StatelessWidget {
                 final severityAccent = severityColor(severity);
 
                 final statusColor = status == 'resolved'
-                    ? const Color(0xFF159447)
-                    : const Color(0xFFF59E0B);
+                    ? const Color(0xFF1565C0)
+                    : const Color(0xFF1565C0);
 
                 // Checks whether the current value satisfies the issue summary hover card rule used by this module.
                 return _IssueSummaryHoverCard(
@@ -891,7 +917,7 @@ class _RecentIssuesPanel extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  color: Color(0xFF8A95A4),
+                                  color: Color(0xFF64748B),
                                   fontSize: 11,
                                 ),
                               ),
@@ -1000,7 +1026,7 @@ class _IssuePanelContainer extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF8A95A4),
+                          color: Color(0xFF64748B),
                           fontSize: 10.5,
                           height: 1.25,
                         ),
