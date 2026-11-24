@@ -1098,6 +1098,17 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
           if (nameWords.contains(cleanTerm)) return true;
           if (_hasCloseWord(productName, cleanTerm)) return true;
 
+          // Generic catalog abbreviation: DP may mean detergent powder,
+          // but only for products classified as laundry/detergent. A short
+          // unrelated product code such as P/A must never match "powder".
+          if (cleanTerm == 'powder' &&
+              nameWords.contains('dp') &&
+              (category.contains('laundry') ||
+                  category.contains('detergent') ||
+                  category.contains('washing'))) {
+            return true;
+          }
+
           // For multi-word aliases such as "coca cola", compare the compact
           // form only when it is sufficiently specific.
           final compactTerm = cleanTerm.replaceAll(' ', '');
@@ -1219,12 +1230,17 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     for (final word in words) {
       if (word == normalizedQuery) return true;
 
-      // Allow incomplete product words, e.g. "nescaf" -> "nescafe".
-      // Require at least 3 typed characters so very short searches do not
-      // become overly broad.
-      if (normalizedQuery.length >= 3 &&
-          (word.startsWith(normalizedQuery) ||
-              normalizedQuery.startsWith(word))) {
+      // Ignore one- or two-character catalog tokens for fuzzy/prefix
+      // matching. Without this, a product named "P/A" (tokens p, a)
+      // incorrectly matches unrelated words such as "powder" and "ariel".
+      // Genuine short tokens still match through exact nameWords.contains.
+      if (word.length < 3) continue;
+
+      // Allow meaningful incomplete words, e.g. "nescaf" -> "nescafe".
+      // Both sides must be at least 3 characters to prevent short-code
+      // false positives across all product brands and categories.
+      if (word.startsWith(normalizedQuery) ||
+          normalizedQuery.startsWith(word)) {
         return true;
       }
 
