@@ -64,7 +64,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   // Cache validated AI results only for the current POS product snapshot.
   // Cache entries are cleared whenever the catalog is reloaded.
   final Map<String, List<String>> _aiSearchCache = <String, List<String>>{};
-  static const int _maxAiCandidates = 60;
+  static const int _maxAiCandidates = 24;
   static const int _maxAiCachedQueries = 30;
 
   // Recently scanned products stay visible below the search bar.
@@ -1288,21 +1288,159 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return previous.last;
   }
 
+  // AI-only constraints: catalog facts are checked before/after Gemini.
+  // Standard product search, scanner and checkout are not affected.
+  bool _aiProductFitsClues(Map<String, dynamic> data, String rawQuery) {
+    final query = _normalizeSearchText(rawQuery);
+    final price = (data['sellingPrice'] as num?)?.toDouble();
+    final maxPrice = RegExp(
+      r'(?:below|under|less than|maximum|max|hanggang|budget|di lalagpas sa|hindi lalagpas sa)\s*(?:ng|na|sa)?\s*(?:p|php|peso|pesos)?\s*(\d+(?:\.\d+)?)',
+    ).firstMatch(query);
+    final priceAtMost =
+        maxPrice ??
+        RegExp(
+          r'(?:p|php|peso|pesos)\s*(\d+(?:\.\d+)?)\s*(?:pababa|or less)',
+        ).firstMatch(query);
+    final exactPrice = priceAtMost == null
+        ? RegExp(
+            r'(?:p|php|peso|pesos)\s*(\d+(?:\.\d+)?)\b|\b(\d+(?:\.\d+)?)\s*(?:pesos|peso)\b',
+          ).firstMatch(query)
+        : null;
+    if (priceAtMost != null || exactPrice != null) {
+      final requested = double.tryParse(
+        (priceAtMost ?? exactPrice)!.group(1) ?? exactPrice?.group(2) ?? '',
+      );
+      if (requested != null &&
+          (price == null ||
+              (priceAtMost != null
+                  ? price > requested
+                  : (price - requested).abs() > 0.01))) {
+        return false;
+      }
+    }
+
+    // Restrict explicit volume requests; do not guess missing package sizes.
+    final size = RegExp(
+      r'(\d+(?:[.,]\d+)?)\s*(ml|milliliter|millilitre|l|liter|litre|liters|litres)\b',
+    ).firstMatch(query);
+    if (size != null) {
+      final amount = double.tryParse(
+        (size.group(1) ?? '').replaceAll(',', '.'),
+      );
+      final unit = size.group(2) ?? '';
+      final wantedMl = amount == null
+          ? null
+          : (unit == 'ml' || unit.startsWith('milli') ? amount : amount * 1000);
+      final actualMl = _productVolumeMl(data);
+      if (wantedMl != null &&
+          (actualMl == null || (actualMl - wantedMl).abs() > 1)) {
+        return false;
+      }
+    }
+
+    final volume = _productVolumeMl(data);
+    final asksLarge = [
+      'malaki',
+      'malaking',
+      'large',
+      'big',
+      'litro',
+    ].any((word) => _containsSearchPhrase(query, word));
+    final asksSmall = [
+      'maliit',
+      'small',
+      'mini',
+    ].any((word) => _containsSearchPhrase(query, word));
+    if (asksLarge && volume != null && volume < 750) return false;
+    if (asksSmall && volume != null && volume > 500) return false;
+
+    // Negative requests must not return the explicitly excluded type.
+    final nameAndCategory = _normalizeSearchText(
+      '${data['productName'] ?? ''} ${data['category'] ?? ''}',
+    );
+    if ((query.contains('hindi panlaba') || query.contains('not detergent')) &&
+        (nameAndCategory.contains('detergent') ||
+            nameAndCategory.contains('laundry') ||
+            nameAndCategory.contains('panlaba'))) {
+      return false;
+    }
+    return true;
+  }
+
+  // Rank descriptions by concrete product-name clues, not just a broad category.
+  int _aiClueWordScore(Map<String, dynamic> data, String rawQuery) {
+    final nameAndBrand = _normalizeSearchText(
+      '${data['productName'] ?? ''} ${data['brand'] ?? ''} ${data['unit'] ?? ''}',
+    );
+    const ignore = <String>{
+      'yung',
+      'ang',
+      'na',
+      'ng',
+      'sa',
+      'may',
+      'ako',
+      'hanap',
+      'hanapin',
+      'maliit',
+      'malaki',
+      'malaking',
+      'large',
+      'small',
+      'big',
+      'below',
+      'under',
+      'less',
+      'than',
+      'pesos',
+      'peso',
+      'php',
+      'pababa',
+      'hindi',
+      'not',
+      'para',
+      'pang',
+      'isang',
+      'the',
+      'stock',
+      'available',
+      'lang',
+      'at',
+      'or',
+      'and',
+    };
+    var score = 0;
+    for (final word in _normalizeSearchText(rawQuery).split(' ')) {
+      if (word.length < 3 ||
+          ignore.contains(word) ||
+          RegExp(r'^\d+$').hasMatch(word))
+        continue;
+      if (_containsSearchPhrase(nameAndBrand, word)) {
+        score += 35;
+      } else if (_hasCloseWord(nameAndBrand, word)) {
+        score += 14;
+      }
+    }
+    return score;
+  }
+
   // Scores products locally before the AI request so only relevant candidates are sent to Gemini.
   int _aiCandidateScore(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
     String rawQuery,
   ) {
-    final intentScore = _intentSearchScore(document.data(), rawQuery);
-    if (intentScore > 0) return 1500 + intentScore;
+    final data = document.data();
+    if (!_aiProductFitsClues(data, rawQuery)) return 0;
+    final clueScore = _aiClueWordScore(data, rawQuery);
+    final intentScore = _intentSearchScore(data, rawQuery);
+    if (intentScore > 0) return 1500 + intentScore + clueScore;
     if (_requestedCategory(rawQuery) != null) return 0;
     final localScore = _localProductSearchScore(document);
-    if (localScore > 0) return 1000 + localScore;
+    if (localScore > 0) return 1000 + localScore + clueScore;
 
     final query = _normalizeSearchText(rawQuery);
     if (query.isEmpty) return 0;
 
-    final data = document.data();
     final searchable = _normalizeSearchText(
       '${data['productName'] ?? ''} ${data['brand'] ?? ''} ${data['category'] ?? ''}',
     );
@@ -1332,7 +1470,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       if (best < 0.45) return 0;
       total += (best * 100).round();
     }
-    return total;
+    return total + clueScore;
   }
 
   // Local exact matches and repeat queries return immediately. More difficult
@@ -1404,6 +1542,30 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         return;
       }
 
+      // Full/whole-phrase product names (e.g. "coke mismo") are already
+      // unambiguous catalog searches. Do not spend seconds or quota on Gemini.
+      // Descriptions/constraints still go through AI identification.
+      final asksDescription = RegExp(
+        r'\b(yung|na|may|below|under|pesos|peso|php|malaki|malaking|maliit|large|small|hindi|not|pababa|sachet)\b',
+      ).hasMatch(normalizedQuery);
+      if (!asksDescription && normalizedQuery.split(' ').length >= 2) {
+        final phraseMatches = products
+            .where(
+              (document) => _containsSearchPhrase(
+                _normalizeSearchText(document.data()['productName']),
+                normalizedQuery,
+              ),
+            )
+            .toList();
+        if (phraseMatches.isNotEmpty) {
+          showMatches(
+            phraseMatches.map((document) => document.id),
+            'Exact product phrase found instantly (local catalog).',
+          );
+          return;
+        }
+      }
+
       // Only reuse matches from this page's loaded product catalog.
       final cachedIds = _aiSearchCache[normalizedQuery];
       if (cachedIds != null && cachedIds.isNotEmpty) {
@@ -1456,7 +1618,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
             addIfPresent('B', data['brand']);
             addIfPresent('C', data['category']);
             addIfPresent('U', data['unit']);
-            addIfPresent('BC', data['barcode']);
+            addIfPresent('P', data['sellingPrice']);
+            addIfPresent('S', data['stock']);
             addIfPresent('A', data['aliases'] ?? data['searchAliases']);
             return fields.join('|');
           })
@@ -1470,13 +1633,13 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       final prompt =
           '''
 You identify matching store products for a cashier. The list below uses:
-ID=Firestore ID; N=name; B=brand; C=category; U=unit; BC=barcode; A=aliases.
-Understand Filipino descriptions, category searches (e.g. softdrinks),
-large-size requests (e.g. malaki na inumin), incomplete names and typos.
-For ambiguous queries, return multiple genuinely relevant product IDs,
-not one guessed item. Consider category, unit and product size, and prefer
-larger sizes for large-size requests. NEVER invent items outside this list.
-Return ONLY IDs from the list, separated by commas, or NONE. No explanation.
+ID=Firestore ID; N=name; B=brand; C=category; U=unit; P=price; S=stock; A=aliases.
+Identify the actual intended grocery product using Filipino/Taglish clues,
+name misspellings, brand, product variant, packaging, and requested size.
+Distinguish products with similar names; respect explicit exclusions.
+Do not infer packaging color, price, size or stock absent from the data.
+When a description fits multiple products, return only relevant IDs.
+NEVER invent products. Return ONLY listed IDs separated by commas, or NONE.
 Query: $query
 Products:
 $productLines
@@ -1498,7 +1661,11 @@ $productLines
       final responseText = (response.text ?? '').trim();
       if (responseText.isEmpty || responseText.toUpperCase() == 'NONE') {
         final categoryFallback = aiCandidates
-            .where((product) => _intentSearchScore(product.data(), query) > 0)
+            .where(
+              (product) =>
+                  _aiProductFitsClues(product.data(), query) &&
+                  _intentSearchScore(product.data(), query) > 0,
+            )
             .map((product) => product.id)
             .take(_maxVisibleProducts)
             .toList();
@@ -1522,6 +1689,7 @@ $productLines
           .where(candidatesById.containsKey)
           .where((id) {
             final product = candidatesById[id]!;
+            if (!_aiProductFitsClues(product.data(), query)) return false;
             final intentScore = _intentSearchScore(product.data(), query);
             if (intentScore > 0) return true;
             final localScore = _localProductSearchScore(product);
@@ -1544,9 +1712,17 @@ $productLines
       // Semantic category queries may be broader than the model's response.
       // If the model returns NONE, keep locally validated real candidates.
       if (ids.isEmpty &&
-          aiCandidates.any((p) => _intentSearchScore(p.data(), query) > 0)) {
+          aiCandidates.any(
+            (p) =>
+                _aiProductFitsClues(p.data(), query) &&
+                _intentSearchScore(p.data(), query) > 0,
+          )) {
         final fallback = aiCandidates
-            .where((p) => _intentSearchScore(p.data(), query) > 0)
+            .where(
+              (p) =>
+                  _aiProductFitsClues(p.data(), query) &&
+                  _intentSearchScore(p.data(), query) > 0,
+            )
             .map((p) => p.id)
             .take(_maxVisibleProducts)
             .toList();
@@ -1591,7 +1767,7 @@ $productLines
           products
               .map(
                 (product) => (
-                  score: _localProductSearchScore(product),
+                  score: _aiCandidateScore(product, query),
                   product: product,
                 ),
               )
