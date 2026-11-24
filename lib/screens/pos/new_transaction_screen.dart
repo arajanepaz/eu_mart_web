@@ -1288,23 +1288,83 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return previous.last;
   }
 
+  // AI-only measurement parsing. Keep decimals intact: normal text
+  // normalization turns "1.5 liter" into "1 5 liter", which previously
+  // caused valid 1.5 L products to be excluded as if 5 L was requested.
+  // The same logic works for every product, not a hard-coded Coke exception.
+  static final RegExp _aiMeasurementPattern = RegExp(
+    r'(\d+(?:[.,]\d+)?)\s*'
+    r'(milliliters?|millilitres?|ml|liters?|litres?|litro|l|'
+    r'kilograms?|kilogrammes?|kilos?|kg|grams?|grammes?|g)\b',
+    caseSensitive: false,
+  );
+
+  ({double amount, String dimension})? _aiExtractMeasurement(String value) {
+    final match = _aiMeasurementPattern.firstMatch(value.toLowerCase());
+    if (match == null) return null;
+    final number = double.tryParse((match.group(1) ?? '').replaceAll(',', '.'));
+    if (number == null || number <= 0) return null;
+    final unit = (match.group(2) ?? '').toLowerCase();
+    if (unit == 'ml' || unit.startsWith('milli')) {
+      return (amount: number, dimension: 'ml');
+    }
+    if (unit == 'l' || unit.startsWith('lit')) {
+      return (amount: number * 1000, dimension: 'ml');
+    }
+    if (unit == 'kg' || unit.startsWith('kilo')) {
+      return (amount: number * 1000, dimension: 'g');
+    }
+    return (amount: number, dimension: 'g');
+  }
+
+  // Remove *only* the quantity and unit before reusing the category matcher.
+  // That matcher normally receives normalized text, which loses decimals.
+  String _aiQueryWithoutMeasurements(String rawQuery) =>
+      rawQuery.toLowerCase().replaceAll(_aiMeasurementPattern, ' ').trim();
+
+  bool _aiMatchesRequestedMeasurement(
+    Map<String, dynamic> product,
+    String rawQuery,
+  ) {
+    final requested = _aiExtractMeasurement(rawQuery);
+    if (requested == null) return true;
+    // Explicit measures must be verified from the actual product fields.
+    // Never infer an unknown package size.
+    final actual = _aiExtractMeasurement(
+      '${product['productName'] ?? ''} ${product['unit'] ?? ''}',
+    );
+    return actual != null &&
+        actual.dimension == requested.dimension &&
+        (actual.amount - requested.amount).abs() <= 0.01;
+  }
+
+  int _aiIntentScore(Map<String, dynamic> product, String rawQuery) {
+    if (_aiExtractMeasurement(rawQuery) == null) {
+      return _intentSearchScore(product, rawQuery);
+    }
+    // Requested size has already been checked exactly by the AI-only gate.
+    // Retain the product/brand/category intent without misreading decimals.
+    return _intentSearchScore(product, _aiQueryWithoutMeasurements(rawQuery));
+  }
+
   // AI-only constraints: catalog facts are checked before/after Gemini.
   // Standard product search, scanner and checkout are not affected.
   bool _aiProductFitsClues(Map<String, dynamic> data, String rawQuery) {
     final query = _normalizeSearchText(rawQuery);
+    final rawLowerQuery = rawQuery.toLowerCase();
     final price = (data['sellingPrice'] as num?)?.toDouble();
     final maxPrice = RegExp(
       r'(?:below|under|less than|maximum|max|hanggang|budget|di lalagpas sa|hindi lalagpas sa)\s*(?:ng|na|sa)?\s*(?:p|php|peso|pesos)?\s*(\d+(?:\.\d+)?)',
-    ).firstMatch(query);
+    ).firstMatch(rawLowerQuery);
     final priceAtMost =
         maxPrice ??
         RegExp(
           r'(?:p|php|peso|pesos)\s*(\d+(?:\.\d+)?)\s*(?:pababa|or less)',
-        ).firstMatch(query);
+        ).firstMatch(rawLowerQuery);
     final exactPrice = priceAtMost == null
         ? RegExp(
             r'(?:p|php|peso|pesos)\s*(\d+(?:\.\d+)?)\b|\b(\d+(?:\.\d+)?)\s*(?:pesos|peso)\b',
-          ).firstMatch(query)
+          ).firstMatch(rawLowerQuery)
         : null;
     if (priceAtMost != null || exactPrice != null) {
       final requested = double.tryParse(
@@ -1319,24 +1379,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       }
     }
 
-    // Restrict explicit volume requests; do not guess missing package sizes.
-    final size = RegExp(
-      r'(\d+(?:[.,]\d+)?)\s*(ml|milliliter|millilitre|l|liter|litre|liters|litres)\b',
-    ).firstMatch(query);
-    if (size != null) {
-      final amount = double.tryParse(
-        (size.group(1) ?? '').replaceAll(',', '.'),
-      );
-      final unit = size.group(2) ?? '';
-      final wantedMl = amount == null
-          ? null
-          : (unit == 'ml' || unit.startsWith('milli') ? amount : amount * 1000);
-      final actualMl = _productVolumeMl(data);
-      if (wantedMl != null &&
-          (actualMl == null || (actualMl - wantedMl).abs() > 1)) {
-        return false;
-      }
-    }
+    // Require the exact catalog measurement for volumes and weights.
+    if (!_aiMatchesRequestedMeasurement(data, rawQuery)) return false;
 
     final volume = _productVolumeMl(data);
     final asksLarge = [
@@ -1344,7 +1388,6 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       'malaking',
       'large',
       'big',
-      'litro',
     ].any((word) => _containsSearchPhrase(query, word));
     final asksSmall = [
       'maliit',
@@ -1477,14 +1520,17 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         '₱${(data['sellingPrice'] as num).toStringAsFixed(2)}',
       );
     }
-    final volume = _productVolumeMl(data);
-    if (volume != null &&
-        (query.contains('ml') ||
-            query.contains('liter') ||
-            query.contains('litro') ||
-            query.contains('maliit') ||
-            query.contains('malaki'))) {
-      reasons.add('Listed volume: ${volume.toStringAsFixed(0)} ml');
+    final measure = _aiExtractMeasurement(rawQuery);
+    if (measure != null && _aiMatchesRequestedMeasurement(data, rawQuery)) {
+      reasons.add(
+        'Matched catalog size: ${measure.amount.toStringAsFixed(0)} ${measure.dimension}',
+      );
+    } else {
+      final volume = _productVolumeMl(data);
+      if (volume != null &&
+          (query.contains('maliit') || query.contains('malaki'))) {
+        reasons.add('Listed volume: ${volume.toStringAsFixed(0)} ml');
+      }
     }
     final stock = data['stock'];
     if (stock is num) {
@@ -1504,9 +1550,16 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     final data = document.data();
     if (!_aiProductFitsClues(data, rawQuery)) return 0;
     final clueScore = _aiClueWordScore(data, rawQuery);
-    final intentScore = _intentSearchScore(data, rawQuery);
+    final intentScore = _aiIntentScore(data, rawQuery);
     if (intentScore > 0) return 1500 + intentScore + clueScore;
     if (_requestedCategory(rawQuery) != null) return 0;
+    // Brand/product-name + explicit measurement is an important catalog
+    // match even if the standard text normalizer would split decimals.
+    final reducedQuery = _aiQueryWithoutMeasurements(rawQuery);
+    if (_aiExtractMeasurement(rawQuery) != null &&
+        _aiClueWordScore(data, reducedQuery) >= 35) {
+      return 1350 + clueScore;
+    }
     final localScore = _localProductSearchScore(document);
     if (localScore > 0) return 1000 + localScore + clueScore;
 
@@ -1676,6 +1729,34 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         }
       }
 
+      // Explicit size + a product-name clue is a verifiable local search.
+      // Return real catalog matches immediately, even when several sizes or
+      // variants exist. Cashier can select the intended variant in the UI.
+      final requestedMeasure = _aiExtractMeasurement(query);
+      if (requestedMeasure != null && rankedCandidates.isNotEmpty) {
+        final measuredMatches = rankedCandidates
+            .where(
+              (entry) =>
+                  _aiMatchesRequestedMeasurement(
+                    entry.document.data(),
+                    query,
+                  ) &&
+                  _aiClueWordScore(
+                        entry.document.data(),
+                        _aiQueryWithoutMeasurements(query),
+                      ) >=
+                      35,
+            )
+            .toList();
+        if (measuredMatches.isNotEmpty) {
+          showMatches(
+            measuredMatches.map((entry) => entry.document.id),
+            'Showing ${measuredMatches.length} catalog product(s) matching the requested size (instant local match).',
+          );
+          return;
+        }
+      }
+
       // Lower input size without changing the AI model or App Check tokens.
       // The highest-ranked candidates are retained for AI disambiguation.
       final hasNamedClue =
@@ -1755,7 +1836,7 @@ $productLines
             .where(
               (product) =>
                   _aiProductFitsClues(product.data(), query) &&
-                  _intentSearchScore(product.data(), query) > 0,
+                  _aiIntentScore(product.data(), query) > 0,
             )
             .map((product) => product.id)
             .take(_maxVisibleProducts)
@@ -1781,7 +1862,7 @@ $productLines
           .where((id) {
             final product = candidatesById[id]!;
             if (!_aiProductFitsClues(product.data(), query)) return false;
-            final intentScore = _intentSearchScore(product.data(), query);
+            final intentScore = _aiIntentScore(product.data(), query);
             if (intentScore > 0) return true;
             final localScore = _localProductSearchScore(product);
             if (localScore >= 20) return true;
@@ -1806,13 +1887,13 @@ $productLines
           aiCandidates.any(
             (p) =>
                 _aiProductFitsClues(p.data(), query) &&
-                _intentSearchScore(p.data(), query) > 0,
+                _aiIntentScore(p.data(), query) > 0,
           )) {
         final fallback = aiCandidates
             .where(
               (p) =>
                   _aiProductFitsClues(p.data(), query) &&
-                  _intentSearchScore(p.data(), query) > 0,
+                  _aiIntentScore(p.data(), query) > 0,
             )
             .map((p) => p.id)
             .take(_maxVisibleProducts)
