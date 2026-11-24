@@ -410,6 +410,24 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     // similarly spelled items from another brand/category via fuzzy matching.
     // This in-memory pass is cheap and adds no Firestore reads.
     final searchText = _normalizeSearchText(normalized);
+
+    // Whole-category requests for basic grocery ingredients must not be
+    // answered using word occurrence alone. "sugar" is a product type,
+    // whereas "no sugar" on a drink and "sugar" in a perfume name are not.
+    // This applies across brands and keeps named products such as
+    // "Gatorade No Sugar" searchable using their full names.
+    if (_isRegularStapleQuery(searchText)) {
+      final matches = _activeProducts
+          .where((product) {
+            return _matchesRegularStaple(product.data(), searchText);
+          })
+          .take(_maxVisibleProducts)
+          .toList();
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() => _visibleProducts = matches);
+      return;
+    }
+
     final exactBrands = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
     final exactNames = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
     final phraseNames = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
@@ -522,8 +540,23 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         searchText.split(' ').length > 1 &&
         !broadQueries.contains(searchText) &&
         !hasSizeDescription;
+    // A specific product type is NOT the same as its broad parent category.
+    // For example, "sardines" must not display all canned goods, while
+    // "canned goods" should continue to show tuna, sardines, etc. This rule
+    // applies to every configured category and product name, not one brand.
+    final specificTypeQuery =
+        _requestedCategory(searchText) != null &&
+        !broadQueries.contains(searchText) &&
+        !hasSizeDescription;
+    final requireProductWordMatch = specificNameQuery || specificTypeQuery;
+    final qualifiedStapleType = _qualifiedRegularStapleType(searchText);
+    // An exact phrase is one good match, but not necessarily the only match.
+    // "dinorado rice" must also find verified rice items whose names omit
+    // "rice" ("Dinorado Kilo") or use a close spelling ("Dinurado Rice").
+    // Keep the existing fast phrase path for other searches.
     if (phraseNames.isNotEmpty &&
-        (_requestedCategory(searchText) == null || specificNameQuery)) {
+        qualifiedStapleType == null &&
+        (_requestedCategory(searchText) == null || requireProductWordMatch)) {
       if (!mounted || generation != _searchGeneration) return;
       setState(() {
         _visibleProducts = phraseNames.take(_maxVisibleProducts).toList();
@@ -538,9 +571,24 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     for (var index = 0; index < _activeProducts.length; index++) {
       if (!mounted || generation != _searchGeneration) return;
       final product = _activeProducts[index];
+      // Restrict only specific edible-oil requests. Generic "oil" searches
+      // and other category searches keep their current broad behavior.
+      if ((searchText == 'cooking oil' ||
+              searchText == 'mantika' ||
+              searchText == 'edible oil') &&
+          !_matchesRegularCookingOil(product.data())) {
+        continue;
+      }
+      // In a qualified ingredient search, require genuine product-type
+      // evidence. A shared category alone must never make oatmeal/sugar
+      // appear in a rice search, or a drink appear as packaged sugar.
+      if (qualifiedStapleType != null &&
+          !_matchesRegularStaple(product.data(), qualifiedStapleType)) {
+        continue;
+      }
       final score = _localProductSearchScore(
         product,
-        strictProductWords: specificNameQuery,
+        strictProductWords: requireProductWordMatch,
       );
       if (score >= 20) scored.add((score, product));
       if ((index + 1) % batchSize == 0) {
@@ -751,6 +799,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       'oil',
       'mantika',
       'cooking oil',
+      'edible oil',
       'vegetable oil',
       'canola',
       'palm oil',
@@ -874,7 +923,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     'milk': ['gatas', 'milk', 'condensada', 'evaporada'],
     'rice': ['bigas', 'rice'],
     'salt': ['asin', 'salt'],
-    'oil': ['mantika', 'cooking oil', 'vegetable oil'],
+    'oil': ['mantika', 'cooking oil', 'edible oil', 'vegetable oil'],
     'sugar': ['asukal', 'sugar'],
     'flour': ['harina', 'flour'],
     'noodles': ['noodles', 'pancit canton', 'instant noodles', 'pancit'],
@@ -1030,6 +1079,249 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
         : 100;
   }
 
+  // Regular Search only: distinguish the actual staple ingredient from
+  // unrelated products whose names include the same words. These checks use
+  // product type and catalog facts rather than any store-specific brand/SKU.
+  // They never run for specific product names (e.g. "Gatorade No Sugar").
+  bool _isRegularStapleQuery(String query) => const <String>{
+    'sugar',
+    'asukal',
+    'salt',
+    'asin',
+    'flour',
+    'harina',
+    'rice',
+    'bigas',
+  }.contains(query);
+
+  // Shared rule for multi-word ingredient searches across all brands.
+  // It recognizes product-type tokens separately from the qualifiers, e.g.
+  // "dinorado rice", "fidel salt", and "queen flour". Only the product type
+  // may be inferred from verified catalog evidence; the remaining words must
+  // still match the actual product name or a conservative typo/alias.
+  String? _qualifiedRegularStapleType(String query) {
+    final words = _normalizeSearchText(query).split(' ');
+    if (words.length < 2) return null;
+
+    // These are named product claims, NOT grocery ingredient searches.
+    // They stay searchable by their complete product names.
+    const claimWords = <String>{'no', 'free', 'zero', 'less', 'low', 'reduced'};
+    if (words.any(claimWords.contains)) return null;
+
+    const types = <String, String>{
+      'rice': 'rice',
+      'bigas': 'rice',
+      'salt': 'salt',
+      'asin': 'salt',
+      'flour': 'flour',
+      'harina': 'flour',
+      'sugar': 'sugar',
+      'asukal': 'sugar',
+    };
+    for (final word in words) {
+      final type = types[word];
+      if (type != null) return type;
+    }
+    return null;
+  }
+
+  bool _matchesRegularStaple(Map<String, dynamic> data, String query) {
+    final name = _normalizeSearchText(data['productName']);
+    final category = _normalizeSearchText(data['category']);
+    if (name.isEmpty) return false;
+
+    // Classification requires evidence from the actual product name/type.
+    // A broad catalog category alone (e.g. Rice & Baking Ingredients) is
+    // never sufficient: it can include oatmeal, sugar, flour and cornstarch.
+    // A packaged item can mention a staple as a flavor, ingredient, or
+    // marketing claim. Do not classify that item as the staple itself.
+    const excludedProductTypes = <String>[
+      'softdrink',
+      'softdrinks',
+      'beverage',
+      'energy drink',
+      'sports drink',
+      'juice',
+      'coffee',
+      'tea',
+      'cologne',
+      'perfume',
+      'lotion',
+      'soap',
+      'shampoo',
+      'conditioner',
+      'cosmetic',
+      'toothpaste',
+      'candy',
+      'chocolate',
+      'biscuit',
+      'cookies',
+      'cracker',
+      'chips',
+      'snack',
+      'noodles',
+      'pancit',
+      'canned',
+      'sardines',
+      'tuna',
+    ];
+    final text = '$name $category';
+    if (excludedProductTypes.any((type) => _containsSearchPhrase(text, type))) {
+      return false;
+    }
+
+    switch (query) {
+      case 'sugar':
+      case 'asukal':
+        if (!_containsSearchPhrase(name, 'sugar') &&
+            !_containsSearchPhrase(name, 'asukal'))
+          return false;
+        if (const <String>[
+          'no sugar',
+          'sugar free',
+          'sugarfree',
+          'zero sugar',
+          'less sugar',
+          'reduced sugar',
+          'low sugar',
+        ].any((term) => _containsSearchPhrase(name, term)))
+          return false;
+        // Keep actual sugar products, regardless of brand, size or grade.
+        return name == 'sugar' ||
+            name.startsWith('sugar ') ||
+            name == 'asukal' ||
+            name.startsWith('asukal ') ||
+            const <String>[
+              'brown sugar',
+              'white sugar',
+              'refined sugar',
+              'washed sugar',
+              'raw sugar',
+              'cane sugar',
+              'muscovado sugar',
+              'granulated sugar',
+              'powdered sugar',
+              'confectioners sugar',
+            ].any((kind) => _containsSearchPhrase(name, kind));
+      case 'salt':
+      case 'asin':
+        return _containsSearchPhrase(name, 'salt') ||
+            _containsSearchPhrase(name, 'asin') ||
+            _containsSearchPhrase(name, 'iodized') &&
+                _containsSearchPhrase(category, 'salt');
+      case 'flour':
+      case 'harina':
+        return _containsSearchPhrase(name, 'flour') ||
+            _containsSearchPhrase(name, 'harina');
+      case 'rice':
+      case 'bigas':
+        // Require an actual rice product, not a match on a broad group name.
+        // Rice varieties may be sold under their variety name alone.
+        const riceVarieties = <String>[
+          'sinandomeng',
+          'dinorado',
+          'dinurado',
+          'jasmine rice',
+          'jasmine',
+          'basmati',
+          'malagkit',
+          'glutinous rice',
+          'brown rice',
+          'white rice',
+          'red rice',
+          'black rice',
+          'japonica',
+          'jasponica',
+          'milagrosa',
+        ];
+        const otherStaples = <String>[
+          'sugar',
+          'asukal',
+          'flour',
+          'harina',
+          'cornstarch',
+          'corn starch',
+          'oatmeal',
+          'oats',
+          'salt',
+          'asin',
+        ];
+        if (otherStaples.any((type) => _containsSearchPhrase(name, type))) {
+          return false;
+        }
+        if (_containsSearchPhrase(name, 'rice') ||
+            _containsSearchPhrase(name, 'bigas')) {
+          return true;
+        }
+        // Only accept unqualified variety names when the catalog explicitly
+        // classifies them as rice; never include the entire category.
+        return _containsSearchPhrase(category, 'rice') &&
+            riceVarieties.any(
+              (variety) => _containsSearchPhrase(name, variety),
+            );
+      default:
+        return false;
+    }
+  }
+
+  // Regular Search only: distinguish an edible cooking-oil request from
+  // products that merely mention oil (tuna in oil, massage oil, hair oil).
+  // This checks product types across every brand; it never hard-codes SKUs.
+  bool _matchesRegularCookingOil(Map<String, dynamic> data) {
+    final name = _normalizeSearchText(data['productName']);
+    final category = _normalizeSearchText(data['category']);
+    final typeText = '$name $category';
+
+    // Prevent an ingredient/packing-liquid mention from qualifying canned
+    // food or personal-care products as a bottle of edible cooking oil.
+    const excludedTypes = <String>[
+      'tuna',
+      'sardines',
+      'sardinas',
+      'corned beef',
+      'canned',
+      'giniling',
+      'flakes',
+      'flks',
+      'baby oil',
+      'hair oil',
+      'massage',
+      'medicated',
+      'efficascent',
+      'liniment',
+      'restorative',
+      'shampoo',
+      'conditioner',
+      'lotion',
+      'essential oil',
+      'aromatherapy',
+      'motor oil',
+      'lubricant',
+    ];
+    if (excludedTypes.any((type) => _containsSearchPhrase(typeText, type))) {
+      return false;
+    }
+
+    // Different edible-oil varieties may omit the literal word "cooking".
+    // Require a recognized oil type in the name (not just "oil" in a
+    // category), so unrelated items are never suggested as edible oil.
+    const edibleOilNames = <String>[
+      'cooking oil',
+      'canola oil',
+      'coconut oil',
+      'vegetable oil',
+      'palm oil',
+      'corn oil',
+      'olive oil',
+      'sunflower oil',
+      'soybean oil',
+      'sesame oil',
+      'rice bran oil',
+      'peanut oil',
+    ];
+    return edibleOilNames.any((type) => _containsSearchPhrase(name, type));
+  }
+
   // Scores local product relevance using exact matches, aliases, incomplete words, and conservative typo tolerance.
   int _localProductSearchScore(
     QueryDocumentSnapshot<Map<String, dynamic>> document, {
@@ -1097,6 +1389,28 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 
           if (nameWords.contains(cleanTerm)) return true;
           if (_hasCloseWord(productName, cleanTerm)) return true;
+
+          // A product type need not be repeated in every catalog SKU name.
+          // For instance "Dinorado Kilo" is rice when its rice-specific
+          // name and verified catalog classification establish that fact.
+          // This is shared across rice, sugar, salt and flour; other query
+          // words must independently match the product name.
+          final qualifiedType = _qualifiedRegularStapleType(query);
+          if (qualifiedType != null &&
+              const <String, String>{
+                    'rice': 'rice',
+                    'bigas': 'rice',
+                    'salt': 'salt',
+                    'asin': 'salt',
+                    'flour': 'flour',
+                    'harina': 'flour',
+                    'sugar': 'sugar',
+                    'asukal': 'sugar',
+                  }[cleanTerm] ==
+                  qualifiedType &&
+              _matchesRegularStaple(data, qualifiedType)) {
+            return true;
+          }
 
           // Generic catalog abbreviation: DP may mean detergent powder,
           // but only for products classified as laundry/detergent. A short
@@ -1171,6 +1485,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       'coca': <String>['coca'],
       'cola': <String>['cola'],
       'cocacola': <String>['coca cola', 'cocacola', 'coke'],
+      // Specific product types must resolve to matching catalog names,
+      // never to their broad parent category (e.g. canned goods).
+      'sardinas': <String>['sardines', 'sardinas'],
+      'sardine': <String>['sardines', 'sardine'],
     };
 
     final result = <String>[normalized];
@@ -1708,6 +2026,63 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return total + clueScore;
   }
 
+  // AI-assisted search: recognize joined catalog words and a conservative
+  // one-character typo in a product's leading name/brand token. This is
+  // generic across products, requires real catalog evidence, and avoids a
+  // Gemini call for straightforward cashier name queries.
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _aiCompactOrTypoMatches(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
+    String rawQuery,
+  ) {
+    final query = _normalizeSearchText(rawQuery);
+    if (query.length < 5 ||
+        query.contains(' ') ||
+        RegExp(r'\d').hasMatch(query)) {
+      return [];
+    }
+
+    final matches = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    for (final product in products) {
+      final data = product.data();
+      if (!_aiProductFitsClues(data, rawQuery)) continue;
+      final name = _normalizeSearchText(data['productName']);
+      final brand = _normalizeSearchText(data['brand']);
+      if (name.isEmpty) continue;
+      final compactName = name.replaceAll(' ', '');
+      final compactBrand = brand.replaceAll(' ', '');
+      final firstNameWord = name.split(' ').first;
+      final firstBrandWord = brand.isEmpty ? '' : brand.split(' ').first;
+
+      // E.g. "colgatebarbie" => "Colgate Barbie 40 g".
+      final joinedMatch =
+          compactName.startsWith(query) ||
+          (compactBrand.length >= 5 && compactBrand == query);
+
+      // E.g. "piatos" => "Piattos Cheese 40 g". Limit to a
+      // one-edit brand/name typo, not a fuzzy category-wide suggestion.
+      bool closeFirstWord(String word) {
+        if (word.length < 5 || (word.length - query.length).abs() > 1) {
+          return false;
+        }
+        final distance = _levenshteinDistance(word, query);
+        return distance == 1 &&
+            1 -
+                    distance /
+                        (word.length > query.length
+                            ? word.length
+                            : query.length) >=
+                0.80;
+      }
+
+      if (joinedMatch ||
+          closeFirstWord(firstNameWord) ||
+          closeFirstWord(firstBrandWord)) {
+        matches.add(product);
+      }
+    }
+    return matches;
+  }
+
   // Local exact matches and repeat queries return immediately. More difficult
   // searches still use Gemini with a compact, locally ranked candidate list.
   // No Firestore query or model change is introduced by this optimization.
@@ -1799,6 +2174,19 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
           );
           return;
         }
+      }
+
+      // Safely resolve catalog name typos and joined words before Gemini.
+      // Never claim a nonexistent product: every result is an actual SKU.
+      final compactOrTypoMatches = _aiCompactOrTypoMatches(products, query);
+      if (compactOrTypoMatches.isNotEmpty) {
+        showMatches(
+          compactOrTypoMatches.map((document) => document.id),
+          'Found ${compactOrTypoMatches.length} matching catalog product(s) '
+          'using joined-name or spelling-tolerant local assistance. '
+          'Confirm the product and variant before adding.',
+        );
+        return;
       }
 
       // Only reuse matches from this page's loaded product catalog.
