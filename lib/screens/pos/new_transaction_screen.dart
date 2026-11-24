@@ -1467,6 +1467,100 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return score;
   }
 
+  // AI-only generic product/variant narrowing for explicit measured searches.
+  // A query such as "coke zero 1.5 liter" must not also show regular Coke,
+  // while "coke 1.5 liter" can show both available Coke variants.
+  // Only enforce query words found verbatim in at least one catalog candidate.
+  // Unknown words still go through the existing typo/AI matching flow.
+  List<({int score, QueryDocumentSnapshot<Map<String, dynamic>> document})>
+  _aiNarrowMeasuredVariants(
+    List<({int score, QueryDocumentSnapshot<Map<String, dynamic>> document})>
+    candidates,
+    String rawQuery,
+  ) {
+    if (candidates.isEmpty) return candidates;
+
+    const ignoredWords = <String>{
+      'the',
+      'and',
+      'for',
+      'with',
+      'yung',
+      'ang',
+      'mga',
+      'ito',
+      'isang',
+      'na',
+      'ng',
+      'sa',
+      'may',
+      'lang',
+      'ako',
+      'maliit',
+      'malaki',
+      'malaking',
+      'small',
+      'large',
+      'big',
+      'below',
+      'under',
+      'less',
+      'than',
+      'maximum',
+      'max',
+      'peso',
+      'pesos',
+      'php',
+      'price',
+      'budget',
+      'pababa',
+      'hindi',
+      'not',
+      'or',
+      'at',
+      'para',
+      'pang',
+    };
+    final queryWords =
+        _normalizeSearchText(_aiQueryWithoutMeasurements(rawQuery))
+            .split(' ')
+            .where(
+              (word) =>
+                  word.length >= 3 &&
+                  !ignoredWords.contains(word) &&
+                  !RegExp(r'^\d+$').hasMatch(word),
+            )
+            .toSet();
+    if (queryWords.isEmpty) return candidates;
+
+    Set<String> catalogWords(Map<String, dynamic> data) {
+      final aliases = data['aliases'] ?? data['searchAliases'] ?? '';
+      return _normalizeSearchText(
+        '${data['productName'] ?? ''} ${data['brand'] ?? ''} $aliases',
+      ).split(' ').where((word) => word.isNotEmpty).toSet();
+    }
+
+    final wordsById = <String, Set<String>>{
+      for (final entry in candidates)
+        entry.document.id: catalogWords(entry.document.data()),
+    };
+    final recognizedWords = queryWords
+        .where((word) => wordsById.values.any((words) => words.contains(word)))
+        .toSet();
+    if (recognizedWords.isEmpty) return candidates;
+
+    final filtered = candidates
+        .where(
+          (entry) => recognizedWords.every(
+            (word) => wordsById[entry.document.id]!.contains(word),
+          ),
+        )
+        .toList();
+    // If the known variant clues conflict across candidates, do not
+    // make a misleading instant match; let the AI path decide instead.
+    return filtered;
+  }
+
   // Explain candidate identification using verifiable catalog fields only.
   // Do not claim that Gemini recognized aliases or packaging not in Firestore.
   String _aiCatalogMatchReason(Map<String, dynamic> data, String rawQuery) {
@@ -1749,11 +1843,21 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
             )
             .toList();
         if (measuredMatches.isNotEmpty) {
-          showMatches(
-            measuredMatches.map((entry) => entry.document.id),
-            'Showing ${measuredMatches.length} catalog product(s) matching the requested size (instant local match).',
+          // Keep requested variant/flavor words when the store catalog
+          // distinguishes products sharing the same brand and package size.
+          final variantMatches = _aiNarrowMeasuredVariants(
+            measuredMatches,
+            query,
           );
-          return;
+          if (variantMatches.isNotEmpty) {
+            showMatches(
+              variantMatches.map((entry) => entry.document.id),
+              'Showing ${variantMatches.length} catalog product(s) matching the requested size and variant (instant local match).',
+            );
+            return;
+          }
+          // When no product satisfies all known variant clues, do not
+          // show misleading local matches; continue to AI interpretation.
         }
       }
 
