@@ -1424,6 +1424,78 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     return score;
   }
 
+  // Explain candidate identification using verifiable catalog fields only.
+  // Do not claim that Gemini recognized aliases or packaging not in Firestore.
+  String _aiCatalogMatchReason(Map<String, dynamic> data, String rawQuery) {
+    final query = _normalizeSearchText(rawQuery);
+    final name = _normalizeSearchText(data['productName']);
+    final brand = _normalizeSearchText(data['brand']);
+    final clues = query
+        .split(' ')
+        .where(
+          (word) =>
+              word.length >= 4 &&
+              !const {
+                'yung',
+                'maliit',
+                'malaki',
+                'malaking',
+                'below',
+                'under',
+                'pesos',
+                'peso',
+                'hindi',
+                'lang',
+                'with',
+                'para',
+                'pancit',
+                'canton',
+              }.contains(word),
+        )
+        .toList();
+
+    final matched = clues
+        .where(
+          (word) =>
+              _containsSearchPhrase(name, word) ||
+              _containsSearchPhrase(brand, word),
+        )
+        .take(2)
+        .toList();
+
+    final reasons = <String>[];
+    if (matched.isNotEmpty) {
+      reasons.add('Name/brand clue: ${matched.join(", ")}');
+    }
+    final askedPrice = RegExp(
+      r'(?:p|php|peso|pesos)\s*(\d+(?:\.\d+)?)\b|'
+      r'\b(\d+(?:\.\d+)?)\s*(?:peso|pesos)\b',
+    ).hasMatch(query);
+    if (askedPrice && data['sellingPrice'] is num) {
+      reasons.add(
+        'Catalog price: '
+        '₱${(data['sellingPrice'] as num).toStringAsFixed(2)}',
+      );
+    }
+    final volume = _productVolumeMl(data);
+    if (volume != null &&
+        (query.contains('ml') ||
+            query.contains('liter') ||
+            query.contains('litro') ||
+            query.contains('maliit') ||
+            query.contains('malaki'))) {
+      reasons.add('Listed volume: ${volume.toStringAsFixed(0)} ml');
+    }
+    final stock = data['stock'];
+    if (stock is num) {
+      reasons.add(stock > 0 ? 'In stock: ${stock.toInt()}' : 'Out of stock');
+    }
+    if (reasons.isEmpty) {
+      return 'Possible catalog match; confirm the exact product and variant.';
+    }
+    return '${reasons.join(" • ")}. Confirm the product before adding.';
+  }
+
   // Scores products locally before the AI request so only relevant candidates are sent to Gemini.
   int _aiCandidateScore(
     QueryDocumentSnapshot<Map<String, dynamic>> document,
@@ -1589,10 +1661,29 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
               .toList()
             ..sort((a, b) => b.score.compareTo(a.score));
 
+      // A unique, well-supported local candidate does not need Gemini.
+      // This helps common descriptive searches without returning a guessed item:
+      // require a genuine product-name/brand clue and strong catalog ranking.
+      if (rankedCandidates.length == 1) {
+        final only = rankedCandidates.single;
+        final clueStrength = _aiClueWordScore(only.document.data(), query);
+        if (only.score >= 1000 && clueStrength >= 35) {
+          showMatches(
+            <String>[only.document.id],
+            '1 possible product identified from the catalog (instant local match).',
+          );
+          return;
+        }
+      }
+
       // Lower input size without changing the AI model or App Check tokens.
       // The highest-ranked candidates are retained for AI disambiguation.
+      final hasNamedClue =
+          rankedCandidates.isNotEmpty &&
+          _aiClueWordScore(rankedCandidates.first.document.data(), query) >= 35;
+      final candidateLimit = hasNamedClue ? 12 : _maxAiCandidates;
       final aiCandidates = rankedCandidates
-          .take(_maxAiCandidates)
+          .take(candidateLimit)
           .map((entry) => entry.document)
           .toList();
 
@@ -3972,6 +4063,45 @@ $productLines
                 'AI Response Time: '
                 '${(_aiResponseTimeMs! / 1000).toStringAsFixed(2)} seconds',
                 style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ),
+          ],
+          if (_aiMatchedProductIds.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF2F6FD),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFD7E4F6)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Why these products may match',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      color: Color(0xFF1565C0),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  for (final id in _aiMatchedProductIds.take(3))
+                    if (_productsById[id] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 3),
+                        child: Text(
+                          '${_productsById[id]!.data()['productName'] ?? 'Product'}: '
+                          '${_aiCatalogMatchReason(_productsById[id]!.data(), _query)}',
+                          style: const TextStyle(
+                            color: Color(0xFF46576D),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                ],
               ),
             ),
           ],
