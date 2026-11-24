@@ -5,6 +5,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../utils/responsive_device.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,13 +49,12 @@ class OwnerDashboard extends StatefulWidget {
 // Owns the mutable UI state and business interactions for the corresponding screen widget.
 class _OwnerDashboardState extends State<OwnerDashboard> {
   int _selectedIndex = 0;
+  // Read IDs confirmed by NotificationsScreen in this owner session.
+  // The Firestore stream remains the long-term source of truth.
+  final Map<String, DateTime> _confirmedReadAt = <String, DateTime>{};
   // Only these top-level destinations appear in the Owner sidebar.
   // Existing feature indices remain unchanged for internal navigation.
   static const List<int> _mainNavigation = [0, 1, 2, 28, 29, 30, 10];
-  // Local sidebar-only search. Does not change the selected page or Firestore.
-  String _sidebarSearchQuery = '';
-  final TextEditingController _sidebarSearchController =
-      TextEditingController();
   // Shared realtime streams: the dashboard uses product/settings data in
   // more than one widget. Broadcasting these streams prevents separate
   // Firestore listeners from being opened for the same collection/document.
@@ -142,7 +142,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
 
   final List<_MenuItem> _menuItems = const [
     _MenuItem('Dashboard', Icons.dashboard_outlined),
-    _MenuItem('New Transaction', Icons.point_of_sale),
+    _MenuItem('Point of Sale', Icons.point_of_sale),
     _MenuItem('Products & Inventory', Icons.inventory_2_outlined),
     _MenuItem('Restock Suggestions', Icons.auto_graph_outlined),
     _MenuItem('Stock Movements', Icons.swap_vert_circle_outlined),
@@ -309,6 +309,10 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: _settingsStream,
       builder: (context, settingsSnapshot) {
+        // Wait for settings before calculating a reliable badge count.
+        if (!settingsSnapshot.hasData || settingsSnapshot.hasError) {
+          return child;
+        }
         final settings = settingsSnapshot.data?.data() ?? <String, dynamic>{};
         final lowStockThreshold =
             (settings['lowStockThreshold'] as num?)?.toInt() ?? 10;
@@ -324,12 +328,21 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: lowStockStream,
           builder: (context, lowStockSnapshot) {
+            if (enableLowStockAlerts &&
+                (!lowStockSnapshot.hasData || lowStockSnapshot.hasError)) {
+              return child;
+            }
             final expirationStream = enableExpirationAlerts
                 ? _expirationStream(expirationAlertDays)
                 : const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
             return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: expirationStream,
               builder: (context, expirationSnapshot) {
+                if (enableExpirationAlerts &&
+                    (!expirationSnapshot.hasData ||
+                        expirationSnapshot.hasError)) {
+                  return child;
+                }
                 // Merge candidate products first so one product produces only
                 // one final alert, exactly like NotificationsScreen._productType.
                 final productMap =
@@ -344,7 +357,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                         <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
                   productMap[document.id] = document;
                 }
-                final productAlerts = <String>{};
+                final productAlerts = <String, DateTime?>{};
                 for (final document in productMap.values) {
                   final data = document.data();
                   final type = _notificationType(
@@ -356,14 +369,14 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                   );
 
                   if (type != 'Normal') {
-                    productAlerts.add(
-                      _notificationReadId(
-                        userId: user.uid,
-                        source: 'product',
-                        documentId: document.id,
-                        type: type,
-                      ),
-                    );
+                    productAlerts[_notificationReadId(
+                          userId: user.uid,
+                          source: 'product',
+                          documentId: document.id,
+                          type: type,
+                        )] =
+                        _notificationReadDate(data['updatedAt']) ??
+                        _notificationReadDate(data['createdAt']);
                   }
 
                   if ((type == 'Low Stock' || type == 'Out of Stock') &&
@@ -386,14 +399,14 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                           ? 'Expiring Soon'
                           : null;
                       if (expiryType != null) {
-                        productAlerts.add(
-                          _notificationReadId(
-                            userId: user.uid,
-                            source: 'product',
-                            documentId: document.id,
-                            type: expiryType,
-                          ),
-                        );
+                        productAlerts[_notificationReadId(
+                              userId: user.uid,
+                              source: 'product',
+                              documentId: document.id,
+                              type: expiryType,
+                            )] =
+                            _notificationReadDate(data['updatedAt']) ??
+                            _notificationReadDate(data['createdAt']);
                       }
                     }
                   }
@@ -401,25 +414,31 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: _permitAlertsStream,
                   builder: (context, permitSnapshot) {
-                    final permitAlerts = <String>{};
+                    if (!permitSnapshot.hasData || permitSnapshot.hasError) {
+                      return child;
+                    }
+                    final permitAlerts = <String, DateTime?>{};
                     for (final document
                         in permitSnapshot.data?.docs ??
                             <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
                       final type = _notificationPermitType(document.data());
                       if (type == 'Normal') continue;
-                      permitAlerts.add(
-                        _notificationReadId(
-                          userId: user.uid,
-                          source: 'permit',
-                          documentId: document.id,
-                          type: type,
-                        ),
-                      );
+                      permitAlerts[_notificationReadId(
+                            userId: user.uid,
+                            source: 'permit',
+                            documentId: document.id,
+                            type: type,
+                          )] =
+                          _notificationReadDate(document.data()['updatedAt']) ??
+                          _notificationReadDate(document.data()['createdAt']);
                     }
                     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                       stream: _priceAlertsStream,
                       builder: (context, priceSnapshot) {
-                        final priceAlerts = <String>{
+                        if (!priceSnapshot.hasData || priceSnapshot.hasError) {
+                          return child;
+                        }
+                        final priceAlerts = <String, DateTime?>{
                           for (final document
                               in priceSnapshot.data?.docs ??
                                   <
@@ -430,9 +449,14 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               source: 'price_update_reminder',
                               documentId: document.id,
                               type: 'Price Update',
-                            ),
+                            ): _notificationReadDate(
+                                  document.data()['updatedAt'],
+                                ) ??
+                                _notificationReadDate(
+                                  document.data()['createdAt'],
+                                ),
                         };
-                        final alertIds = <String>{
+                        final alertActivity = <String, DateTime?>{
                           ...productAlerts,
                           ...permitAlerts,
                           ...priceAlerts,
@@ -442,7 +466,15 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                         >(
                           stream: _notificationReadsStream,
                           builder: (context, readsSnapshot) {
-                            final readIds = <String>{};
+                            // Never show all alerts as unread before read status loads.
+                            if (!readsSnapshot.hasData ||
+                                readsSnapshot.hasError) {
+                              return child;
+                            }
+                            final readAtById = <String, DateTime>{
+                              ..._confirmedReadAt,
+                            };
+                            final legacyReadIds = <String>{};
                             for (final document
                                 in readsSnapshot.data?.docs ??
                                     <
@@ -450,13 +482,30 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                                         Map<String, dynamic>
                                       >
                                     >[]) {
-                              if (document.data()['isRead'] == true) {
-                                readIds.add(document.id);
+                              if (document.data()['isRead'] != true) continue;
+                              final readAt = _notificationReadDate(
+                                document.data()['readAt'],
+                              );
+                              if (readAt == null) {
+                                legacyReadIds.add(document.id);
+                              } else {
+                                final local = readAtById[document.id];
+                                if (local == null || readAt.isAfter(local)) {
+                                  readAtById[document.id] = readAt;
+                                }
                               }
                             }
-                            final unreadCount = alertIds
-                                .where((id) => !readIds.contains(id))
-                                .length;
+                            final unreadCount = alertActivity.entries.where((
+                              entry,
+                            ) {
+                              final readAt = readAtById[entry.key];
+                              if (readAt == null) {
+                                return !legacyReadIds.contains(entry.key);
+                              }
+                              final activity = entry.value;
+                              return activity != null &&
+                                  activity.isAfter(readAt);
+                            }).length;
                             if (unreadCount <= 0) return child;
                             // Handles the stack logic used by this module.
                             return Stack(
@@ -508,12 +557,6 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         );
       },
     );
-  }
-
-  @override
-  void dispose() {
-    _sidebarSearchController.dispose();
-    super.dispose();
   }
 
   Widget _buildOwnerMenuTile(
@@ -591,12 +634,7 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
   // Builds the sidebar UI from the current data and screen state.
   Widget _buildSidebar({required bool compact, bool drawerMode = false}) {
     // Keep original _menuItems indices for page routing and badges.
-    final query = compact ? '' : _sidebarSearchQuery.trim().toLowerCase();
-    final visibleMenuIndices = <int>[
-      for (final i in _mainNavigation)
-        if (query.isEmpty || _menuItems[i].label.toLowerCase().contains(query))
-          i,
-    ];
+    final visibleMenuIndices = _mainNavigation;
     // Handles the animated container logic used by this module.
     return AnimatedContainer(
       duration: const Duration(milliseconds: 280),
@@ -679,80 +717,19 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                 ),
               ),
             ),
-            // Sidebar module finder. Only expanded sidebar has enough space
-            // for the text field; compact mode keeps its existing icon navigation.
-            if (!compact)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 2, 14, 10),
-                child: TextField(
-                  controller: _sidebarSearchController,
-                  onChanged: (value) {
-                    setState(() => _sidebarSearchQuery = value);
-                  },
-                  style: const TextStyle(
-                    color: Color(0xFF17345A),
-                    fontSize: 13,
-                  ),
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: 'Search modules...',
-                    hintStyle: const TextStyle(
-                      color: Color(0xFF71829B),
-                      fontSize: 12.5,
-                    ),
-                    prefixIcon: const Icon(
-                      Icons.search_rounded,
-                      color: Color(0xFF1565C0),
-                      size: 20,
-                    ),
-                    suffixIcon: _sidebarSearchQuery.isEmpty
-                        ? null
-                        : IconButton(
-                            tooltip: 'Clear module search',
-                            icon: const Icon(Icons.close_rounded, size: 18),
-                            color: const Color(0xFF66788E),
-                            onPressed: () {
-                              _sidebarSearchController.clear();
-                              setState(() => _sidebarSearchQuery = '');
-                            },
-                          ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 12,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-              ),
             Expanded(
-              child: query.isNotEmpty && visibleMenuIndices.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No modules found',
-                        style: TextStyle(color: Colors.white70),
-                      ),
-                    )
-                  : ListView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 4,
-                      ),
-                      children: [
-                        for (final index in visibleMenuIndices)
-                          _buildOwnerMenuTile(
-                            index,
-                            compact: compact,
-                            drawerMode: drawerMode,
-                            indented: false,
-                          ),
-                      ],
+              child: ListView(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                children: [
+                  for (final index in visibleMenuIndices)
+                    _buildOwnerMenuTile(
+                      index,
+                      compact: compact,
+                      drawerMode: drawerMode,
+                      indented: false,
                     ),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(9, 6, 9, 12),
@@ -1593,7 +1570,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               ),
                               _summaryCard(
                                 title: "Today's Sales",
-                                value: '₱${todaySales.toStringAsFixed(2)}',
+                                value:
+                                    '₱${NumberFormat('#,##0.00', 'en_US').format(todaySales)}',
                                 icon: Icons.today_outlined,
                                 color: const Color(0xFF1565C0),
                                 onTap: () {
@@ -1604,7 +1582,8 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
                               ),
                               _summaryCard(
                                 title: 'Total Sales',
-                                value: '₱${totalSales.toStringAsFixed(2)}',
+                                value:
+                                    '₱${NumberFormat('#,##0.00', 'en_US').format(totalSales)}',
                                 icon: Icons.payments,
                                 color: const Color(0xFF1565C0),
                                 onTap: () {
@@ -2039,6 +2018,14 @@ class _OwnerDashboardState extends State<OwnerDashboard> {
         8 => const SalesReportsScreen(),
         9 => const PromotionsManagementScreen(),
         10 => NotificationsScreen(
+          onReadPersisted: (ids) {
+            if (!mounted) return;
+            setState(() {
+              for (final id in ids) {
+                _confirmedReadAt[id] = DateTime.now();
+              }
+            });
+          },
           onOpenProducts: () {
             setState(() {
               _selectedIndex = 2;

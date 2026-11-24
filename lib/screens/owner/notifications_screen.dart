@@ -15,6 +15,8 @@ class NotificationsScreen extends StatefulWidget {
   final VoidCallback? onOpenRestockSuggestions;
   final VoidCallback? onOpenStockMovements;
   final VoidCallback? onOpenPermitReminders;
+  // Lets the owner sidebar update after Firestore confirms a read action.
+  final ValueChanged<Set<String>>? onReadPersisted;
 
   // Handles the notifications screen logic used by this module.
   const NotificationsScreen({
@@ -23,6 +25,7 @@ class NotificationsScreen extends StatefulWidget {
     this.onOpenRestockSuggestions,
     this.onOpenStockMovements,
     this.onOpenPermitReminders,
+    this.onReadPersisted,
   });
 
   @override
@@ -33,7 +36,7 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   String _selectedFilter = 'All';
 
-  final Set<String> _locallyReadIds = <String>{};
+  final Map<String, DateTime> _locallyReadAt = <String, DateTime>{};
   bool _markingAllAsRead = false;
   bool _isRefreshing = false;
 
@@ -539,7 +542,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
     if (mounted) {
       setState(() {
-        _locallyReadIds.add(readId);
+        _locallyReadAt[readId] = DateTime.now();
       });
     }
 
@@ -555,10 +558,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             'isRead': true,
             'readAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+      widget.onReadPersisted?.call(<String>{readId});
     } catch (error) {
       if (mounted) {
         setState(() {
-          _locallyReadIds.remove(readId);
+          _locallyReadAt.remove(readId);
         });
       }
       rethrow;
@@ -578,7 +582,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (mounted) {
       setState(() {
         _markingAllAsRead = true;
-        _locallyReadIds.addAll(alertIds);
+        for (final id in alertIds) {
+          _locallyReadAt[id] = DateTime.now();
+        }
       });
     }
 
@@ -610,6 +616,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         await batch.commit();
       }
 
+      // Update the parent sidebar only after every batch was saved.
+      widget.onReadPersisted?.call(alertIds);
+
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -622,7 +631,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     } catch (error) {
       if (mounted) {
         setState(() {
-          _locallyReadIds.removeAll(alertIds);
+          for (final id in alertIds) {
+            _locallyReadAt.remove(id);
+          }
         });
       }
 
@@ -1393,33 +1404,50 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     .where('userId', isEqualTo: userId)
                     .snapshots(),
           builder: (context, readSnapshot) {
-            final readIds = <String>{..._locallyReadIds};
-
+            // A read receipt is valid for the alert version that was seen.
+            // Editing a product/permit after it was read can create a new alert
+            // even when its ID and alert category stay the same.
+            final readAtById = <String, DateTime>{..._locallyReadAt};
+            final legacyReadIds = <String>{};
             for (final document
                 in readSnapshot.data?.docs ??
                     <QueryDocumentSnapshot<Map<String, dynamic>>>[]) {
-              if (document.data()['isRead'] == true) {
-                readIds.add(document.id);
+              if (document.data()['isRead'] != true) continue;
+              final readAt = _readDate(document.data()['readAt']);
+              if (readAt == null) {
+                legacyReadIds.add(document.id);
+              } else {
+                final local = readAtById[document.id];
+                if (local == null || readAt.isAfter(local)) {
+                  readAtById[document.id] = readAt;
+                }
               }
+            }
+            bool isAlertRead(_UnifiedAlert alert) {
+              final id = _readDocumentId(alert);
+              final readAt = readAtById[id];
+              if (readAt == null) return legacyReadIds.contains(id);
+              final activity = alert.activityDate;
+              return activity == null || !activity.isAfter(readAt);
             }
 
             // Show unread notifications before already-read ones. Within each
             // group, preserve newest-updated-first ordering from _buildAlerts.
             filteredAlerts.sort((a, b) {
-              final aUnread = !readIds.contains(_readDocumentId(a));
-              final bUnread = !readIds.contains(_readDocumentId(b));
+              final aUnread = !isAlertRead(a);
+              final bUnread = !isAlertRead(b);
               if (aUnread != bUnread) return aUnread ? -1 : 1;
               return 0;
             });
 
             final unreadCount = allAlerts
-                .where((alert) => !readIds.contains(_readDocumentId(alert)))
+                .where((alert) => !isAlertRead(alert))
                 .length;
 
             // Live per-category unread counts for the filter chips.
             final unreadByType = <String, int>{};
             for (final alert in allAlerts) {
-              if (readIds.contains(_readDocumentId(alert))) continue;
+              if (isAlertRead(alert)) continue;
               unreadByType.update(
                 alert.type,
                 (count) => count + 1,
@@ -1759,9 +1787,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                         itemBuilder: (context, index) {
                           final alert = filteredAlerts[index];
 
-                          final isRead = readIds.contains(
-                            _readDocumentId(alert),
-                          );
+                          final isRead = isAlertRead(alert);
 
                           final color = _typeColor(alert.type);
                           final isPriceUpdate = alert.type == 'Price Update';

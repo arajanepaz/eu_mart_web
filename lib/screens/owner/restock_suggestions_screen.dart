@@ -574,12 +574,12 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
   }
 
   // Filters chip according to the current user selection or business rule.
-  Widget _filterChip(String label) {
+  Widget _filterChip(String label, int count) {
     final selected = _selectedFilter == label;
 
     // Handles the choice chip logic used by this module.
     return ChoiceChip(
-      label: Text(label),
+      label: Text('$label ($count)'),
       selected: selected,
       selectedColor: const Color(0xFF1565C0),
       labelStyle: TextStyle(
@@ -711,57 +711,87 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                   }
                 }
 
-                final suggestions = products
-                    .map((document) {
-                      final data = document.data();
+                // Keep the full priority set for accurate counts even when a
+                // particular filter chip is selected.
+                final allSuggestions = products.map((document) {
+                  final data = document.data();
 
-                      final name = (data['productName'] ?? 'Unknown Product')
-                          .toString();
+                  final name = (data['productName'] ?? 'Unknown Product')
+                      .toString();
 
-                      final stock = (data['stock'] as num?)?.toInt() ?? 0;
+                  final stock = (data['stock'] as num?)?.toInt() ?? 0;
 
-                      final normalizedName = name.trim().toLowerCase();
-                      final legacySales = productNameCounts[normalizedName] == 1
-                          ? (salesByProductName[normalizedName] ?? 0)
-                          : 0;
-                      final soldLast30Days =
-                          (salesByProductId[document.id] ?? 0) + legacySales;
-                      final suggestedQuantity = _suggestedQuantity(
-                        stock: stock,
-                        threshold: lowStockThreshold,
-                        soldLast30Days: soldLast30Days,
-                      );
+                  final normalizedName = name.trim().toLowerCase();
+                  final legacySales = productNameCounts[normalizedName] == 1
+                      ? (salesByProductName[normalizedName] ?? 0)
+                      : 0;
+                  final soldLast30Days =
+                      (salesByProductId[document.id] ?? 0) + legacySales;
+                  final suggestedQuantity = _suggestedQuantity(
+                    stock: stock,
+                    threshold: lowStockThreshold,
+                    soldLast30Days: soldLast30Days,
+                  );
 
-                      final priority = _priority(
-                        stock: stock,
-                        threshold: lowStockThreshold,
-                        soldLast30Days: soldLast30Days,
-                      );
+                  final priority = _priority(
+                    stock: stock,
+                    threshold: lowStockThreshold,
+                    soldLast30Days: soldLast30Days,
+                  );
 
-                      // Handles the restock suggestion logic used by this module.
-                      return _RestockSuggestion(
-                        documentId: document.id,
-                        productName: name,
-                        category: (data['category'] ?? '').toString(),
-                        supplier: (data['supplier'] ?? '').toString(),
-                        stock: stock,
-                        soldLast30Days: soldLast30Days,
-                        suggestedQuantity: suggestedQuantity,
-                        explanation: _restockReason(
-                          stock: stock,
-                          threshold: lowStockThreshold,
-                          soldLast30Days: soldLast30Days,
-                          suggestedQuantity: suggestedQuantity,
-                        ),
-                        priority: priority,
-                      );
-                    })
-                    .where((suggestion) {
-                      // Checks whether the current value satisfies the matches filter rule used by this module.
-                      return _matchesFilter(suggestion.priority);
-                    })
+                  // Handles the restock suggestion logic used by this module.
+                  return _RestockSuggestion(
+                    documentId: document.id,
+                    updatedAt: _readDate(data['updatedAt']),
+                    productName: name,
+                    category: (data['category'] ?? '').toString(),
+                    supplier: (data['supplier'] ?? '').toString(),
+                    stock: stock,
+                    soldLast30Days: soldLast30Days,
+                    suggestedQuantity: suggestedQuantity,
+                    explanation: _restockReason(
+                      stock: stock,
+                      threshold: lowStockThreshold,
+                      soldLast30Days: soldLast30Days,
+                      suggestedQuantity: suggestedQuantity,
+                    ),
+                    priority: priority,
+                  );
+                }).toList();
+
+                final criticalCount = allSuggestions
+                    .where((item) => item.priority == 'Critical')
+                    .length;
+                final highCount = allSuggestions
+                    .where((item) => item.priority == 'High')
+                    .length;
+                final mediumCount = allSuggestions
+                    .where((item) => item.priority == 'Medium')
+                    .length;
+                final monitorCount = allSuggestions
+                    .where((item) => item.priority == 'Monitor')
+                    .length;
+                final restockCount = allSuggestions
+                    .where((item) => item.suggestedQuantity > 0)
+                    .length;
+                final manualReviewCount = allSuggestions
+                    .where(
+                      (item) =>
+                          item.suggestedQuantity == 0 &&
+                          (item.priority == 'Monitor' ||
+                              item.priority == 'Critical'),
+                    )
+                    .length;
+                final allAttentionCount =
+                    criticalCount + highCount + mediumCount + monitorCount;
+
+                final suggestions = allSuggestions
+                    .where((item) => _matchesFilter(item.priority))
                     .toList();
 
+                // Most recently edited products appear first in every filter.
+                // When timestamps tie (or are absent), preserve urgency and
+                // demand as secondary ordering rules.
                 const priorityOrder = {
                   'Critical': 0,
                   'High': 1,
@@ -771,31 +801,24 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                 };
 
                 suggestions.sort((a, b) {
-                  final priorityComparison = (priorityOrder[a.priority] ?? 99)
-                      .compareTo(priorityOrder[b.priority] ?? 99);
-
-                  if (priorityComparison != 0) {
-                    return priorityComparison;
+                  final aUpdated = a.updatedAt?.millisecondsSinceEpoch ?? 0;
+                  final bUpdated = b.updatedAt?.millisecondsSinceEpoch ?? 0;
+                  if (aUpdated != bUpdated) {
+                    return bUpdated.compareTo(aUpdated);
                   }
 
-                  return b.soldLast30Days.compareTo(a.soldLast30Days);
+                  final priorityComparison = (priorityOrder[a.priority] ?? 99)
+                      .compareTo(priorityOrder[b.priority] ?? 99);
+                  if (priorityComparison != 0) return priorityComparison;
+
+                  final salesComparison = b.soldLast30Days.compareTo(
+                    a.soldLast30Days,
+                  );
+                  if (salesComparison != 0) return salesComparison;
+                  return a.productName.toLowerCase().compareTo(
+                    b.productName.toLowerCase(),
+                  );
                 });
-
-                final criticalCount = suggestions
-                    .where((item) => item.priority == 'Critical')
-                    .length;
-
-                final highCount = suggestions
-                    .where((item) => item.priority == 'High')
-                    .length;
-
-                final mediumCount = suggestions
-                    .where((item) => item.priority == 'Medium')
-                    .length;
-
-                final monitorCount = suggestions
-                    .where((item) => item.priority == 'Monitor')
-                    .length;
 
                 // Handles the container logic used by this module.
                 return Container(
@@ -914,6 +937,43 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                 ],
                               );
                             },
+                          ),
+                          // Action counts are separate: a low-stock product without
+                          // recent demand is a manual review, not an automatic order.
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFFDDE6F1),
+                              ),
+                            ),
+                            child: Wrap(
+                              spacing: 18,
+                              runSpacing: 6,
+                              children: [
+                                Text(
+                                  'Suggested restocks: $restockCount',
+                                  style: const TextStyle(
+                                    color: Color(0xFF1565C0),
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  'Manual review (no suggested order): $manualReviewCount',
+                                  style: const TextStyle(
+                                    color: Color(0xFF53657C),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           // Handles the sized box logic used by this module.
                           const SizedBox(height: 16),
@@ -1045,19 +1105,19 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                               scrollDirection: Axis.horizontal,
                               child: Row(
                                 children: [
-                                  _filterChip('All'),
+                                  _filterChip('All', allAttentionCount),
                                   // Handles the sized box logic used by this module.
                                   const SizedBox(width: 8),
-                                  _filterChip('Critical'),
+                                  _filterChip('Critical', criticalCount),
                                   // Handles the sized box logic used by this module.
                                   const SizedBox(width: 8),
-                                  _filterChip('High'),
+                                  _filterChip('High', highCount),
                                   // Handles the sized box logic used by this module.
                                   const SizedBox(width: 8),
-                                  _filterChip('Medium'),
+                                  _filterChip('Medium', mediumCount),
                                   // Handles the sized box logic used by this module.
                                   const SizedBox(width: 8),
-                                  _filterChip('Monitor'),
+                                  _filterChip('Monitor', monitorCount),
                                 ],
                               ),
                             ),
@@ -1081,7 +1141,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
                                     ),
                                     SizedBox(height: 4),
                                     Text(
-                                      'Products are ordered by urgency and recent demand.',
+                                      'Recently updated products appear first, then by priority.',
                                       style: TextStyle(
                                         color: Color(0xFF7D8998),
                                         fontSize: 11.5,
@@ -1238,6 +1298,7 @@ class _RestockSuggestionsScreenState extends State<RestockSuggestionsScreen> {
 // Private UI/data helper used only inside this module.
 class _RestockSuggestion {
   final String documentId;
+  final DateTime? updatedAt;
   final String productName;
   final String category;
   final String supplier;
@@ -1250,6 +1311,7 @@ class _RestockSuggestion {
   // Handles the restock suggestion logic used by this module.
   const _RestockSuggestion({
     required this.documentId,
+    required this.updatedAt,
     required this.productName,
     required this.category,
     required this.supplier,

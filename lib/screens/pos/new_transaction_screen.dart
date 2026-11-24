@@ -36,6 +36,11 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   // Hardware scanners usually type into the focused field like a keyboard.
   // Wait briefly for the complete barcode, including scanners without ENTER.
   Timer? _hardwareScanTimer;
+  // Delay expensive fuzzy matching until the cashier pauses typing.
+  Timer? _textSearchTimer;
+  // Invalidates any in-progress chunked search when input changes.
+  int _searchGeneration = 0;
+  static const Duration _textSearchDelay = Duration(milliseconds: 240);
   String? _lastHardwareBarcode;
   DateTime? _lastHardwareScanAt;
   static const Duration _scanQuietPeriod = Duration(milliseconds: 140);
@@ -343,6 +348,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) async {
     final normalized = value.trim();
+    final generation = _searchGeneration;
 
     if (normalized.isEmpty) {
       if (!mounted) return;
@@ -399,14 +405,152 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       return;
     }
 
-    final scored = <(int, QueryDocumentSnapshot<Map<String, dynamic>>)>[];
+    // Strict exact-match stage for ALL product names and brands.
+    // A recognized brand (e.g. Coca-Cola, Ariel, Nescafe) must not pull in
+    // similarly spelled items from another brand/category via fuzzy matching.
+    // This in-memory pass is cheap and adds no Firestore reads.
+    final searchText = _normalizeSearchText(normalized);
+    final exactBrands = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    final exactNames = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    final phraseNames = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    final isCokeAlias = searchText == 'coke' || searchText == 'cocacola';
     for (final product in _activeProducts) {
-      final score = _localProductSearchScore(product);
-      if (score >= 20) scored.add((score, product));
+      final data = product.data();
+      final brand = _normalizeSearchText(data['brand']);
+      final name = _normalizeSearchText(data['productName']);
+      final compactBrand = brand.replaceAll(' ', '');
+      final compactName = name.replaceAll(' ', '');
+      final compactSearch = searchText.replaceAll(' ', '');
+      final brandMatches =
+          brand.isNotEmpty &&
+          (brand == searchText ||
+              (compactSearch.length >= 5 && compactBrand == compactSearch) ||
+              (isCokeAlias &&
+                  (brand == 'coca cola' || compactBrand == 'cocacola')));
+      final nameMatches =
+          name == searchText ||
+          (compactSearch.length >= 5 && compactName == compactSearch);
+      final cokeNameMatches =
+          isCokeAlias &&
+          (_containsSearchPhrase(name, 'coke') ||
+              _containsSearchPhrase(name, 'coca cola') ||
+              compactName.startsWith('cocacola'));
+
+      if (brandMatches || cokeNameMatches) exactBrands.add(product);
+      if (nameMatches) exactNames.add(product);
+      // Whole-phrase match only, not an arbitrary substring (e.g. 'cola'
+      // in 'chocolate'). Do not use this for broad category queries.
+      if (searchText.length >= 3 && _containsSearchPhrase(name, searchText)) {
+        phraseNames.add(product);
+      }
     }
+
+    // When the query exactly names a catalog brand, show only that brand.
+    // Otherwise prefer exact full product names over fuzzy matches. Coke is
+    // an existing store alias for Coca-Cola, not the entire soda category.
+    final strictMatches = exactBrands.isNotEmpty ? exactBrands : exactNames;
+    if (strictMatches.isNotEmpty) {
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() {
+        _visibleProducts = strictMatches.take(_maxVisibleProducts).toList();
+      });
+      return;
+    }
+
+    // A specific multi-word product query must outrank category intent.
+    // "coke mismo" is a product phrase, whereas "softdrinks" remains broad.
+    // Generic category phrases and descriptive size requests stay broad.
+    const broadQueries = <String>{
+      'softdrinks',
+      'softdrink',
+      'soft drinks',
+      'soda',
+      'cola',
+      'inumin',
+      'drink',
+      'drinks',
+      'beverage',
+      'beverages',
+      'tubig',
+      'water',
+      'juice',
+      'kape',
+      'coffee',
+      'gatas',
+      'milk',
+      'bigas',
+      'rice',
+      'asin',
+      'salt',
+      'mantika',
+      'cooking oil',
+      'asukal',
+      'sugar',
+      'harina',
+      'flour',
+      'noodles',
+      'instant noodles',
+      'pancit',
+      'canned goods',
+      'de lata',
+      'delata',
+      'snacks',
+      'chichirya',
+      'tinapay',
+      'bread',
+      'sabon panligo',
+      'panlaba',
+      'laundry',
+      'detergent',
+      'panghugas',
+      'dishwashing',
+      'shampoo',
+      'toothpaste',
+      'panglinis',
+      'cleaner',
+      'condiments',
+      'sawsawan',
+      'itlog',
+      'eggs',
+      'diapers',
+      'diaper',
+    };
+    final hasSizeDescription = RegExp(
+      r'(^| )(malaki|malaking|maliit|small|large|big|family size|litro)( |$)',
+    ).hasMatch(searchText);
+    final specificNameQuery =
+        searchText.split(' ').length > 1 &&
+        !broadQueries.contains(searchText) &&
+        !hasSizeDescription;
+    if (phraseNames.isNotEmpty &&
+        (_requestedCategory(searchText) == null || specificNameQuery)) {
+      if (!mounted || generation != _searchGeneration) return;
+      setState(() {
+        _visibleProducts = phraseNames.take(_maxVisibleProducts).toList();
+      });
+      return;
+    }
+
+    final scored = <(int, QueryDocumentSnapshot<Map<String, dynamic>>)>[];
+    // Fuzzy matching is CPU-heavy. Process small batches so keyboard events
+    // and browser frames are serviced between batches instead of freezing UI.
+    const batchSize = 20;
+    for (var index = 0; index < _activeProducts.length; index++) {
+      if (!mounted || generation != _searchGeneration) return;
+      final product = _activeProducts[index];
+      final score = _localProductSearchScore(
+        product,
+        strictProductWords: specificNameQuery,
+      );
+      if (score >= 20) scored.add((score, product));
+      if ((index + 1) % batchSize == 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    }
+    if (!mounted || generation != _searchGeneration) return;
     scored.sort((a, b) => b.$1.compareTo(a.$1));
 
-    if (!mounted) return;
+    if (!mounted || generation != _searchGeneration) return;
     setState(() {
       _visibleProducts = scored
           .take(_maxVisibleProducts)
@@ -419,6 +563,8 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
   // Covers ENTER, TAB and no-suffix scanners without double-adding.
   void _commitHardwareBarcode(String value) {
     _hardwareScanTimer?.cancel();
+    _textSearchTimer?.cancel();
+    _searchGeneration++;
     final barcode = value.trim();
     if (!mounted || barcode.isEmpty) return;
 
@@ -455,9 +601,33 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> products,
   ) {
     _hardwareScanTimer?.cancel();
-    _handleSearchInput(value, products);
+    _textSearchTimer?.cancel();
+    _searchGeneration++;
 
     final barcode = value.trim().toLowerCase();
+    // Exact hardware barcode matches must stay immediate. Text searches are
+    // debounced so the keyboard remains responsive even with a large catalog.
+    if (barcode.isEmpty ||
+        RegExp(r'^\d+$').hasMatch(barcode) ||
+        (_productsByBarcode[barcode]?.isNotEmpty ?? false)) {
+      _handleSearchInput(value, products);
+    } else {
+      // Do not leave unrelated old/default cards visible while the debounced
+      // text search is pending. This also makes no-match results unambiguous.
+      setState(() {
+        _query = barcode;
+        _scannedBarcodeProductId = null;
+        _aiMatchedProductIds.clear();
+        _aiSearchMessage = '';
+        _aiResponseTimeMs = null;
+        _visibleProducts = [];
+      });
+      _textSearchTimer = Timer(_textSearchDelay, () {
+        if (!mounted || _searchController.text != value) return;
+        _handleSearchInput(value, products);
+      });
+    }
+
     // Require a complete, unique catalog barcode before auto-processing.
     if (barcode.length < 6 || (_productsByBarcode[barcode]?.length ?? 0) != 1) {
       return;
@@ -598,7 +768,9 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     ],
     'canned': [
       'canned goods',
+      'canned',
       'de lata',
+      'delata',
       'sardines',
       'sardinas',
       'corned beef',
@@ -708,7 +880,9 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     'noodles': ['noodles', 'pancit canton', 'instant noodles', 'pancit'],
     'canned': [
       'canned goods',
+      'canned',
       'de lata',
+      'delata',
       'sardinas',
       'sardines',
       'corned beef',
@@ -858,17 +1032,19 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 
   // Scores local product relevance using exact matches, aliases, incomplete words, and conservative typo tolerance.
   int _localProductSearchScore(
-    QueryDocumentSnapshot<Map<String, dynamic>> document,
-  ) {
+    QueryDocumentSnapshot<Map<String, dynamic>> document, {
+    bool strictProductWords = false,
+  }) {
     final data = document.data();
     final query = _normalizeSearchText(_query);
     if (query.isEmpty) return 0;
 
-    final intentScore = _intentSearchScore(data, query);
-    if (intentScore > 0) return intentScore;
-    // A recognized category request must not fall through to fuzzy matches
-    // from unrelated departments or contradictory sizes/brands.
-    if (_requestedCategory(query) != null) return 0;
+    if (!strictProductWords) {
+      final intentScore = _intentSearchScore(data, query);
+      if (intentScore > 0) return intentScore;
+      // Broad category queries retain the existing intent behavior.
+      if (_requestedCategory(query) != null) return 0;
+    }
 
     final productName = _normalizeSearchText(data['productName']);
     final brand = _normalizeSearchText(data['brand']);
@@ -931,6 +1107,10 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
 
       if (allNameWordsMatch) return 90;
     }
+
+    // For specific queries, never fall back to the whole brand/category.
+    // A typo must still match *all* product-name words to be suggested.
+    if (strictProductWords) return 0;
 
     // Brand/category/unit remain searchable, but only by whole-word or
     // close-word matching so broad substrings do not create false positives.
@@ -2708,8 +2888,19 @@ $productLines
         completedAt: completedAt,
       );
 
-      // Loads active product records into local caches used by fast POS search and barcode lookup.
-      await _loadProducts();
+      // Refresh only purchased products, not the entire catalog after every sale.
+      // The transaction has already committed; a refresh failure must never
+      // cause the cashier to retry an already-successful payment.
+      try {
+        await _refreshPurchasedProducts(
+          items.map((item) => item.productId).toSet(),
+        );
+      } catch (error) {
+        debugPrint(
+          'Targeted product refresh failed; reloading catalog: $error',
+        );
+        await _loadProducts();
+      }
 
       if (!mounted) return;
 
@@ -3441,6 +3632,8 @@ $productLines
               onChanged: (value) =>
                   _onHardwareSearchChanged(value, allProducts),
               onSubmitted: (value) async {
+                _textSearchTimer?.cancel();
+                _searchGeneration++;
                 final normalized = value.trim();
                 if (normalized.isEmpty) return;
 
@@ -3475,6 +3668,8 @@ $productLines
                     : IconButton(
                         onPressed: () {
                           _hardwareScanTimer?.cancel();
+                          _textSearchTimer?.cancel();
+                          _searchGeneration++;
                           _searchController.clear();
                           setState(() {
                             _query = '';
@@ -4311,6 +4506,71 @@ $productLines
     );
   }
 
+  // Refresh changed products after checkout without charging one read per
+  // product in the complete catalog. Query snapshots preserve existing POS
+  // types used by search results, barcode lookup, and product cards.
+  Future<void> _refreshPurchasedProducts(Set<String> productIds) async {
+    if (productIds.isEmpty) return;
+
+    final updated = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    final ids = productIds.toList();
+    // Conservative batch size for Firestore document-ID IN queries.
+    for (var start = 0; start < ids.length; start += 10) {
+      final end = (start + 10 < ids.length) ? start + 10 : ids.length;
+      final batchIds = ids.sublist(start, end);
+      final snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .where(FieldPath.documentId, whereIn: batchIds)
+          .get(const GetOptions(source: Source.server));
+      for (final doc in snapshot.docs) {
+        updated[doc.id] = doc;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      // Preserve catalog order and all unaffected products.
+      _activeProducts = [
+        for (final existing in _activeProducts)
+          if (!productIds.contains(existing.id))
+            existing
+          else if (updated.containsKey(existing.id) &&
+              updated[existing.id]!.data()['isActive'] != false)
+            updated[existing.id]!,
+      ];
+
+      // Rebuild the in-memory indexes without additional Firestore queries.
+      _productsById.clear();
+      _productsByBarcode.clear();
+      for (final product in _activeProducts) {
+        _productsById[product.id] = product;
+        final barcode = (product.data()['barcode'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+        if (barcode.isNotEmpty) {
+          (_productsByBarcode[barcode] ??= []).add(product);
+        }
+      }
+
+      // Keep currently displayed product IDs but refresh their snapshots.
+      // For an empty search, show the normal initial product list.
+      if (_query.trim().isEmpty) {
+        _visibleProducts = _activeProducts.take(_maxVisibleProducts).toList();
+      } else {
+        _visibleProducts = [
+          for (final product in _visibleProducts)
+            if (_productsById.containsKey(product.id))
+              _productsById[product.id]!,
+        ];
+      }
+      _recentScannedProductIds.removeWhere(
+        (id) => !_productsById.containsKey(id),
+      );
+      _aiSearchCache.clear();
+    });
+  }
+
   // Loads active product records into local caches used by fast POS search and barcode lookup.
   Future<void> _loadProducts() async {
     if (mounted) {
@@ -4430,6 +4690,7 @@ $productLines
   @override
   void dispose() {
     _hardwareScanTimer?.cancel();
+    _textSearchTimer?.cancel();
     _durationTimer?.cancel();
     _searchFocusNode.dispose();
     _searchController.dispose();

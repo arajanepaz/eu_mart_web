@@ -6,6 +6,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../utils/responsive_device.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,7 +34,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
 
   final List<_MenuItem> _menuItems = const [
     _MenuItem('Dashboard', Icons.dashboard_outlined),
-    _MenuItem('New Transaction', Icons.point_of_sale),
+    _MenuItem('Point of Sale', Icons.point_of_sale),
     _MenuItem('Products', Icons.inventory_2_outlined),
     _MenuItem('Transaction History', Icons.receipt_long_outlined),
     _MenuItem('End-of-Shift Report', Icons.summarize_outlined),
@@ -999,7 +1000,8 @@ class _CashierDashboardState extends State<CashierDashboard> {
                             children: [
                               _summaryCard(
                                 title: "Today's Sales",
-                                value: '₱${todaySales.toStringAsFixed(2)}',
+                                value:
+                                    '₱${NumberFormat('#,##0.00', 'en_US').format(todaySales)}',
                                 icon: Icons.payments_outlined,
                                 color: Colors.green,
                               ),
@@ -1190,7 +1192,7 @@ class _CashierDashboardState extends State<CashierDashboard> {
                           runSpacing: 14,
                           children: [
                             _quickActionButton(
-                              label: 'New Transaction',
+                              label: 'Point of Sale',
                               icon: Icons.point_of_sale,
                               onPressed: () {
                                 setState(() {

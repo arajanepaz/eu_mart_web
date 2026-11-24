@@ -45,6 +45,176 @@ class _UnifiedInventoryWorkspaceState extends State<ProductsInventoryScreen> {
   // a tab switch. Unvisited tabs are not created until opened.
   final Set<int> _visitedSections = <int>{0};
 
+  // Tab indicators are informational; they do not modify inventory or sales.
+  // Restock = active, non-expired products at/below the configured threshold.
+  // Stock Movements = activity records created in the last 7 days.
+  int _restockAttentionCount = 0;
+  int _recentMovementCount = 0;
+  int _badgeThreshold = 10;
+  bool _restockCountReady = false;
+  bool _movementCountReady = false;
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _badgeProducts = [];
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _badgeSettingsSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _badgeProductsSub;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _badgeMovementsSub;
+
+  DateTime? _badgeDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  void _recountRestockAttention() {
+    final today = DateTime.now();
+    final dateOnly = DateTime(today.year, today.month, today.day);
+    final count = _badgeProducts.where((doc) {
+      final data = doc.data();
+      if (data['isActive'] == false) return false;
+      final expires = _badgeDate(data['expirationDate']);
+      if (expires != null &&
+          DateTime(
+            expires.year,
+            expires.month,
+            expires.day,
+          ).isBefore(dateOnly)) {
+        return false;
+      }
+      final rawStock = data['stock'];
+      final stock = rawStock is num
+          ? rawStock.toInt()
+          : int.tryParse(rawStock?.toString() ?? '') ?? 0;
+      return stock <= _badgeThreshold;
+    }).length;
+    if (mounted && (count != _restockAttentionCount || !_restockCountReady)) {
+      setState(() {
+        _restockAttentionCount = count;
+        _restockCountReady = true;
+      });
+    }
+  }
+
+  // Recreate the narrowly filtered listener only when the threshold changes.
+  // A product moved above/below the threshold enters/leaves this query
+  // automatically, so the badge still updates in realtime.
+  void _watchRestockBadgeProducts() {
+    _badgeProductsSub?.cancel();
+    _badgeProductsSub = null;
+    _badgeProducts = [];
+    if (mounted) {
+      setState(() => _restockCountReady = false);
+    }
+    _badgeProductsSub = FirebaseFirestore.instance
+        .collection('products')
+        .where('stock', isLessThanOrEqualTo: _badgeThreshold)
+        .snapshots()
+        .listen(
+          (snapshot) {
+            _badgeProducts = snapshot.docs;
+            _recountRestockAttention();
+          },
+          onError: (Object error) {
+            debugPrint('Unable to load restock badge products: $error');
+            if (mounted) setState(() => _restockCountReady = false);
+          },
+        );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final firestore = FirebaseFirestore.instance;
+    // First read the configured threshold, then watch only candidate low-stock
+    // products. The old unrestricted products.snapshots() listener downloaded
+    // every catalog document merely to display this tab badge.
+    _badgeSettingsSub = firestore
+        .collection('settings')
+        .doc('system')
+        .snapshots()
+        .listen(
+          (doc) {
+            final raw = doc.data()?['lowStockThreshold'];
+            final nextThreshold = raw is num
+                ? raw.toInt()
+                : int.tryParse(raw?.toString() ?? '') ?? 10;
+            if (_badgeProductsSub == null || nextThreshold != _badgeThreshold) {
+              _badgeThreshold = nextThreshold;
+              _watchRestockBadgeProducts();
+            }
+          },
+          onError: (Object error) {
+            debugPrint('Unable to load restock badge settings: $error');
+          },
+        );
+    final cutoff = Timestamp.fromDate(
+      DateTime.now().subtract(const Duration(days: 7)),
+    );
+    _badgeMovementsSub = firestore
+        .collection('stock_movements')
+        .where('createdAt', isGreaterThanOrEqualTo: cutoff)
+        .snapshots()
+        .listen((snapshot) {
+          if (!mounted) return;
+          setState(() {
+            _recentMovementCount = snapshot.docs.length;
+            _movementCountReady = true;
+          });
+        });
+  }
+
+  @override
+  void dispose() {
+    _badgeSettingsSub?.cancel();
+    _badgeProductsSub?.cancel();
+    _badgeMovementsSub?.cancel();
+    super.dispose();
+  }
+
+  Widget _tabLabel(int index, {required bool selected}) {
+    final name = _sections[index].name;
+    if (index != 1 && index != 2) return Text(name);
+    final count = index == 1 ? _recentMovementCount : _restockAttentionCount;
+    final ready = index == 1 ? _movementCountReady : _restockCountReady;
+    final isAttention = index == 2 && count > 0;
+    return Tooltip(
+      message: index == 1
+          ? 'Stock movement records in the last 7 days'
+          : 'Active, non-expired products with stock at/below low-stock threshold',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(name),
+          const SizedBox(width: 7),
+          Container(
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 20),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: isAttention
+                  ? const Color(0xFFD32F2F)
+                  : selected
+                  ? Colors.white.withValues(alpha: 0.20)
+                  : const Color(0xFFE5EEFB),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              ready ? '$count' : '…',
+              style: TextStyle(
+                color: isAttention
+                    ? Colors.white
+                    : selected
+                    ? Colors.white
+                    : const Color(0xFF1559A6),
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _contentFor(int section) => switch (section) {
     0 => const _ProductsCatalogScreen(),
     1 => const StockMovementScreen(),
@@ -104,7 +274,10 @@ class _UnifiedInventoryWorkspaceState extends State<ProductsInventoryScreen> {
                           child: OutlinedButton.icon(
                             onPressed: () => _openSection(index),
                             icon: Icon(_sections[index].icon, size: 17),
-                            label: Text(_sections[index].name),
+                            label: _tabLabel(
+                              index,
+                              selected: _section == index,
+                            ),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: _section == index
                                   ? Colors.white
@@ -1331,7 +1504,7 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
 
     if (result == true && mounted) {
       // Loads active product records into local caches used by fast POS search and barcode lookup.
-      await _loadProducts();
+      await _loadProducts(forceServer: true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1465,7 +1638,7 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
       );
 
       // Loads active product records into local caches used by fast POS search and barcode lookup.
-      await _loadProducts();
+      await _loadProducts(forceServer: true);
 
       if (!mounted) return true;
 
@@ -1495,6 +1668,15 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
   // ------------------------------------------------------------
   // OPTIMIZED PRODUCT LOADING / SEARCH / PAGINATION
   // ------------------------------------------------------------
+
+  // Shared within this Flutter app session so reopening Products does not
+  // download the complete catalog again on every navigation.
+  // Scope by authenticated user; another account must never inherit this list.
+  static List<QueryDocumentSnapshot<Map<String, dynamic>>> _sessionProducts =
+      [];
+  static String? _sessionUserId;
+  static DateTime? _sessionFetchedAt;
+  static const Duration _sessionCacheLifetime = Duration(minutes: 15);
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _allProducts = [];
   bool _productsLoading = true;
@@ -1526,9 +1708,67 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
         });
   }
 
-  // Cache-first and stale-while-revalidate: avoid blocking the entire catalog
-  // while waiting for a network round trip. The server remains authoritative.
+  // Cache the catalog, then subscribe only to recently changed products.
+  // The server remains authoritative for full manual refreshes.
   bool _isFetchingProducts = false;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _productUpdatesSub;
+  DateTime? _productUpdatesSince;
+
+  // Watch only products changed since the cached full-catalog snapshot.
+  // Every checkout already sets products/{id}.updatedAt = serverTimestamp().
+  // This works across owner/cashier devices and does not stream all products.
+  void _watchRecentProductChanges() {
+    final fetchedAt = _sessionFetchedAt;
+    if (!mounted || fetchedAt == null) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    // A two-minute overlap mitigates slight clock/reporting differences.
+    final since = fetchedAt.subtract(const Duration(minutes: 2));
+    if (_productUpdatesSub != null && _productUpdatesSince == since) return;
+
+    _productUpdatesSub?.cancel();
+    _productUpdatesSince = since;
+    _productUpdatesSub = FirebaseFirestore.instance
+        .collection('products')
+        .where('updatedAt', isGreaterThanOrEqualTo: Timestamp.fromDate(since))
+        .snapshots()
+        .listen(
+          (snapshot) {
+            if (!mounted ||
+                FirebaseAuth.instance.currentUser?.uid != uid ||
+                _isFetchingProducts)
+              return;
+            // Apply only changed documents, preserving all untouched catalog
+            // snapshots and avoiding an expensive full inventory reload.
+            final byId = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{
+              for (final document in _allProducts) document.id: document,
+            };
+            // QuerySnapshot.docs supplies QueryDocumentSnapshot objects,
+            // matching the existing catalog cache type. DocumentChange.doc
+            // is only a DocumentSnapshot and cannot be assigned here.
+            // This filtered query tracks updates, not deletions; manual full
+            // refresh still reconciles actual removals.
+            if (snapshot.docs.isEmpty) return;
+            for (final document in snapshot.docs) {
+              byId[document.id] = document;
+            }
+            final documents = byId.values.toList()
+              ..sort(
+                (a, b) => (a.data()['productName'] ?? '')
+                    .toString()
+                    .toLowerCase()
+                    .compareTo(
+                      (b.data()['productName'] ?? '').toString().toLowerCase(),
+                    ),
+              );
+            _sessionProducts = documents;
+            _applyProductDocuments(documents);
+          },
+          onError: (Object error) {
+            debugPrint('Unable to watch inventory product updates: $error');
+          },
+        );
+  }
 
   void _applyProductDocuments(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
@@ -1563,22 +1803,44 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
     });
   }
 
-  // Load locally cached data immediately when available, then fetch the
-  // authoritative server version. No duplicate full-collection requests.
-  Future<void> _loadProducts() async {
+  // Reuse a recent catalog when navigating back to Products. A full refresh
+  // still happens on first open, after the 15-minute lifetime, or on demand.
+  // Recent stock/price updates auto-sync; Refresh Inventory remains available.
+  Future<void> _loadProducts({bool forceServer = false}) async {
     if (_isFetchingProducts) return;
     _isFetchingProducts = true;
-    if (mounted) {
-      setState(() {
-        _productsLoading = _allProducts.isEmpty;
-        _productsError = null;
-      });
-    }
     try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) throw StateError('Please sign in to load inventory.');
+      if (_sessionUserId != uid) {
+        _sessionUserId = uid;
+        _sessionProducts = [];
+        _sessionFetchedAt = null;
+      }
+
+      // This cache is already in memory; displaying it requires zero reads.
+      if (_allProducts.isEmpty && _sessionProducts.isNotEmpty) {
+        _applyProductDocuments(_sessionProducts);
+      }
+      if (mounted) {
+        setState(() {
+          _productsLoading = _allProducts.isEmpty;
+          _productsError = null;
+        });
+      }
+
+      final lastFetch = _sessionFetchedAt;
+      final recent =
+          lastFetch != null &&
+          DateTime.now().difference(lastFetch) < _sessionCacheLifetime;
+      if (!forceServer && recent && _sessionProducts.isNotEmpty) {
+        _watchRecentProductChanges();
+        return;
+      }
+
       final query = FirebaseFirestore.instance
           .collection('products')
           .orderBy('productName');
-
       if (_allProducts.isEmpty) {
         try {
           final cached = await query.get(
@@ -1586,20 +1848,22 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
           );
           if (cached.docs.isNotEmpty) _applyProductDocuments(cached.docs);
         } catch (_) {
-          // The browser may have no Firestore cache yet.
+          // No usable local browser cache; continue to server.
         }
       }
 
-      // The full catalog is retained to preserve cross-product search,
-      // category chips, overall stock totals, and existing pagination.
+      // Refresh all catalog records only when needed. This preserves accurate
+      // totals and existing full-catalog search once the refresh finishes.
       final latest = await query.get(const GetOptions(source: Source.server));
+      if (FirebaseAuth.instance.currentUser?.uid != uid) return;
+      _sessionProducts = latest.docs;
+      _sessionFetchedAt = DateTime.now();
       _applyProductDocuments(latest.docs);
+      _watchRecentProductChanges();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _productsLoading = false;
-        // Keep already rendered cached data rather than replacing it with
-        // an error page if the connection temporarily fails.
         _productsError = _allProducts.isEmpty ? error.toString() : null;
       });
     } finally {
@@ -1826,10 +2090,22 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
                       runSpacing: 10,
                       children: [
                         OutlinedButton.icon(
+                          onPressed: () => _loadProducts(forceServer: true),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.65),
+                            ),
+                            minimumSize: const Size(155, 48),
+                          ),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('REFRESH INVENTORY'),
+                        ),
+                        OutlinedButton.icon(
                           onPressed: () async {
                             // Handles the import products from csv logic used by this module.
                             await _importProductsFromCsv();
-                            await _loadProducts();
+                            await _loadProducts(forceServer: true);
                           },
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.white,
@@ -2168,8 +2444,8 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: SingleChildScrollView(
-          child: SizedBox(
-            width: double.infinity,
+          scrollDirection: Axis.horizontal,
+          child: SingleChildScrollView(
             child: DataTable(
               headingRowHeight: 54,
               dataRowMinHeight: 62,
@@ -2300,39 +2576,47 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
                     ),
                     DataCell(Text((data['unit'] ?? '').toString())),
                     DataCell(
-                      Text(
-                        expirationDate != null &&
-                                DateTime(
-                                  expirationDate.year,
-                                  expirationDate.month,
-                                  expirationDate.day,
-                                ).isBefore(
-                                  DateTime(
-                                    DateTime.now().year,
-                                    DateTime.now().month,
-                                    DateTime.now().day,
-                                  ),
-                                )
-                            ? 'EXPIRED • ${_formatDate(expirationDate)}'
-                            : _formatDate(expirationDate),
-                        style: TextStyle(
-                          color:
+                      Builder(
+                        builder: (context) {
+                          final now = DateTime.now();
+                          final today = DateTime(now.year, now.month, now.day);
+                          final isExpired =
                               expirationDate != null &&
-                                  DateTime(
-                                    expirationDate.year,
-                                    expirationDate.month,
-                                    expirationDate.day,
-                                  ).isBefore(
-                                    DateTime(
-                                      DateTime.now().year,
-                                      DateTime.now().month,
-                                      DateTime.now().day,
+                              DateTime(
+                                expirationDate.year,
+                                expirationDate.month,
+                                expirationDate.day,
+                              ).isBefore(today);
+                          return SizedBox(
+                            width: 115,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (isExpired)
+                                  const Text(
+                                    'EXPIRED',
+                                    style: TextStyle(
+                                      color: Color(0xFFB91C1C),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
                                     ),
-                                  )
-                              ? const Color(0xFFB91C1C)
-                              : const Color(0xFF52657B),
-                          fontWeight: FontWeight.w700,
-                        ),
+                                  ),
+                                Text(
+                                  _formatDate(expirationDate),
+                                  softWrap: false,
+                                  style: TextStyle(
+                                    color: isExpired
+                                        ? const Color(0xFFB91C1C)
+                                        : const Color(0xFF52657B),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
                     DataCell(
@@ -2419,6 +2703,7 @@ class _ProductsCatalogScreenState extends State<_ProductsCatalogScreen> {
 
   @override
   void dispose() {
+    _productUpdatesSub?.cancel();
     _thresholdSubscription?.cancel();
     _searchController.dispose();
     super.dispose();
