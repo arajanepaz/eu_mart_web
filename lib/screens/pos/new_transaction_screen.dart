@@ -1713,6 +1713,37 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
       }
     }
 
+    // Product type is a hard constraint for explicit edible cooking-oil
+    // requests. Size and the word "oil" alone are NOT enough: medicinal,
+    // cosmetic and canned-food oils must never be suggested as cooking oil.
+    // Reuse the same product-type classifier already verified by Regular
+    // Search, without changing its matching behavior.
+    final asksForCookingOil =
+        _containsSearchPhrase(query, 'cooking oil') ||
+        _containsSearchPhrase(query, 'edible oil') ||
+        _containsSearchPhrase(query, 'mantika');
+    if (asksForCookingOil && !_matchesRegularCookingOil(data)) {
+      return false;
+    }
+
+    // Share the verified Regular Search staple classifier with AI results,
+    // including qualified requests such as "dinorado rice" and "queen flour".
+    // Specific catalog names mentioning a staple (e.g. "Juicy Cologne Sugar")
+    // remain searchable as named products; they are not generic staples.
+    final qualifiedStaple = _qualifiedRegularStapleType(query);
+    final exactNamedProduct = _containsSearchPhrase(
+      _normalizeSearchText(data['productName']),
+      query,
+    );
+    if (_isRegularStapleQuery(query) && !_matchesRegularStaple(data, query)) {
+      return false;
+    }
+    if (qualifiedStaple != null &&
+        !exactNamedProduct &&
+        !_matchesRegularStaple(data, qualifiedStaple)) {
+      return false;
+    }
+
     // Require the exact catalog measurement for volumes and weights.
     if (!_aiMatchesRequestedMeasurement(data, rawQuery)) return false;
 
@@ -2111,7 +2142,13 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     }) {
       if (!isCurrentQuery()) return;
 
-      final ids = productIds.where(_productsById.containsKey).toList();
+      // Validate ALL result paths, including instant matches, cached IDs,
+      // Gemini responses and fallbacks. Never display a product that
+      // contradicts the cashier's explicit product type or package size.
+      final ids = productIds.where((id) {
+        final document = _productsById[id];
+        return document != null && _aiProductFitsClues(document.data(), query);
+      }).toList();
       setState(() {
         _aiMatchedProductIds
           ..clear()
@@ -2136,6 +2173,46 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
     });
 
     try {
+      // Use the same brand/variant and verified ingredient-type rules as
+      // Regular Search. A phrase such as "dinorado rice" must return all
+      // matching Dinorado/Dinurado rice SKUs, not stop at the one SKU whose
+      // stored name literally contains both words. No Gemini request needed.
+      // Descriptive, priced or measured queries continue through the normal
+      // AI path so their extra constraints are not silently discarded.
+      final qualifiedStaple = _qualifiedRegularStapleType(normalizedQuery);
+      final simpleStaple = _isRegularStapleQuery(normalizedQuery);
+      final hasDescriptionOrMeasure =
+          _aiExtractMeasurement(query) != null ||
+          RegExp(
+            r'\b(yung|na|may|below|under|pesos|peso|php|malaki|malaking|maliit|large|small|hindi|not|pababa|sachet)\b',
+          ).hasMatch(normalizedQuery);
+      if ((qualifiedStaple != null || simpleStaple) &&
+          !hasDescriptionOrMeasure) {
+        final matches = products
+            .where((document) {
+              final data = document.data();
+              if (!_aiProductFitsClues(data, query)) return false;
+              if (simpleStaple)
+                return _matchesRegularStaple(data, normalizedQuery);
+              // Respect every non-type qualifier, including variant or brand
+              // spellings, using the already-tested Regular Search word matcher.
+              return _localProductSearchScore(
+                    document,
+                    strictProductWords: true,
+                  ) >=
+                  20;
+            })
+            .take(_maxVisibleProducts)
+            .toList();
+        showMatches(
+          matches.map((document) => document.id),
+          matches.isEmpty
+              ? 'No relevant catalog product matches the requested type.'
+              : 'Showing ${matches.length} matching catalog product(s) using verified product-type and variant search (instant local match).',
+        );
+        return;
+      }
+
       // Exact product names/barcodes don't need an AI request. Only bypass
       // Gemini when exactly one active product matches, to avoid ambiguity.
       final exactMatches = products.where((document) {
@@ -2167,7 +2244,7 @@ class _NewTransactionScreenState extends State<NewTransactionScreen> {
               ),
             )
             .toList();
-        if (phraseMatches.isNotEmpty) {
+        if (phraseMatches.isNotEmpty && qualifiedStaple == null) {
           showMatches(
             phraseMatches.map((document) => document.id),
             'Exact product phrase found instantly (local catalog).',
@@ -2455,6 +2532,7 @@ $productLines
               .toList()
             ..sort((a, b) => b.score.compareTo(a.score));
       final localMatches = scored
+          .where((entry) => _aiProductFitsClues(entry.product.data(), query))
           .take(_maxVisibleProducts)
           .map((entry) => entry.product)
           .toList();
