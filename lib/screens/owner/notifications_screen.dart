@@ -663,7 +663,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (!mounted) return;
 
     if (alert.type == 'Price Update') {
-      // Shows the old and new buying price so the owner can review a price-update reminder.
+      // Shows buying and (where recorded) selling price changes for owner review.
       await _showPriceComparison(alert);
       return;
     }
@@ -689,7 +689,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // Shows the old and new buying price so the owner can review a price-update reminder.
+  // Shows buying and (where recorded) selling price changes for owner review.
   Future<void> _showPriceComparison(_UnifiedAlert alert) async {
     if (!mounted) return;
 
@@ -698,6 +698,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final newPrice = alert.newBuyingPrice ?? 0;
 
     final sellingPrice = alert.currentSellingPrice ?? 0;
+    final oldSellingPrice = alert.oldSellingPrice;
+    final newSellingPrice = alert.newSellingPrice;
 
     final difference = newPrice - oldPrice;
 
@@ -769,7 +771,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             ),
                             SizedBox(height: 3),
                             Text(
-                              'Review the previous and updated buying price.',
+                              'Review the previous and updated buying and selling prices.',
                               style: TextStyle(
                                 fontSize: 12.5,
                                 color: Color(0xFF7A8494),
@@ -884,7 +886,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             children: [
                               // Handles the text logic used by this module.
                               const Text(
-                                'PRICE CHANGE',
+                                'BUYING PRICE CHANGE',
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w800,
@@ -926,11 +928,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   // Handles the sized box logic used by this module.
                   const SizedBox(height: 14),
 
-                  _ComparisonDetailRow(
-                    icon: Icons.sell_outlined,
-                    label: 'Current Selling Price',
-                    value: _formatPrice(sellingPrice),
-                  ),
+                  if (oldSellingPrice != null && newSellingPrice != null) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _PriceComparisonBox(
+                            label: 'Previous Selling Price',
+                            value: _formatPrice(oldSellingPrice),
+                            color: Colors.blueGrey,
+                            icon: Icons.history_rounded,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _PriceComparisonBox(
+                            label: 'New Selling Price',
+                            value: _formatPrice(newSellingPrice),
+                            color: const Color(0xFF1565C0),
+                            icon: Icons.sell_outlined,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    _ComparisonDetailRow(
+                      icon: Icons.trending_up_rounded,
+                      label: 'Selling Price Change',
+                      value: newSellingPrice == oldSellingPrice
+                          ? 'No change'
+                          : '${newSellingPrice > oldSellingPrice ? '+' : ''}'
+                                '${_formatPrice(newSellingPrice - oldSellingPrice)}',
+                    ),
+                  ] else
+                    _ComparisonDetailRow(
+                      icon: Icons.sell_outlined,
+                      label: 'Current Selling Price',
+                      value: _formatPrice(sellingPrice),
+                    ),
 
                   // Handles the sized box logic used by this module.
                   const SizedBox(height: 9),
@@ -1267,31 +1301,53 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       final newBuyingPrice = _readDouble(data['newBuyingPrice']);
 
+      // Older reminder records may not have a selling-price comparison.
+      final oldSellingPrice = data['oldSellingPrice'] == null
+          ? null
+          : _readDouble(data['oldSellingPrice']);
+      final newSellingPrice = data['newSellingPrice'] == null
+          ? null
+          : _readDouble(data['newSellingPrice']);
+
       final currentSellingPrice = _readDouble(data['currentSellingPrice']);
 
       final status = (data['status'] ?? 'Pending Review').toString();
 
       final createdAt = _readDate(data['createdAt']);
 
-      final difference = newBuyingPrice - oldBuyingPrice;
+      final buyingDifference = newBuyingPrice - oldBuyingPrice;
+      final sellingDifference =
+          oldSellingPrice != null && newSellingPrice != null
+          ? newSellingPrice - oldSellingPrice
+          : null;
 
-      String description;
-
-      if (difference > 0) {
-        description =
-            '$productName buying price increased from '
-            '${_formatPrice(oldBuyingPrice)} to '
-            '${_formatPrice(newBuyingPrice)}.';
-      } else if (difference < 0) {
-        description =
-            '$productName buying price decreased from '
-            '${_formatPrice(oldBuyingPrice)} to '
-            '${_formatPrice(newBuyingPrice)}.';
-      } else {
-        description =
-            '$productName buying price was updated '
-            'without a price difference.';
+      final changes = <String>[];
+      if (buyingDifference > 0) {
+        changes.add(
+          '$productName buying price increased from '
+          '${_formatPrice(oldBuyingPrice)} to ${_formatPrice(newBuyingPrice)}.',
+        );
+      } else if (buyingDifference < 0) {
+        changes.add(
+          '$productName buying price decreased from '
+          '${_formatPrice(oldBuyingPrice)} to ${_formatPrice(newBuyingPrice)}.',
+        );
       }
+      if (sellingDifference != null && sellingDifference > 0) {
+        changes.add(
+          '$productName selling price increased from '
+          '${_formatPrice(oldSellingPrice!)} to ${_formatPrice(newSellingPrice!)}.',
+        );
+      } else if (sellingDifference != null && sellingDifference < 0) {
+        changes.add(
+          '$productName selling price decreased from '
+          '${_formatPrice(oldSellingPrice!)} to ${_formatPrice(newSellingPrice!)}.',
+        );
+      }
+      // Legacy notifications had buying-price data only.
+      final description = changes.isNotEmpty
+          ? changes.join(' ')
+          : '$productName price update recorded; no price difference.';
 
       alerts.add(
         _UnifiedAlert(
@@ -1305,6 +1361,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           activityDate: _readDate(data['updatedAt']) ?? createdAt,
           oldBuyingPrice: oldBuyingPrice,
           newBuyingPrice: newBuyingPrice,
+          oldSellingPrice: oldSellingPrice,
+          newSellingPrice: newSellingPrice,
           currentSellingPrice: currentSellingPrice,
           status: status,
         ),
@@ -2246,6 +2304,8 @@ class _UnifiedAlert {
 
   final double? oldBuyingPrice;
   final double? newBuyingPrice;
+  final double? oldSellingPrice;
+  final double? newSellingPrice;
   final double? currentSellingPrice;
   final String? status;
 
@@ -2261,6 +2321,8 @@ class _UnifiedAlert {
     this.activityDate,
     this.oldBuyingPrice,
     this.newBuyingPrice,
+    this.oldSellingPrice,
+    this.newSellingPrice,
     this.currentSellingPrice,
     this.status,
   });
